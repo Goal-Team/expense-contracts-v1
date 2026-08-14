@@ -1,0 +1,11 @@
+{
+    "name": "ApprovalRules",
+    "alias": "approvalrules",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\ApprovalRules\\Providers\\ApprovalRulesServiceProvider"
+    ],
+    "files": []
+}

@@ -1,0 +1,3350 @@
+<?php
+
+namespace Modules\Contract\Http\Controllers;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use DateTime;
+
+use Illuminate\Support\Facades\Validator;
+use App\Models\AddUsers;
+use App\Models\ApprovalContracts;
+use App\Models\Branch;
+use App\Models\BranchUser;
+use App\Models\GeographicalHierarchy;
+use App\Models\Category;
+use App\Models\ContractParties;
+use App\Models\ContractType;
+use App\Models\CustomFields;
+use App\Models\CustomFieldsHistory;
+use App\Models\CustomFieldsTimeline;
+use App\Models\Contract; 
+use App\Models\ContractHistory;
+use App\Models\CustomFieldsData;
+use App\Models\ContractPartyData;
+use App\Models\ContractPartyDataHistory;
+use App\Models\ContractCategories;
+use App\Models\EntityBusiness;
+
+use App\Models\Country;
+use App\Models\ContractPartiesLabel;
+ 
+
+use App\Models\State;
+
+use App\Models\ContractsStatus;
+
+
+use App\Models\FinancialLimit;
+
+use Illuminate\Support\Facades\DB;
+
+use Illuminate\Support\Facades\Log;
+
+use App\Models\FlowActivity;
+        
+        use Rap2hpoutre\FastExcel\FastExcel;
+ 
+ use App\Models\Tasks;
+      
+use App\Helpers\Helpers;
+
+use Modules\Contract\Http\Controllers\GoogleDriveController;
+
+use Carbon\Carbon;
+use stdClass;
+ 
+use Modules\Contract\Http\Controllers\LocalDriveController;
+
+class ContractController extends Controller
+{
+     
+    public function __construct()
+    {
+      if(Controller::checkCurrentAuth("Contracts") != 1){
+          //return abort('404');
+      }
+    } 
+    
+    
+    public function eventgroup(Request $request)
+    {
+        return view('contract::contract.eventGroup')->with('contracts', []);
+    }
+    
+    
+    
+    
+    
+    
+     public function deleteContract(Request $request, $id)
+    {
+        Contract::where('id', $id)->update(['status' => 0]);
+        return response()->json('deleted', 200);
+    }
+    
+    
+
+    public function updateflow(Request $request)
+    {
+        
+         $approverIds = $request->approver;
+
+
+
+        $users = AddUsers::select('id',  decrypt_data('FirstName', 'AddUsers'))
+        // $users = AddUsers::select(DB::raw("id, AES_DECRYPT(FirstName, 'dummy.AddUsers') AS name"))
+
+            ->whereIn('id', $approverIds)
+
+            ->orderByRaw("FIELD(id, " . implode(',', $approverIds) . ")")
+
+            ->get();
+
+
+
+        $contracts = Contract::where('id', $request->id)->first();
+        
+        $appArr = json_decode(trim($contracts->rules_id));
+        $appArrold = json_decode(trim($contracts->rules_id));
+        
+        
+        $appArr[0]->approver = json_encode($users);
+        
+        FlowActivity::create([
+            'contract_id' => $request->id,
+            'current_data' => json_encode($appArrold),
+            'updated_data' => json_encode($appArr),
+            'created_by' => 1
+        ]);
+        
+        $contracts = Contract::where('id', $request->id)->update([
+            'rules_id' => $appArr,
+        ]);
+
+        
+        return response()->json($appArr, 200);
+    }
+
+    public function checkauth()
+    {
+    }
+    public function viewContract(Request $request, $id)
+    {
+
+        $customFields = CustomFields::where('status', 1)->where('contract_type', 1)->orderBy('order_id')->get();
+
+        $contractTypes = ContractType::get();
+        
+        
+        $contractHistory = ContractHistory::where('id', $id) 
+        ->orderBy('created_at', 'desc') 
+            ->get();
+
+        // Fetching users with decrypted data
+        $users = AddUsers::select(
+            'id',
+            decrypt_data('Salutation', 'AddUsers'),
+            decrypt_data('FirstName', 'AddUsers'),
+            decrypt_data('LastName', 'AddUsers')
+        )->get();
+
+        // echo '<pre>';
+
+        // Attach user data to contract history
+        foreach ($contractHistory as $history) {
+            $user = $users->where('id', $history->created_by)->first();
+            if ($user) {
+                $history->user_name = $user;
+            } else {
+                $history->user_name = 'Unknown User'; // In case no matching user is found
+            }
+        }
+
+         
+         $branchs = Branch::select(
+            'id',
+            decrypt_data('BranchName', 'branch'),
+            decrypt_data('branchstatus', 'branch'),
+            decrypt_data('Doorno', 'branch'),
+            decrypt_data('StreetName', 'branch'),
+            decrypt_data('AreaName', 'branch'),
+            decrypt_data('Landmark', 'branch'),
+            decrypt_data('PinCode', 'branch'),
+            decrypt_data('ContactNumber', 'branch'),
+            decrypt_data('branchheadname', 'branch'),
+            decrypt_data('departments', 'branch')
+        )->get();
+
+
+     if (isset($_GET['history'])) {
+            $contracts = ContractHistory::where('history_id', $_GET['history'])->first();
+            $contractParty = ContractPartyDataHistory::where('history_id', $_GET['history'])->get();
+        } else {
+            $contracts = Contract::where('id', $id)->first();
+            $contractParty = ContractPartyData::where('custom_field_group_id', $id)->get();
+        }
+
+
+
+        foreach ($contractParty as $contractPart) {
+            $entities = DB::table('entity')
+                // ->select(DB::raw("id, AES_DECRYPT(Nameoftheentity, 'dummy.entity') as Nameoftheentity"))
+                ->select('id', decrypt_data('Nameoftheentity', 'entity'))
+                ->where('id', $contractPart->contract_party_id)
+                ->first();
+                
+                if(isset($entities->Nameoftheentity)){
+                   $contractPart->Nameoftheentity = $entities->Nameoftheentity;
+                }
+
+
+            if ($contractPart->contract_party_location_id == !null) {
+                
+                
+                
+                
+                 $branchs = BranchUser::select(
+                    'id',
+                    decrypt_data('BranchName', 'branch'),
+                    decrypt_data('branchstatus', 'branch'),
+                    decrypt_data('Doorno', 'branch'),
+                    decrypt_data('StreetName', 'branch'),
+                    decrypt_data('AreaName', 'branch'),
+                    decrypt_data('Landmark', 'branch'),
+                    decrypt_data('PinCode', 'branch'),
+                    decrypt_data('ContactNumber', 'branch'),
+                    decrypt_data('branchheadname', 'branch'),
+                    decrypt_data('departments', 'branch')
+                )->where('id', $contractPart->contract_party_location_id)->first();
+
+
+                $contractPart->contract_party = $branchs;
+            }
+            
+            if ($contractPart->contract_party_exe_id == !null) {
+
+                $contractParties =  ContractParties::select('*')->where('id', $contractPart->contract_party_exe_id)->get();
+
+                $contractPart->contract_party_id_exe = $contractParties;
+                
+                $contractPart->Nameoftheentity = decryptString($contractParties[0]->company_name, 'company_name');
+            }
+        }
+
+
+ 
+
+
+        if (isset($contracts->catgoery_id)) {
+            $Categoryname = ContractCategories::where('id', $contracts->catgoery_id)->first();
+            $contracts->catgoery_id = $Categoryname->name;
+        }
+
+        if (isset($contracts->department_id)) {
+            $EntityBusinessName = EntityBusiness::where('id', $contracts->department_id)->first();
+            $contracts->department_identity = $contracts->department_id;
+            $contracts->department_id = $EntityBusinessName->name;
+        }
+
+        if (isset($contracts->contract_type)) {
+            $contracts->contract_type_id = $contracts->contract_type;
+            $contracts->contract_type = ContractType::where('contract_type_id', $contracts->contract_type)->first()->contract_type;
+        }
+        
+        
+
+        $approvalsArr = ApprovalContracts::select('*')->where('contract_id', $id)->where('flag', 1)
+        ->get()
+        ->map(function ($task) { 
+                  $task->username = decryptString($task->username, 'username');
+                  $task->status = decryptString($task->status, 'status');
+                  $task->previous_status = decryptString($task->previous_status, 'previous_status');
+                  $task->next_action_item = decryptString($task->next_action_item, 'next_action_item');
+                  $task->next_action_description = decryptString($task->next_action_description, 'next_action_description');
+                  $task->approval_status = decryptString($task->approval_status, 'approval_status');
+                  return $task;
+              })
+        ->groupBy('unique_id')
+        ->reverse();
+        
+         $approvalsAttach = ApprovalContracts::select('*')
+            ->where('contract_id', $id)
+            ->where('flag', 1)
+            ->orderBy('id', 'desc') // Order by created_at in descending order
+            ->get()
+            ->map(function ($task) {
+                $task->approval_status = decryptString($task->approval_status, 'approval_status'); 
+                $task->next_action_item = decryptString($task->next_action_item, 'next_action_item'); 
+                $task->next_action_description = decryptString($task->next_action_description, 'next_action_description'); 
+                return $task;
+            });
+        
+        $customFields = CustomFields::where('status', 1)->where('contract_type', 1)->orderBy('order_id')->get();
+        $categorys = Category::where('category_group', 'contract')->get();
+        $contractTypes = ContractType::get();
+
+
+
+        $branchs = BranchUser::select(
+            'id',
+            decrypt_data('BranchName', 'branch'),
+            decrypt_data('branchstatus', 'branch'),
+            decrypt_data('Doorno', 'branch'),
+            decrypt_data('StreetName', 'branch'),
+            decrypt_data('AreaName', 'branch'),
+            decrypt_data('Landmark', 'branch'),
+            decrypt_data('PinCode', 'branch'),
+            decrypt_data('ContactNumber', 'branch'),
+            decrypt_data('branchheadname', 'branch'),
+            decrypt_data('departments', 'branch')
+        )->get();
+
+        $entities = DB::table('entity')
+            ->select('id', decrypt_data('Nameoftheentity', 'entity'))
+            ->get();
+
+
+        $users = AddUsers::select('id',  decrypt_data('Salutation', 'AddUsers'), decrypt_data('FirstName', 'AddUsers') , decrypt_data('LastName', 'AddUsers'))->get();
+        
+        // $users = AddUsers::select(DB::raw("id, AES_DECRYPT(FirstName,'dummy.AddUsers') AS FirstName"))->get();
+
+
+        $contractParties =  ContractParties::select('*')->get();
+
+        $catego =  ContractCategories::select('*')->get();
+        
+        $ent = EntityBusiness::select('*')->get();
+        
+        
+        
+        // $ContractPartyData = ContractPartyData::where('custom_field_group_id', $contracts->id)->get();
+        
+        if (isset($_GET['history'])) { 
+            $ContractPartyData = ContractPartyDataHistory::where('history_id', $_GET['history'])->get();
+        } else { 
+            $ContractPartyData = ContractPartyData::where('custom_field_group_id', $id)->get();
+        }
+
+
+       $contractsold = Contract::where('id', $id)->first();
+
+        if ($contractsold) {
+            $contractsoldothers = Contract::where([
+                ['catgoery_id', $contractsold->catgoery_id],
+                ['department_id', $contractsold->department_id],
+                ['contract_type', $contractsold->contract_type],
+            ])->whereNot('id', $id)->get();
+        }
+        
+        $contract_party_locations = ContractPartyData::where('custom_field_group_id', $contracts->id)->where('contract_party_type','internal')->pluck('contract_party_location_id');
+        
+        $contract_party_id = ContractPartyData::where('custom_field_group_id', $contracts->id)->where('contract_party_type','External')->pluck('contract_party_exe_id');
+        
+        $ContractPartyLocList = ContractPartyData::whereIn('contract_party_location_id', $contract_party_locations)->pluck('custom_field_group_id');
+
+        $ContractPartyDataList = ContractPartyData::whereIn('contract_party_exe_id', $contract_party_id)->pluck('custom_field_group_id');
+        
+
+        $FinalContractList = $ContractPartyLocList->intersect($ContractPartyDataList);
+        
+        $contractspartsList = Contract::whereIn('id', $FinalContractList)->where('id','<>', $id)->get();
+        
+        //Get Parent Contracts
+        $getParentContracts = "SELECT parentcontract FROM
+(SELECT id,parentcontract,
+       CASE WHEN id in ('" . $id . "') THEN @idlist := CONCAT(IFNULL(@idlist,''),',',parentcontract)
+            WHEN FIND_IN_SET(id,@idlist) THEN @idlist := CONCAT(@idlist,',',parentcontract)
+            END as checkId
+FROM contracts
+ORDER BY id DESC)T
+WHERE checkId IS NOT NULL";
+
+        $contractsparentListQuery = DB::select($getParentContracts);
+
+        $parentContractArr = [];
+
+        foreach ($contractsparentListQuery as $conpar) {
+            $parentContractArr[] = $conpar->parentcontract;
+        }
+
+        $contractsparentList = Contract::whereIn('id', $parentContractArr)->get();        
+        
+        $contractParties =  ContractParties::select('*')->get();
+        
+        //Get Susequesnt Contracts
+        $childsList = NULL;
+        $finalListChild = [];
+        
+        
+        if(count($parentContractArr) == 1 && $parentContractArr[0] == 0){
+            $parentContractArr[] = $id;
+        }
+        
+
+
+        foreach($parentContractArr as $parCon){
+            if($parCon > 0){
+                $getSubSequesntContracts = "SELECT GROUP_CONCAT(lv SEPARATOR ',') as childList FROM (
+                                   SELECT @pv:=(SELECT GROUP_CONCAT(id SEPARATOR ',') FROM contracts 
+                                   WHERE FIND_IN_SET(parentcontract, @pv)) AS lv FROM contracts 
+                                   JOIN
+                                   (SELECT @pv:=".$parCon.") tmp
+                                   ) a";
+                                   
+                $contractsSubSeqList = DB::select($getSubSequesntContracts);  
+                
+               foreach ($contractsSubSeqList as $conSubSeq) {
+                
+                   if($conSubSeq->childList != "" && $conSubSeq->childList !== NULL){
+                     $childsList .= $conSubSeq->childList;
+                   }
+               }          
+                
+               $finalListChild = explode(",",$childsList);
+            }
+
+        }
+
+
+        $contractsSubseqList = Contract::whereIn('id', $finalListChild)->where('id','<>', $id)->get();
+       
+        return view('contract::contract.viewDetailContract', compact('contractHistory','approvalsAttach','contractParties','contractspartsList','contractsparentList', 'contractsSubseqList','contractsoldothers', 'ent','catego','contractParties', 'entities', 'branchs', 'customFields', 'categorys', 'contractTypes', 'users'))->with('contractPartys', $ContractPartyData)->with('contract', $contracts)->with('contractPartyData', $contractParty)->with('approvalsArr', $approvalsArr);
+    }
+    
+
+
+    public function listContractData(Request $request)
+    {
+        
+        if (isset($_GET['status']) && $_GET['status'] !== 'all') {
+            $contracts_query = Contract::select('contract_name', 'id', 'currency', 'currency_value', 'end_contract_type', 
+                                'contract_status','substatus','fixed_date','onetime_end_date','contract_type','catgoery_id');
+            if (str_contains($_GET['status'], 'executed_')) {
+                $contracts_query->where('contract_status', 'executed');
+                $contracts_query->where('substatus', explode('_', $_GET['status'])[1]);
+            } else {
+                $contracts_query->where('contract_status', $_GET['status']);
+            }
+            $contracts_query->where('status', 1);
+            $contracts_query->orderBy('id', 'desc');
+            $contracts = $contracts_query->get();
+        } else {
+            $contracts = Contract::select('contract_name', 'id', 'currency', 'currency_value','end_contract_type', 'contract_status','substatus','fixed_date','onetime_end_date','contract_type','catgoery_id')
+            ->orderBy('id', 'desc')
+            ->where('status',1)
+            ->get();
+        }
+        
+        
+        
+        setcookie('filterStatus', $_GET['status'], time() + (86400 * 30), "/");
+
+        $ContractsFinal = [];
+        foreach ($contracts as $contract) {
+            $contract->contract_name = decryptString($contract->contract_name, 'contract_name');
+            $contract->currency = decryptString($contract->currency, 'currency');
+             $contract->currency_value = decryptString($contract->currency_value, 'currency_value');
+            $contract->end_contract_type = decryptString($contract->end_contract_type, 'end_contract_type');            
+            $contract->location_branch = '-';       
+            
+            if($contract->fixed_date == ''){
+                $contract->fixed_date = '-';
+            }else{
+                $fixedDate = strtotime($contract->fixed_date); 
+                $contract->fixed_date = date('d-m-Y', $fixedDate);
+
+            }
+            
+            if($contract->onetime_end_date == ''){
+                $contract->onetime_end_date = '-';
+            }else{
+                $endDate = strtotime($contract->onetime_end_date); 
+                $contract->onetime_end_date = date('d-m-Y', $endDate);
+            }
+            $newconame = '';
+            $contractParty = ContractPartyData::where('custom_field_group_id', $contract->id)->get();
+            $i = 0;
+            
+            $contract->applicable = true;
+            
+            if (isset($contract->catgoery_id)) {
+                $Categoryname = ContractCategories::where('id', $contract->catgoery_id)->first();
+                $contract->catgoery_id = $Categoryname->name;
+            }            
+
+            foreach ($contractParty as $contractPart) {
+                
+                $skipExternal = false;
+                
+                if ($contractPart->contract_party_location_id == !null) {
+                    
+                    
+                      $branchs = BranchUser::select(
+                        'id',
+                        decrypt_data('BranchName', 'branch'),
+                        decrypt_data('branchstatus', 'branch'),
+                        decrypt_data('Doorno', 'branch'),
+                        decrypt_data('StreetName', 'branch'),
+                        decrypt_data('AreaName', 'branch'),
+                        decrypt_data('Landmark', 'branch'),
+                        decrypt_data('PinCode', 'branch'),
+                        decrypt_data('ContactNumber', 'branch'),
+                        decrypt_data('branchheadname', 'branch'),
+                        decrypt_data('departments', 'branch')
+                    )->where('id', $contractPart->contract_party_location_id)->first();
+                    
+                    
+                    if(!$branchs && !$contract->applicable){
+                        $skipExternal = true;
+                        $contract->applicable = false;
+                    }else{
+                        $contract->location_branch = $branchs->BranchName;
+                        $contractPart->contract_party = $branchs;
+                        $contract->applicable = true;
+                    }
+                    
+
+                }
+                
+                $entities = DB::table('entity')
+                    
+                    ->select('id', decrypt_data('Nameoftheentity', 'entity'))
+                    ->where('id', $contractPart->contract_party_id)
+                    ->first();
+                    if(isset($entities->Nameoftheentity)){
+                    $contractPart->Nameoftheentity = $entities->Nameoftheentity;
+                            if($i == 0){
+                                $newconame .= ','.$entities->Nameoftheentity;
+                            }else{
+                                $newconame .= ','.$entities->Nameoftheentity;
+                            }
+                        $i++;
+                    }
+
+                if ($contractPart->contract_party_exe_id == !null && !$skipExternal) {
+
+                    $contractParties =  ContractParties::select('*')->where('id', $contractPart->contract_party_exe_id)->first();
+
+                    $contractPart->contract_party_id_exe = $contractParties;
+           
+                    if(isset($contractParties->company_name )){
+                        $newconame .=  ','.decryptString($contractParties->company_name, 'company_name') . ',';
+                    }else{
+                        $newconame .= '';
+                    }
+                }
+            } 
+            
+                $contractTypeName = ContractType::where('contract_type_id', $contract->contract_type)->first();
+                $contract->contract_type =  $contractTypeName->contract_type ?? '';
+                
+                $newconame = preg_replace('/^,|,$/', '', $newconame);
+                
+                
+                $contract->contractPartyNames = $newconame;
+                $contract->contractParty = $contractParty;
+
+                if($contract->applicable){
+                    $ContractsFinal[] = $contract;
+                }
+                
+        }
+
+
+
+        return response()->json([
+            'data' => $ContractsFinal,
+            'draw' => $request->input('draw') ?? 1,
+            'recordsTotal' => count($ContractsFinal),
+            'recordsFiltered' => count($ContractsFinal)
+        ]);
+    }
+
+    public function listContract(Request $request)
+    {
+
+
+        $contracts = Contract::select('contract_name', 'id', 'currency', 'currency_value','end_contract_type', 'contract_status','substatus','fixed_date','onetime_end_date','contract_type')->orderBy('id', 'desc')->where('status', 1)->get();
+        
+        $available_branches = BranchUser::pluck('id')->toArray();
+        
+        $contract_all_total                = 0;
+        $contract_draft_total              = 0;
+        $contract_review_total             = 0;
+        $contract_negotiation_total        = 0;
+        $contract_approval_total           = 0;
+        $contract_approved_total           = 0;
+        $contract_signing_total            = 0;
+        $contract_executable_total         = 0;
+        $contract_executable_active_total  = 0;
+        $contract_executable_expired_total = 0;
+        $contract_executable_pending_total = 0;
+        $contract_executable_renewed_total = 0;
+        $contract_executable_termina_total = 0;
+        $contract_executable_comp_total    = 0; 
+        
+        foreach ($contracts as $contract) {
+
+            $contractParty = ContractPartyData::where('custom_field_group_id', $contract->id)->get();
+            
+            $contract->applicable = true;
+            foreach ($contractParty as $contractPart) {
+                
+                if ($contractPart->contract_party_location_id == !null) {
+                    if(!in_array($contractPart->contract_party_location_id, $available_branches) && !$contract->applicable){
+                        $contract->applicable = false;
+                    }else{
+                        $contract->applicable = true;
+                    }                 
+                }
+            }
+            
+            if($contract->applicable){
+
+                switch ($contract->contract_status) {
+                    case 'executed':
+                        $contract_executable_total++;
+                        $contract_all_total++;
+                        switch ($contract->substatus) {
+                            case 'active':
+                                $contract_executable_active_total++;
+                                break;
+                            case 'expired':
+                                $contract_executable_expired_total++;
+                                break;
+                            case 'pending':
+                                $contract_executable_pending_total++;
+                                break;
+                            case 'renewed':
+                                $contract_executable_renewed_total++;
+                                break;
+                            case 'Terminated':
+                                $contract_executable_termina_total++;
+                                break;
+                            case 'completed':
+                                $contract_executable_comp_total++;
+                                break;
+                        }
+                        break;
+                        case 'draft':
+                            $contract_draft_total++;
+                            $contract_all_total++;
+                            break;        
+                        case 'review':
+                            $contract_review_total++;
+                            $contract_all_total++;
+                            break;        
+                        case 'Negotiation':
+                            $contract_negotiation_total++;
+                            $contract_all_total++;
+                        case 'approval':
+                            $contract_approval_total++;
+                            $contract_all_total++;
+                            break;        
+                        case 'approved':
+                            $contract_approved_total++;
+                            $contract_all_total++;
+                            break;        
+                        case 'signing':
+                            $contract_signing_total++;
+                            $contract_all_total++;
+                            break;
+                }
+            }            
+            
+        }
+
+        $stus = array(
+            'all' => $contract_all_total,
+            'draft' => $contract_draft_total,
+            'review' => $contract_review_total,
+            'negotiation' => $contract_negotiation_total,
+            'approval' => $contract_approval_total,
+            'approved' => $contract_approved_total,
+            'signing' => $contract_signing_total,
+            'executed' => $contract_executable_total,
+            'executed_active' => $contract_executable_active_total,
+            'executed_expired' => $contract_executable_expired_total,
+            'executed_pending' => $contract_executable_pending_total,
+            'executed_renewed' => $contract_executable_renewed_total,
+            'executed_terminated' => $contract_executable_termina_total,
+            'executed_completed' => $contract_executable_comp_total
+        );  
+        
+        
+        
+        return view('contract::contract.contractList')->with('contracts', (count($contracts) == 0) ? [] : $contracts)->with('counts', $stus);
+    }
+
+    public function storeContract(Request $request)
+    {
+
+ // file upload - file start
+        
+        // $file = $request->file('file');
+
+        // if ($file) {
+        //     Log::info('File found: ' . $file->getClientOriginalName());
+        //     Log::info('File is valid and ready to be stored.');
+        // } else {
+        //     Log::error('No file found in the request.');
+        //     return back()->with('error', 'No file was uploaded.');
+        // }
+
+        // try {
+        //     $path = $file->store('uploads', 'public');
+        //     Log::info('File stored at: ' . $path);
+        //     return back()->with('success', 'File uploaded successfully! Path: ' . $path);
+        // } catch (\Exception $e) {
+        //     Log::error('File storage failed: ' . $e->getMessage());
+        //     return back()->with('error', 'File storage failed. Please try again.');
+        // }
+
+    // exit();
+
+
+// file upload - file edid
+
+ 
+
+$controller = new LocalDriveController();
+
+        
+        
+ 
+
+        
+        
+        
+        // return $request->file('file');
+     
+        // $locals = $request->input('Partygroup.party');
+        
+
+
+    //   $financialLimit = $this->financialLimit($locals[0]['location'], $request->input('BasicContract.DepartmentType'), 
+    //   $request->input('BasicContract.catgoeryType'), $request->input('BasicContract.contractType'), $request->input('ContractValue.value'));
+ 
+ 
+    //   print_r($financialLimit);die;
+    //   $financialLimit = $financialLimit[0];
+      
+    //   $financialLimit = '';
+       
+    //   return $financialLimit;
+    
+        
+
+        // return $request->input('BasicContract.catgoeryType');
+
+        //  if ($request->hasFile('file')) {
+
+        //     $file = $request->file('file');
+        //     $filePath = $file->store('attachments', 'public');
+        // }
+
+
+
+
+
+
+
+        // return $request->file('file');
+
+        $locals = $request->input('Partygroup.party');
+
+
+
+        $financialLimit = $this->financialLimit(
+            $locals[0]['location'],
+            $request->input('BasicContract.DepartmentType'),
+            $request->input('BasicContract.catgoeryType'),
+            $request->input('BasicContract.contractType'),
+            $request->input('ContractValue.value')
+        );
+
+
+        //   print_r($financialLimit);die;
+        //   $financialLimit = $financialLimit[0];
+
+        //   $financialLimit = '';
+
+        //   return $financialLimit;
+
+
+
+        // return $request->input('BasicContract.catgoeryType');
+
+        $contract = Contract::create([
+            'contract_mode' => encryptString($request->input('contractMode'), 'contract_mode'),
+            'contract_type' => $request->input('BasicContract.contractType'),
+            // 'contract_name' => encryptString($request->input('BasicContract.contractName'), 'contract_name'),
+            'contract_description' => encryptString($request->input('BasicContract.contractDescription'), 'contract_description'),
+
+            'department_id' => $request->input('BasicContract.DepartmentType'),
+            'catgoery_id' => $request->input('BasicContract.catgoeryType'),
+
+            'signatory' => $request->input('BasicContract.signatory'),
+            'owner' => $request->input('owner'),
+
+
+            'confidentialityagreement' => $request->input('BasicContract.Confidentialityagreement'),
+            'exclusivity' => encryptString($request->input('BasicContract.Exclusivity'), 'exclusivity'),
+
+            // Contract Duration
+            'signing_date' => $request->input('Duration.signingDate'),
+            'commencement_type' => encryptString($request->input('Duration.commencementDate'), 'commencement_type'), // corrected key
+            'fixed_date' => $request->input('Duration.fixedDate'),
+            'event_name' => encryptString($request->input('Duration.eventDetails'), 'event_name'),
+            'end_contract_type' => encryptString($request->input('Duration.effectiveDate'), 'end_contract_type'),
+            'onetime_end_date' => $request->input('Duration.onetimeEndDateofContract'),
+            'fixedterm_end_date' => $request->input('Duration.fixedtimeEndDateofContract'),
+            'renewal_type' => encryptString($request->input('Duration.typeRenewal'), 'renewal_type'),
+            'period_auto_renewal' => $request->input('Duration.periodAutoRenewal'),
+            'period_auto_renewal_unit' => encryptString($request->input('Duration.periodAutoRenewalPeriod'), 'period_auto_renewal_unit'),
+            'auto_renewal_date' => $request->input('Duration.autoRenewalDate'),
+            'manual_renewal_date' => $request->input('Duration.autoManualRenewalDate'),
+            'evergreen_condition' => encryptString($request->input('Duration.conditionEndContract'), 'evergreen_condition'),
+            'termination_date' => $request->input('Duration.terminationDate'),
+            'termination_reason' => encryptString($request->input('Duration.reasonTermination'), 'termination_reason'),
+
+
+            // Contract Value
+            'currency' => encryptString($request->input('ContractValue.currency'), 'currency'),
+            'currency_value' => encryptString($request->input('ContractValue.value'), 'currency_value'),
+            'payment_schedule' => encryptString($request->input('ContractValue.paymentSchedule'), 'payment_schedule'),
+            'currency_contract' => encryptString($request->input('ContractValue.currencyContract'), 'currency_contract'),
+            'payment_terms' => encryptString($request->input('ContractValue.paymentTerms'), 'payment_terms'),
+            'billing_frequency' => encryptString($request->input('ContractValue.billingFrequency'), 'billing_frequency'),
+            'taxes' => encryptString($request->input('ContractValue.taxes'), 'taxes'),
+            'escalation_clauses' => encryptString($request->input('ContractValue.escalationClauses'), 'escalation_clauses'),
+            'discounts' => encryptString($request->input('ContractValue.discounts'), 'discounts'),
+            'retention' => encryptString($request->input('ContractValue.retention'), 'retention'),
+            'payment_escrow' => encryptString($request->input('ContractValue.payment_escrow'), 'payment_escrow'),
+            'financial_guarantees' => encryptString($request->input('ContractValue.financialGuarantees'), 'financial_guarantees'),
+            'currency_conversion' => encryptString($request->input('ContractValue.currencyConversion'), 'currency_conversion'),
+
+            // Reminder Value
+            'reminder_first_alert' => encryptString($request->input('Duration.Reminder.first.alertMe'), 'reminder_first_alert'),
+            'reminder_first_alertMeOn' => encryptString($request->input('Duration.Reminder.first.alertMeDay') . ' ' . $request->input('Duration.Reminder.first.alertMePrior') . ' ' . $request->input('Duration.Reminder.first.alertMeType'), 'reminder_first_alertMeOn'),
+            'reminder_first_alert_repeats' => encryptString($request->input('Duration.Reminder.first.repeats'), 'reminder_first_alert_repeats'),
+            'reminder_second_alert' => encryptString($request->input('Duration.Reminder.second.alertMe'), 'reminder_second_alert'),
+            'reminder_second_alertMeOn' => encryptString($request->input('Duration.Reminder.second.alertMeDay') . ' ' . $request->input('Duration.Reminder.second.alertMePrior') . ' ' . $request->input('Duration.Reminder.second.alertMeType'), 'reminder_second_alertMeOn'),
+            'reminder_second_alert_repeats' => encryptString($request->input('Duration.Reminder.second.repeats'), 'reminder_second_alert_repeats'),
+            'reminder_escalation_alert' => encryptString($request->input('Duration.Reminder.escalation.alertMe'), 'reminder_escalation_alert'),
+            'reminder_escalation_alertMeOn' => encryptString($request->input('Duration.Reminder.escalation.alertMeDay') . ' ' . $request->input('Duration.Reminder.escalation.alertMePrior') . ' ' . $request->input('Duration.Reminder.escalation.alertMeType'), 'reminder_escalation_alertMeOn'),
+            'reminder_escalation_alert_repeats' => encryptString($request->input('Duration.Reminder.escalation.repeats'), 'reminder_escalation_alert_repeats'),
+
+            // 'rules_id' => '5',
+            'rules_id' => $financialLimit,
+
+            'custom_fields_data' => json_encode($request->input('customFields')),
+            // 'contract_attachment' => $filePath
+
+        ]);
+
+
+
+        if ($request->has('customFields')) {
+        foreach ($request->input('customFields') as $customField) {
+            if (isset($customField)) {
+                
+                if(isset($customField['id']) && isset($customField['value']) && isset($contract->id)){
+                    CustomFieldsData::create([
+                        'custom_field_id' => $customField['id'],
+                        'custom_field_group' => 'contracts',
+                        'custom_field_value' => $customField['value'],
+                        'custom_field_group_id' => $contract->id
+                    ]);
+                }
+            }
+        }
+        }
+        $contractTypeName = ContractType::where('contract_type_id', $request->input('BasicContract.contractType'))->first();
+        
+        $namePartygroup =  $contractTypeName->contract_type;
+        
+        // 
+        
+         foreach ($request->input('Duration.task') as $ke => $tasks) {
+             
+             
+             
+             if(isset($tasks['name_of_task'])) {
+                Tasks::create([
+                    'name_of_task'=> encryptString($tasks['name_of_task'], 'name_of_task'),
+                    'priority'=> encryptString($tasks['priority'], 'priority'),
+                    'start_date'=> encryptString($tasks['start_date'], 'start_date'),
+                    'end_date'=> encryptString($tasks['end_date'], 'end_date'),
+                    'description'=> encryptString($tasks['description'], 'description'),
+                    'status'=>$tasks['status'],
+                    'contract_id'=>$contract->id
+                ]); 
+             }
+            
+            //  if(isset($tasks['name_of_task'])) {
+            //     Tasks::create([
+            //         'name_of_task'=>$tasks['name_of_task'],
+            //         'priority'=>$tasks['priority'],
+            //         'start_date'=>$tasks['start_date'],
+            //         'end_date'=>$tasks['end_date'],
+            //         'description'=>$tasks['description'],
+            //         'status'=>$tasks['status'],
+            //         'contract_id'=>$contract->id
+            //     ]); 
+            //  }
+         }
+         
+         
+         
+        $contracthis = Contract::where('id', $contract->id)->first();
+
+        $contractHistory = ContractHistory::create([
+            'contract_name' => $contracthis->contract_name,
+            'id' => $contracthis->id,
+            'contract_mode' => $contracthis->contract_mode,
+            'contract_type' => $contracthis->contract_type,
+            // 'contract_name' => $contract->/ 'contract_name,
+            'contract_description' => $contracthis->contract_description,
+
+            'department_id' => $contracthis->department_id,
+            'catgoery_id' => $contracthis->catgoery_id,
+
+            'signatory' => $contracthis->signatory,
+            'owner' => $contracthis->owner,
+
+
+            'confidentialityagreement' => $contracthis->confidentialityagreement,
+            'exclusivity' => $contract->exclusivity,
+
+            // Contract Duration
+            'signing_date' => $contracthis->signing_date,
+            'commencement_type' => $contracthis->commencement_type,
+            'fixed_date' => $contracthis->fixed_date,
+            'event_name' => $contracthis->event_name,
+            'end_contract_type' => $contracthis->end_contract_type,
+            'onetime_end_date' => $contracthis->onetime_end_date,
+            'fixedterm_end_date' => $contracthis->fixedterm_end_date,
+            'renewal_type' => $contracthis->renewal_type,
+            'period_auto_renewal' => $contracthis->period_auto_renewal,
+            'period_auto_renewal_unit' => $contracthis->period_auto_renewal_unit,
+            'auto_renewal_date' => $contracthis->auto_renewal_date,
+            'manual_renewal_date' => $contracthis->manual_renewal_date,
+            'evergreen_condition' => $contracthis->evergreen_condition,
+            'termination_date' => $contracthis->termination_date,
+            'termination_reason' => $contracthis->termination_reason,
+
+
+            // Contract Value
+            'currency' => $contracthis->currency,
+            'currency_value' => $contracthis->currency_value,
+            'payment_schedule' => $contracthis->payment_schedule,
+            'currency_contract' => $contracthis->currency_contract,
+            'payment_terms' => $contracthis->payment_terms,
+            'billing_frequency' => $contracthis->billing_frequency,
+            'taxes' => $contracthis->taxes,
+            'escalation_clauses' => $contracthis->escalation_clauses,
+            'discounts' => $contracthis->discounts,
+            'retention' => $contracthis->retention,
+            'payment_escrow' => $contracthis->payment_escrow,
+            'financial_guarantees' => $contracthis->financial_guarantees,
+            'currency_conversion' => $contracthis->currency_conversion,
+
+            // Reminder Value
+            'reminder_first_alert' => $contracthis->reminder_first_alert,
+            'reminder_first_alertMeOn' => $contracthis->reminder_first_alertMeOn,
+            'reminder_first_alert_repeats' => $contracthis->reminder_first_alert_repeats,
+            'reminder_second_alert' => $contracthis->reminder_second_alert,
+            'reminder_second_alertMeOn' => $contracthis->reminder_second_alertMeOn,
+            'reminder_second_alert_repeats' => $contracthis->reminder_second_alert_repeats,
+            'reminder_escalation_alert' => $contracthis->reminder_escalation_alert,
+            'reminder_escalation_alertMeOn' => $contracthis->reminder_escalation_alertMeOn,
+            'reminder_escalation_alert_repeats' => $contracthis->reminder_escalation_alert_repeats,
+
+            // 'rules_id' => $contracthis->/ 'rules_id,
+            'rules_id' => $contracthis->rules_id,
+
+            'custom_fields_data' => $contracthis->custom_fields_data,
+            'contract_attachment' => $contracthis->contract_attachment,
+            'contract_attachment_filename' => $contracthis->contract_attachment_filename,
+            'created_by' => $contracthis->created_by ? $contracthis->created_by : 1
+        ]);
+        
+         
+
+
+        foreach ($request->input('Partygroup.party') as $ke => $customField) {
+            
+            if (isset($customField)) {
+                
+                
+                $ContractPartyData = ContractPartyData::create([
+                    'custom_field_group_id' => $contract->id,
+                    'contract_party_type' => $customField['mode'],
+                    'contract_party_id' => $customField['internal_name'],
+                    'contract_party_exe_id' => $customField['external_name'],
+                    'contract_party_location_id' => $customField['location'],
+                ]);
+                
+                ContractPartyDataHistory::create([
+                    'history_id' => $contractHistory->id,
+                    'id' => $ContractPartyData->id,
+                    'custom_field_group_id' => $contract->id,
+                    'contract_party_type' => $customField['mode'],
+                    'contract_party_id' => $customField['internal_name'],
+                    'contract_party_exe_id' => $customField['external_name'],
+                    'contract_party_location_id' => $customField['location'],
+                ]);
+                
+                if($ke < 2){
+                    
+                    $namePartygroup .= '-';
+                     if($customField['mode'] == 'external'){
+                           $nme = ContractParties::select('company_name')->where('id',$customField['external_name'])->first()->company_name;
+                           $namePartygroup .= decryptString($nme, 'company_name');
+                        
+                     } else{
+                        $namePartygroup .= DB::table('entity')
+                        ->select('Nameoftheentity', decrypt_data('Nameoftheentity', 'entity'))
+                        ->where('id', $customField['internal_name'])
+                        ->first()->Nameoftheentity;  
+                     }
+                     
+                }
+            }
+        }
+        
+        
+        $users = AddUsers::select('id',  decrypt_data('Salutation', 'AddUsers'), decrypt_data('FirstName', 'AddUsers') , decrypt_data('LastName', 'AddUsers'))->where('id', $request->input('owner'))->get();
+        
+        
+        // $users = AddUsers::select(DB::raw("id, AES_DECRYPT(FirstName,'dummy.AddUsers') AS FirstName"))->where('id', $request->input('owner'))->get();
+
+            
+        if($request->input('contractMode') == 'new'){
+            $appArr = json_decode(trim($financialLimit));
+            $randNo = rand(0, 99999);
+            if(is_array($appArr) && count($appArr) > 0 && isset($users[0])){
+                $approval_type = $appArr[0]->approval_type;
+                $approval_status = $appArr[0]->approval_status;
+            
+                if($approval_type == 'sequential' && $approval_status == 'required'){
+                    $unique_id = $contract->id.$randNo;
+                    
+                    
+                    // ApprovalContracts::create([
+                    //     'username' => $users[0]->FirstName,
+                    //     'previous_status' => 'Draft',
+                    //     'status' => 'Draft',
+                    //     'contract_id' => $contract->id,
+                    //     'orderval' => 0,
+                    //     'unique_id' => $unique_id,
+                    //     'flag' => 1,
+                    //     'approval_status' => 'pending',
+                    // ]);
+                    
+                    ApprovalContracts::create([
+                        'username' => encryptString($users[0]->FirstName, 'username'),
+                        'previous_status' => encryptString('Draft', 'previous_status'),
+                        'status' => encryptString('Draft', 'status'),
+                        'contract_id' => $contract->id,
+                        'orderval' => 0,
+                        'unique_id' => $unique_id,
+                        'flag' => 1,
+                        'approval_status' => encryptString('pending', 'approval_status'),
+                    ]);
+
+                    
+
+                }
+            }   
+ 
+        }
+        
+        
+        // $appArr = json_decode(trim($financialLimit));
+       
+        // foreach($appArr as $appData){
+        //     $approvalArr = json_decode($appData->approver);
+        //     // print_r($approvalArr);die;
+        //     foreach($approvalArr as $appVal){
+        //         ApprovalContracts::create([
+        //             'username' => $appVal->name,
+        //             'previous_status' => 'Draft',
+        //             'status' => 'review',
+        //             'contract_id' => $contract->id,
+        //             'approval_status' => 'pending',
+        //         ]);
+        //     }
+        // }
+        
+        // ContractsStatus::create([
+        //   'status' => 'draft',
+        //   'approval_status' => 'pending',
+        //   'approval_data' => trim($financialLimit)
+        // ]); 
+        
+         
+
+
+        // $users = AddUsers::select(DB::raw("id, AES_DECRYPT(FirstName,'dummy.AddUsers') AS FirstName"))->get();
+        // $users = AddUsers::select('id',  decrypt_data('FirstName', 'AddUsers'))->get();
+        $users = AddUsers::select('id',  decrypt_data('Salutation', 'AddUsers'), decrypt_data('FirstName', 'AddUsers') , decrypt_data('LastName', 'AddUsers'))->get();
+
+
+         
+         
+       
+        
+        
+        
+        
+        $namePartygroup .= '-'. date("Y");
+        
+         $namePartygroup = encryptString($namePartygroup, 'contract_name');
+        
+        Contract::where('id', $contract->id)->update(['contract_name' => $namePartygroup]);
+        
+        
+          if ($request->hasFile('file')) {
+          
+            $file = $request->file('file');
+             $filePath = $controller->storeFile($file, $namePartygroup . '-' . $contract->id, $contract->id);
+            // $filePath = $file->store('attachments', 'public');
+            
+            //  Contract::where('id', $contract->id)->update(['contract_attachment' => $filePath]);
+            // Contract::where('id', $contract->id)->update(['contract_attachment' => $filePath, 'contract_attachment_filename'=>$file->getClientOriginalName()]);
+             $filename = file_name($file);
+            Contract::where('id', $contract->id)->update(['contract_attachment' => $filePath, 'contract_attachment_filename'=>$filename]);
+         }
+        
+        
+      
+
+        return redirect('/contracts/list'); 
+        return response()->json(['message' => 'Contract created successfully!'], 200);
+        //     } catch (Exception $e) {
+        //         return response()->json(['message' => 'An error occurred while creating the contract. Please try again.'], 500);
+        //     }
+    }
+    
+    
+    
+    
+     public function updateContract(Request $request)
+    {
+        
+        
+           $contract = Contract::where('id', $request->contractid)->update([
+
+            'contract_mode' => encryptString($request->input('contractMode'), 'contract_mode'),
+
+            'contract_type' => $request->input('BasicContract.contractType'),
+
+            'contract_description' => encryptString($request->input('BasicContract.contractDescription'), 'contract_description'),
+
+
+
+            'department_id' => $request->input('BasicContract.DepartmentType'),
+
+            'catgoery_id' => $request->input('BasicContract.catgoeryType'),
+
+
+
+            'signatory' => $request->input('BasicContract.signatory'),
+
+            'owner' => $request->input('owner'),
+
+
+
+            'confidentialityagreement' => $request->input('BasicContract.Confidentialityagreement'),
+
+            'exclusivity' => encryptString($request->input('BasicContract.Exclusivity'), 'exclusivity'),
+
+
+
+            // Contract Duration
+
+            'signing_date' => $request->input('Duration.signingDate'),
+
+            'commencement_type' => encryptString($request->input('Duration.commencementDate'), 'commencement_type'), // corrected key
+
+            'fixed_date' => $request->input('Duration.fixedDate'),
+
+            'event_name' => encryptString($request->input('Duration.eventDetails'), 'event_name'),
+
+            'end_contract_type' => encryptString($request->input('Duration.effectiveDate'), 'end_contract_type'),
+
+            'onetime_end_date' => $request->input('Duration.onetimeEndDateofContract'),
+
+            'fixedterm_end_date' => $request->input('Duration.fixedtimeEndDateofContract'),
+
+            'renewal_type' => encryptString($request->input('Duration.typeRenewal'), 'renewal_type'),
+
+            'period_auto_renewal' => $request->input('Duration.periodAutoRenewal'),
+
+            'period_auto_renewal_unit' => encryptString($request->input('Duration.periodAutoRenewalPeriod'), 'period_auto_renewal_unit'),
+
+            'auto_renewal_date' => $request->input('Duration.autoRenewalDate'),
+
+            'manual_renewal_date' => $request->input('Duration.autoManualRenewalDate'),
+
+            'evergreen_condition' => encryptString($request->input('Duration.conditionEndContract'), 'evergreen_condition'),
+
+            'termination_date' => $request->input('Duration.terminationDate'),
+
+            'termination_reason' => encryptString($request->input('Duration.reasonTermination'), 'termination_reason'),
+
+
+
+
+
+            // Contract Value
+
+            'currency' => encryptString($request->input('ContractValue.currency'), 'currency'),
+
+            'currency_value' => encryptString($request->input('ContractValue.value'), 'currency_value'),
+
+            'payment_schedule' => encryptString($request->input('ContractValue.paymentSchedule'), 'payment_schedule'),
+
+            'currency_contract' => encryptString($request->input('ContractValue.currencyContract'), 'currency_contract'),
+
+            'payment_terms' => encryptString($request->input('ContractValue.paymentTerms'), 'payment_terms'),
+
+            'billing_frequency' => encryptString($request->input('ContractValue.billingFrequency'), 'billing_frequency'),
+
+            'taxes' => encryptString($request->input('ContractValue.taxes'), 'taxes'),
+
+            'escalation_clauses' => encryptString($request->input('ContractValue.escalationClauses'), 'escalation_clauses'),
+
+            'discounts' => encryptString($request->input('ContractValue.discounts'), 'discounts'),
+
+            'retention' => encryptString($request->input('ContractValue.retention'), 'retention'),
+
+            'payment_escrow' => encryptString($request->input('ContractValue.paymentEscrow'), 'payment_escrow'),
+
+            'financial_guarantees' => encryptString($request->input('ContractValue.financialGuarantees'), 'financial_guarantees'),
+
+            'currency_conversion' => encryptString($request->input('ContractValue.currencyConversion'), 'currency_conversion'),
+
+
+ 
+
+            'reminder_first_alert' => encryptString($request->input('Duration.Reminder.first.alertMe'), 'reminder_first_alert'),
+
+            'reminder_first_alertMeOn' => encryptString($request->input('Duration.Reminder.first.alertMeDay') . ' ' . $request->input('Duration.Reminder.first.alertMePrior') . ' ' . $request->input('Duration.Reminder.first.alertMeType'), 'reminder_first_alertMeOn'),
+
+            'reminder_first_alert_repeats' => encryptString($request->input('Duration.Reminder.first.repeats'), 'reminder_first_alert_repeats'),
+
+            'reminder_second_alert' => encryptString($request->input('Duration.Reminder.second.alertMe'), 'reminder_second_alert'),
+
+            'reminder_second_alertMeOn' => encryptString($request->input('Duration.Reminder.second.alertMeDay') . ' ' . $request->input('Duration.Reminder.second.alertMePrior') . ' ' . $request->input('Duration.Reminder.second.alertMeType'), 'reminder_second_alertMeOn'),
+
+            'reminder_second_alert_repeats' => encryptString($request->input('Duration.Reminder.second.repeats'), 'reminder_second_alert_repeats'),
+
+            'reminder_escalation_alert' => encryptString($request->input('Duration.Reminder.escalation.alertMe'), 'reminder_escalation_alert'),
+
+            'reminder_escalation_alertMeOn' => encryptString($request->input('Duration.Reminder.escalation.alertMeDay') . ' ' . $request->input('Duration.Reminder.escalation.alertMePrior') . ' ' . $request->input('Duration.Reminder.escalation.alertMeType'), 'reminder_escalation_alertMeOn'),
+
+            'reminder_escalation_alert_repeats' => encryptString($request->input('Duration.Reminder.escalation.repeats'), 'reminder_escalation_alert_repeats'),
+
+
+        ]);
+        
+        
+        $ContractHistory = ContractHistory::create([
+            'id' => $request->contractid,
+            'contract_mode' => encryptString($request->input('contractMode'), 'contract_mode'),
+            'contract_type' => $request->input('BasicContract.contractType'),
+            'contract_description' => encryptString($request->input('BasicContract.contractDescription'), 'contract_description'),
+            'department_id' => $request->input('BasicContract.DepartmentType'),
+            'catgoery_id' => $request->input('BasicContract.catgoeryType'),
+
+            'signatory' => $request->input('BasicContract.signatory'),
+            'owner' => $request->input('owner'),
+
+            'confidentialityagreement' => $request->input('BasicContract.Confidentialityagreement'),
+            'exclusivity' => encryptString($request->input('BasicContract.Exclusivity'), 'exclusivity'),
+
+
+
+            // Contract Duration
+
+            'signing_date' => $request->input('Duration.signingDate'),
+            'commencement_type' => encryptString($request->input('Duration.commencementDate'), 'commencement_type'),
+            'fixed_date' => $request->input('Duration.fixedDate'),
+            'event_name' => encryptString($request->input('Duration.eventDetails'), 'event_name'),
+            'end_contract_type' => encryptString($request->input('Duration.effectiveDate'), 'end_contract_type'),
+            'onetime_end_date' => $request->input('Duration.onetimeEndDateofContract'),
+            'fixedterm_end_date' => $request->input('Duration.fixedtimeEndDateofContract'),
+            'renewal_type' => encryptString($request->input('Duration.typeRenewal'), 'renewal_type'),
+            'period_auto_renewal' => $request->input('Duration.periodAutoRenewal'),
+            'period_auto_renewal_unit' => encryptString($request->input('Duration.periodAutoRenewalPeriod'), 'period_auto_renewal_unit'),
+            'auto_renewal_date' => $request->input('Duration.autoRenewalDate'),
+            'manual_renewal_date' => $request->input('Duration.autoManualRenewalDate'),
+            'evergreen_condition' => encryptString($request->input('Duration.conditionEndContract'), 'evergreen_condition'),
+            'termination_date' => $request->input('Duration.terminationDate'),
+            'termination_reason' => encryptString($request->input('Duration.reasonTermination'), 'termination_reason'),
+
+
+
+            // Contract Value
+
+            'currency' => encryptString($request->input('ContractValue.currency'), 'currency'),
+            'currency_value' => encryptString($request->input('ContractValue.value'), 'currency_value'),
+            'payment_schedule' => encryptString($request->input('ContractValue.paymentSchedule'), 'payment_schedule'),
+            'currency_contract' => encryptString($request->input('ContractValue.currencyContract'), 'currency_contract'),
+            'payment_terms' => encryptString($request->input('ContractValue.paymentTerms'), 'payment_terms'),
+            'billing_frequency' => encryptString($request->input('ContractValue.billingFrequency'), 'billing_frequency'),
+            'taxes' => encryptString($request->input('ContractValue.taxes'), 'taxes'),
+            'escalation_clauses' => encryptString($request->input('ContractValue.escalationClauses'), 'escalation_clauses'),
+            'discounts' => encryptString($request->input('ContractValue.discounts'), 'discounts'),
+            'retention' => encryptString($request->input('ContractValue.retention'), 'retention'),
+            'payment_escrow' => encryptString($request->input('ContractValue.paymentEscrow'), 'payment_escrow'),
+            'financial_guarantees' => encryptString($request->input('ContractValue.financialGuarantees'), 'financial_guarantees'),
+            'currency_conversion' => encryptString($request->input('ContractValue.currencyConversion'), 'currency_conversion'),
+
+
+
+
+            'reminder_first_alert' => encryptString($request->input('Duration.Reminder.first.alertMe'), 'reminder_first_alert'),
+            'reminder_first_alertMeOn' => encryptString($request->input('Duration.Reminder.first.alertMeDay') . ' ' . $request->input('Duration.Reminder.first.alertMePrior') . ' ' . $request->input('Duration.Reminder.first.alertMeType'), 'reminder_first_alertMeOn'),
+            'reminder_first_alert_repeats' => encryptString($request->input('Duration.Reminder.first.repeats'), 'reminder_first_alert_repeats'),
+            'reminder_second_alert' => encryptString($request->input('Duration.Reminder.second.alertMe'), 'reminder_second_alert'),
+            'reminder_second_alertMeOn' => encryptString($request->input('Duration.Reminder.second.alertMeDay') . ' ' . $request->input('Duration.Reminder.second.alertMePrior') . ' ' . $request->input('Duration.Reminder.second.alertMeType'), 'reminder_second_alertMeOn'),
+            'reminder_second_alert_repeats' => encryptString($request->input('Duration.Reminder.second.repeats'), 'reminder_second_alert_repeats'),
+            'reminder_escalation_alert' => encryptString($request->input('Duration.Reminder.escalation.alertMe'), 'reminder_escalation_alert'),
+            'reminder_escalation_alertMeOn' => encryptString($request->input('Duration.Reminder.escalation.alertMeDay') . ' ' . $request->input('Duration.Reminder.escalation.alertMePrior') . ' ' . $request->input('Duration.Reminder.escalation.alertMeType'), 'reminder_escalation_alertMeOn'),
+            'reminder_escalation_alert_repeats' => encryptString($request->input('Duration.Reminder.escalation.repeats'), 'reminder_escalation_alert_repeats'),
+
+        ]);
+
+
+
+
+        foreach ($request->input('customFields') as $customField) {
+            if (isset($customField)) {
+
+                if (isset($customField['id']) && isset($customField['value']) && isset($request->contractid)) {
+                    CustomFieldsData::where('id', $customField['id'])->update([
+                        'custom_field_id' => $customField['id'],
+                        'custom_field_group' => 'contracts',
+                        'custom_field_value' => $customField['value'],
+                        'custom_field_group_id' => $request->contractid
+                    ]); 
+                }
+            }
+        }
+
+        $contractTypeName = ContractType::where('contract_type_id', $request->input('BasicContract.contractType'))->first();
+        $namePartygroup =  $contractTypeName->contract_type;
+        
+        
+      
+        if ($request->input('Partygroup.party')) {
+            foreach ($request->input('Partygroup.party') as $ke => $customField) {
+                if (isset($customField)) {
+                    
+                    //   return $customField['id'];
+        // exit();
+                    if(isset($customField['id'])){
+                    
+                    ContractPartyData::where('id', $customField['id'])->update([
+                        'custom_field_group_id' => $request->contractid,
+                        'contract_party_type' => $customField['mode'],
+                        'contract_party_id' => $customField['internal_name'],
+                        'contract_party_exe_id' => $customField['external_name'],
+                        'contract_party_location_id' => $customField['location'],
+                    ]);
+                    ContractPartyDataHistory::create([
+                            'history_id'=>$ContractHistory->id,
+                            'id' => $customField['id'],
+                            'custom_field_group_id' => $request->contractid,
+                            'contract_party_type' => $customField['mode'],
+                            'contract_party_id' => $customField['internal_name'],
+                            'contract_party_exe_id' => $customField['external_name'],
+                            'contract_party_location_id' => $customField['location'],
+                        ]);
+                    }else{
+                        
+                        $ContractPartyDatanew = ContractPartyData::create([
+                            'custom_field_group_id' => $request->contractid,
+                            'contract_party_type' => $customField['mode'],
+                            'contract_party_id' => $customField['internal_name'],
+                            'contract_party_exe_id' => $customField['external_name'],
+                            'contract_party_location_id' => $customField['location'],
+                        ]);
+                         ContractPartyDataHistory::create([
+                            'history_id'=>$ContractHistory->id,
+                            'id' => $ContractPartyDatanew->id,
+                            'custom_field_group_id' => $request->contractid,
+                            'contract_party_type' => $customField['mode'],
+                            'contract_party_id' => $customField['internal_name'],
+                            'contract_party_exe_id' => $customField['external_name'],
+                            'contract_party_location_id' => $customField['location'],
+                        ]);
+
+                    }
+
+                    if ($ke < 2) {
+                        $namePartygroup .= '-';
+                        if ($customField['mode'] == 'external') {
+                            $namePartygroup .= ContractParties::select('company_name')->where('id', $customField['external_name'])->first()->company_name;
+                        } else {
+                            $namePartygroup .= DB::table('entity')
+                                ->select('Nameoftheentity', decrypt_data('Nameoftheentity', 'entity'))
+                                ->where('id', $customField['internal_name'])
+                                ->first()->Nameoftheentity;
+                        }
+                    }
+                }
+            }
+        }
+
+        // $users = AddUsers::select(DB::raw("id, AES_DECRYPT(FirstName,'dummy.AddUsers') AS FirstName"))->get();
+        // $users = AddUsers::select('id',  decrypt_data('FirstName', 'AddUsers'))->get();
+        $users = AddUsers::select('id',  decrypt_data('Salutation', 'AddUsers'), decrypt_data('FirstName', 'AddUsers') , decrypt_data('LastName', 'AddUsers'))->get();
+
+        $namePartygroup .= '-' . date("Y");
+        Contract::where('id', $request->contractid)->update(['contract_name' => $request->input('BasicContract.contractName') . $namePartygroup]);
+
+        return redirect('/contracts/list');
+        return response()->json(['message' => 'updated successfully!'], 200);
+        //     } catch (Exception $e) {
+        //         return response()->json(['message' => 'An error occurred while creating the contract. Please try again.'], 500);
+        //     }
+    }
+    
+    public function terminateContract(Request $request){
+
+        $id = $request->input('contract_id');
+        $terminationReason = $request->input('terminationReason');
+
+
+        Contract::where(['id'=>$id])->update([
+            'reasonforterminate' => $terminationReason,
+            'substatus' => 'Terminated',
+        ]);
+
+        return response()->json(['message' => 'Terminated successful!'], 200);
+
+    }    
+    
+    
+    public function renewContract(Request $request, $id)
+    {
+
+
+        $customFields = CustomFields::where('status', 1)->where('contract_type', 1)->orderBy('order_id')->get();
+
+        $contractTypes = ContractType::get();
+
+        // $branchs = Branch::select(DB::raw("id,  AES_DECRYPT(BranchName, 'dummy.branch') as BranchName,
+        //  AES_DECRYPT(branchstatus, 'dummy.branch') as branchstatus,
+        //  AES_DECRYPT(Doorno, 'dummy.branch') as Doorno,
+        //  AES_DECRYPT(StreetName, 'dummy.branch') as StreetName,
+        //  AES_DECRYPT(AreaName, 'dummy.branch') as AreaName,
+        //  AES_DECRYPT(Landmark, 'dummy.branch') as Landmark,
+        //  AES_DECRYPT(PinCode, 'dummy.branch') as PinCode,
+        //  AES_DECRYPT(ContactNumber, 'dummy.branch') as ContactNumber,
+        //  AES_DECRYPT(branchheadname, 'dummy.branch') as branchheadname,
+        //  AES_DECRYPT(departments, 'dummy.branch') as departments "))->get();
+        
+        $branchs = Branch::select(
+            'id',
+            decrypt_data('BranchName', 'branch'),
+            decrypt_data('branchstatus', 'branch'),
+            decrypt_data('Doorno', 'branch'),
+            decrypt_data('StreetName', 'branch'),
+            decrypt_data('AreaName', 'branch'),
+            decrypt_data('Landmark', 'branch'),
+            decrypt_data('PinCode', 'branch'),
+            decrypt_data('ContactNumber', 'branch'),
+            decrypt_data('branchheadname', 'branch'),
+            decrypt_data('departments', 'branch')
+        )->get();
+
+
+        $contractParty = ContractPartyData::where('custom_field_group_id', $id)->get();
+
+
+
+        foreach ($contractParty as $contractPart) {
+            $entities = DB::table('entity')
+                // ->select(DB::raw("id, AES_DECRYPT(Nameoftheentity, 'dummy.entity') as Nameoftheentity"))
+                ->select('id', decrypt_data('Nameoftheentity', 'entity'))
+                ->where('id', $contractPart->contract_party_id)
+                ->first();
+
+            if (isset($entities->Nameoftheentity)) {
+                $contractPart->Nameoftheentity = $entities->Nameoftheentity;
+            }
+
+
+            if ($contractPart->contract_party_location_id == !null) {
+
+                $branchs = BranchUser::select(
+                    'id',
+                    decrypt_data('BranchName', 'branch'),
+                    decrypt_data('branchstatus', 'branch'),
+                    decrypt_data('Doorno', 'branch'),
+                    decrypt_data('StreetName', 'branch'),
+                    decrypt_data('AreaName', 'branch'),
+                    decrypt_data('Landmark', 'branch'),
+                    decrypt_data('PinCode', 'branch'),
+                    decrypt_data('ContactNumber', 'branch'),
+                    decrypt_data('branchheadname', 'branch'),
+                    decrypt_data('departments', 'branch')
+                )->where('id', $contractPart->contract_party_location_id)->first();
+                
+            //     $branchs = Branch::select(DB::raw("id,  AES_DECRYPT(BranchName, 'dummy.branch') as BranchName,
+            // AES_DECRYPT(branchstatus, 'dummy.branch') as branchstatus,
+            // AES_DECRYPT(Doorno, 'dummy.branch') as Doorno,
+            // AES_DECRYPT(StreetName, 'dummy.branch') as StreetName,
+            // AES_DECRYPT(AreaName, 'dummy.branch') as AreaName,
+            // AES_DECRYPT(Landmark, 'dummy.branch') as Landmark,
+            // AES_DECRYPT(PinCode, 'dummy.branch') as PinCode,
+            // AES_DECRYPT(ContactNumber, 'dummy.branch') as ContactNumber,
+            // AES_DECRYPT(branchheadname, 'dummy.branch') as branchheadname,
+            // AES_DECRYPT(departments, 'dummy.branch') as departments "))->where('id', $contractPart->contract_party_location_id)->first();
+
+                $contractPart->contract_party = $branchs;
+            }
+            if ($contractPart->contract_party_exe_id == !null) {
+
+                $contractParties =  ContractParties::select('*')->where('id', $contractPart->contract_party_exe_id)->get();
+
+                $contractPart->contract_party_id_exe = $contractParties;
+            }
+        }
+
+
+
+
+        $contracts = Contract::where('id', $id)->first();
+
+
+        if (isset($contracts->catgoery_id)) {
+            $Categoryname = ContractCategories::where('id', $contracts->catgoery_id)->first();
+            $contracts->catgoery_id = $Categoryname->name;
+        }
+
+        if (isset($contracts->department_id)) {
+            $EntityBusinessName = EntityBusiness::where('id', $contracts->department_id)->first();
+            $contracts->department_id = $EntityBusinessName->name;
+        }
+
+        if (isset($contracts->contract_type)) {
+            $contracts->contract_type = ContractType::where('contract_type_id', $contracts->contract_type)->first()->contract_type;
+        }
+
+        if (decryptString($contracts->end_contract_type, 'end_contract_type') !== 'fixedTerm') {
+            return redirect('/contracts/list')->with('message', 'Oops! Invalid Contract to Renew')->with('alert-class', 'alert-danger');
+        }
+
+        $approvalsArr = ApprovalContracts::select('*')->where('contract_id', $id)->where('flag', 1)
+            ->get()
+            ->map(function ($task) {
+                $task->username = decryptString($task->username, 'username');
+                $task->status = decryptString($task->status, 'status');
+                $task->previous_status = decryptString($task->previous_status, 'previous_status');
+                $task->next_action_item = decryptString($task->next_action_item, 'next_action_item');
+                $task->next_action_description = decryptString($task->next_action_description, 'next_action_description');
+                $task->approval_status = decryptString($task->approval_status, 'approval_status');
+                return $task;
+            })
+            ->groupBy('unique_id')
+            ->reverse();
+
+        $customFields = CustomFields::where('status', 1)->where('contract_type', 1)->orderBy('order_id')->get();
+        $categorys = Category::where('category_group', 'contract')->get();
+        $contractTypes = ContractType::get();
+
+
+
+         $branchs = Branch::select(
+            'id',
+            decrypt_data('BranchName', 'branch'),
+            decrypt_data('branchstatus', 'branch'),
+            decrypt_data('Doorno', 'branch'),
+            decrypt_data('StreetName', 'branch'),
+            decrypt_data('AreaName', 'branch'),
+            decrypt_data('Landmark', 'branch'),
+            decrypt_data('PinCode', 'branch'),
+            decrypt_data('ContactNumber', 'branch'),
+            decrypt_data('branchheadname', 'branch'),
+            decrypt_data('departments', 'branch')
+        )->get();
+
+        $entities = DB::table('entity')
+            ->select('id', decrypt_data('Nameoftheentity', 'entity'))
+            ->get();
+
+
+        // $users = AddUsers::select('id',  decrypt_data('FirstName', 'AddUsers'))->get();
+        $users = AddUsers::select('id',  decrypt_data('Salutation', 'AddUsers'), decrypt_data('FirstName', 'AddUsers') , decrypt_data('LastName', 'AddUsers'))->get();
+
+        // $users = AddUsers::select(DB::raw("id, AES_DECRYPT(FirstName,'dummy.AddUsers') AS FirstName"))->get();
+
+
+        $contractParties =  ContractParties::select('*')->get();
+
+        $catego =  ContractCategories::select('*')->get();
+
+        $ent = EntityBusiness::select('*')->get();
+
+
+
+        $ContractPartyData = ContractPartyData::where('custom_field_group_id', $contracts->id)->get();
+
+
+        $contractsold = Contract::where('id', $id)->first();
+
+        if ($contractsold) {
+            $contractsoldothers = Contract::where([
+                ['catgoery_id', $contractsold->catgoery_id],
+                ['department_id', $contractsold->department_id],
+                ['contract_type', $contractsold->contract_type],
+            ])->whereNot('id', $id)->get();
+        }
+
+        $contract_party_id = ContractPartyData::where('custom_field_group_id', $contracts->id)->where('contract_party_type', 'internal')->pluck('contract_party_id');
+
+        $ContractPartyDataList = ContractPartyData::whereIn('contract_party_id', $contract_party_id)->pluck('custom_field_group_id');
+
+        $contractspartsList = Contract::whereIn('id', $ContractPartyDataList)->get();
+
+
+        $contractParties =  ContractParties::select('*')->get();
+
+        return view('contract::contract.renewDetailContract', compact('contractParties', 'contractspartsList', 'contractsoldothers', 'ent', 'catego', 'contractParties', 'entities', 'branchs', 'customFields', 'categorys', 'contractTypes', 'users'))->with('contractPartys', $ContractPartyData)->with('contract', $contracts)->with('contractPartyData', $contractParty)->with('approvalsArr', $approvalsArr);
+    }
+
+    public function renewCreateContract(Request $request)
+    {
+
+
+        if ($request->hasFile('file')) {
+
+            $file = $request->file('file');
+            $filePath = $file->store('attachments', 'public');
+        }
+
+        $locals = $request->input('Partygroup.party');
+
+        $financialLimit = $this->financialLimit(
+            $locals[0]['location'],
+            $request->input('BasicContract.DepartmentType'),
+            $request->input('BasicContract.catgoeryType'),
+            $request->input('BasicContract.contractType'),
+            $request->input('ContractValue.value')
+        );
+
+        try {
+
+            $contract = Contract::create([
+                'contract_mode' => encryptString($request->input('contractMode'), 'contract_mode'),
+                'contract_type' => $request->input('BasicContract.contractType'),
+                'contract_description' => encryptString($request->input('BasicContract.contractDescription'), 'contract_description'),
+
+                'department_id' => $request->input('BasicContract.DepartmentType'),
+                'catgoery_id' => $request->input('BasicContract.catgoeryType'),
+
+                'signatory' => $request->input('BasicContract.signatory'),
+                'owner' => $request->input('owner'),
+
+
+                'confidentialityagreement' => $request->input('BasicContract.Confidentialityagreement'),
+                'exclusivity' => encryptString($request->input('BasicContract.Exclusivity'), 'exclusivity'),
+
+                // Contract Duration
+                'signing_date' => $request->input('Duration.signingDate'),
+                'commencement_type' => encryptString($request->input('Duration.commencementDate'), 'commencement_type'), // corrected key
+                'fixed_date' => $request->input('Duration.fixedDate'),
+                'event_name' => encryptString($request->input('Duration.eventDetails'), 'event_name'),
+                'end_contract_type' => encryptString($request->input('Duration.effectiveDate'), 'end_contract_type'),
+                'onetime_end_date' => $request->input('Duration.onetimeEndDateofContract'),
+                'fixedterm_end_date' => $request->input('Duration.fixedtimeEndDateofContract'),
+                'renewal_type' => encryptString($request->input('Duration.typeRenewal'), 'renewal_type'),
+                'period_auto_renewal' => $request->input('Duration.periodAutoRenewal'),
+                'period_auto_renewal_unit' => encryptString($request->input('Duration.periodAutoRenewalPeriod'), 'period_auto_renewal_unit'),
+                'auto_renewal_date' => $request->input('Duration.autoRenewalDate'),
+                'manual_renewal_date' => $request->input('Duration.autoManualRenewalDate'),
+                'evergreen_condition' => encryptString($request->input('Duration.conditionEndContract'), 'evergreen_condition'),
+                'termination_date' => $request->input('Duration.terminationDate'),
+                'termination_reason' => encryptString($request->input('Duration.reasonTermination'), 'termination_reason'),
+
+
+                // Contract Value
+                'currency' => encryptString($request->input('ContractValue.currency'), 'currency'),
+                'currency_value' => encryptString($request->input('ContractValue.value'), 'currency_value'),
+                'payment_schedule' => encryptString($request->input('ContractValue.paymentSchedule'), 'payment_schedule'),
+                'currency_contract' => encryptString($request->input('ContractValue.currencyContract'), 'currency_contract'),
+                'payment_terms' => encryptString($request->input('ContractValue.paymentTerms'), 'payment_terms'),
+                'billing_frequency' => encryptString($request->input('ContractValue.billingFrequency'), 'billing_frequency'),
+                'taxes' => encryptString($request->input('ContractValue.taxes'), 'taxes'),
+                'escalation_clauses' => encryptString($request->input('ContractValue.escalationClauses'), 'escalation_clauses'),
+                'discounts' => encryptString($request->input('ContractValue.discounts'), 'discounts'),
+                'retention' => encryptString($request->input('ContractValue.retention'), 'retention'),
+                'payment_escrow' => encryptString($request->input('ContractValue.payment_escrow'), 'payment_escrow'),
+                'financial_guarantees' => encryptString($request->input('ContractValue.financialGuarantees'), 'financial_guarantees'),
+                'currency_conversion' => encryptString($request->input('ContractValue.currencyConversion'), 'currency_conversion'),
+
+                // Reminder Value
+                'reminder_first_alert' => encryptString($request->input('Duration.Reminder.first.alertMe'), 'reminder_first_alert'),
+                'reminder_first_alertMeOn' => encryptString($request->input('Duration.Reminder.first.alertMeDay') . ' ' . $request->input('Duration.Reminder.first.alertMePrior') . ' ' . $request->input('Duration.Reminder.first.alertMeType'), 'reminder_first_alertMeOn'),
+                'reminder_first_alert_repeats' => encryptString($request->input('Duration.Reminder.first.repeats'), 'reminder_first_alert_repeats'),
+                'reminder_second_alert' => encryptString($request->input('Duration.Reminder.second.alertMe'), 'reminder_second_alert'),
+                'reminder_second_alertMeOn' => encryptString($request->input('Duration.Reminder.second.alertMeDay') . ' ' . $request->input('Duration.Reminder.second.alertMePrior') . ' ' . $request->input('Duration.Reminder.second.alertMeType'), 'reminder_second_alertMeOn'),
+                'reminder_second_alert_repeats' => encryptString($request->input('Duration.Reminder.second.repeats'), 'reminder_second_alert_repeats'),
+                'reminder_escalation_alert' => encryptString($request->input('Duration.Reminder.escalation.alertMe'), 'reminder_escalation_alert'),
+                'reminder_escalation_alertMeOn' => encryptString($request->input('Duration.Reminder.escalation.alertMeDay') . ' ' . $request->input('Duration.Reminder.escalation.alertMePrior') . ' ' . $request->input('Duration.Reminder.escalation.alertMeType'), 'reminder_escalation_alertMeOn'),
+                'reminder_escalation_alert_repeats' => encryptString($request->input('Duration.Reminder.escalation.repeats'), 'reminder_escalation_alert_repeats'),
+
+                'rules_id' => $financialLimit,
+
+                'custom_fields_data' => json_encode($request->input('customFields')),
+
+                //Status Details
+                'contract_status' => 'draft',
+                'substatus' => 'draft',
+                'parentcontract' => $request->contractid
+            ]);
+
+            if ($contract) {
+                $updateOldcontract = Contract::where('id', $request->contractid)->update([
+                    'contract_status' => 'executed',
+                    'substatus' => 'Renewed'
+                ]);
+            }
+        } catch (Exception $e) {
+            $message = $e->getMessage();
+            $code = $e->getCode();
+            return $message;
+        }
+
+
+        if ($request->has('customFields')) {
+            foreach ($request->input('customFields') as $customField) {
+                if (isset($customField)) {
+
+                    if (isset($customField['id']) && isset($customField['value']) && isset($contract->id)) {
+                        CustomFieldsData::create([
+                            'custom_field_id' => $customField['id'],
+                            'custom_field_group' => 'contracts',
+                            'custom_field_value' => $customField['value'],
+                            'custom_field_group_id' => $contract->id
+                        ]);
+                    }
+                }
+            }
+        }
+        $contractTypeName = ContractType::where('contract_type_id', $request->input('BasicContract.contractType'))->first();
+
+        $namePartygroup =  $contractTypeName->contract_type;
+
+        if ($request->has('Duration.task')) {
+            foreach ($request->input('Duration.task') as $ke => $tasks) {
+
+                if (isset($tasks['name_of_task'])) {
+                    Tasks::create([
+                        'name_of_task' => encryptString($tasks['name_of_task'], 'name_of_task'),
+                        'priority' => encryptString($tasks['priority'], 'priority'),
+                        'start_date' => encryptString($tasks['start_date'], 'start_date'),
+                        'end_date' => encryptString($tasks['end_date'], 'end_date'),
+                        'description' => encryptString($tasks['description'], 'description'),
+                        'status' => $tasks['status'],
+                        'contract_id' => $contract->id
+                    ]);
+                }
+            }
+        }
+
+        foreach ($request->input('Partygroup.party') as $ke => $customField) {
+
+            if (isset($customField)) {
+
+
+                ContractPartyData::create([
+                    'custom_field_group_id' => $contract->id,
+                    'contract_party_type' => $customField['mode'],
+                    'contract_party_id' => $customField['internal_name'],
+                    'contract_party_exe_id' => $customField['external_name'],
+                    'contract_party_location_id' => $customField['location'],
+                ]);
+
+                if ($ke < 2) {
+
+                    $namePartygroup .= '-';
+                    if ($customField['mode'] == 'external') {
+                        $nme = ContractParties::select('company_name')->where('id', $customField['external_name'])->first()->company_name;
+                        $namePartygroup .= decryptString($nme, 'company_name');
+                    } else {
+                        $namePartygroup .= DB::table('entity')
+                            ->select('Nameoftheentity', decrypt_data('Nameoftheentity', 'entity'))
+                            ->where('id', $customField['internal_name'])
+                            ->first()->Nameoftheentity;
+                    }
+                }
+            }
+        }
+        
+        $users = AddUsers::select('id',  decrypt_data('FirstName', 'AddUsers'))->where('id', $request->input('owner'))->get();
+        
+        // $users = AddUsers::select(DB::raw("id, AES_DECRYPT(FirstName,'dummy.AddUsers') AS FirstName"))->where('id', $request->input('owner'))->get();
+
+
+        if ($request->input('contractMode') == 'new') {
+            $appArr = json_decode(trim($financialLimit));
+            $randNo = rand(0, 99999);
+            if (is_array($appArr) && count($appArr) > 0 && isset($users[0])) {
+                $approval_type = $appArr[0]->approval_type;
+                $approval_status = $appArr[0]->approval_status;
+
+                if ($approval_type == 'sequential' && $approval_status == 'required') {
+                    $unique_id = $contract->id . $randNo;
+
+
+                    ApprovalContracts::create([
+                        'username' => encryptString($users[0]->FirstName, 'username'),
+                        'previous_status' => encryptString('Draft', 'previous_status'),
+                        'status' => encryptString('Draft', 'status'),
+                        'contract_id' => $contract->id,
+                        'orderval' => 0,
+                        'unique_id' => $unique_id,
+                        'flag' => 1,
+                        'approval_status' => encryptString('pending', 'approval_status'),
+                    ]);
+                }
+            }
+        }
+
+        $users = AddUsers::select('id',  decrypt_data('FirstName', 'AddUsers'))->get();
+        // $users = AddUsers::select(DB::raw("id, AES_DECRYPT(FirstName,'dummy.AddUsers') AS FirstName"))->get();
+
+        $namePartygroup .= '-' . date("Y");
+
+        $namePartygroup = encryptString($namePartygroup, 'contract_name');
+
+        Contract::where('id', $contract->id)->update(['contract_name' => $namePartygroup]);
+
+        return redirect('/contracts/list');
+        return response()->json(['message' => 'Contract renewed successfully!'], 200);
+    }    
+    
+    public function financialLimit($location, $department, $category, $contract_type, $contract_value)
+    {
+        
+
+        
+        // print '$location'.$location;
+        // print '$department'.$department;
+        // print '$category'.$category;
+        // print '$contract_type'.$contract_type;
+        // print '$contract_value'.$contract_value;
+        
+        
+//         $financial_limit_query = FinancialLimit::select("id", "approval_type", "approval_status", "approval_required_users as approver")
+//     ->where([
+//         ['location', '=', $location],
+//         ['department', '=', $department],
+//         ['category', '=', $category],
+//         ['contract_type', '=', $contract_type],
+//         ['status', '=', 1]
+//     ])
+//     ->whereRaw('(' . $contract_value . ' BETWEEN lower_limit AND upper_limit)');
+
+// // Get the SQL query
+// $sql = $financial_limit_query->toSql();
+
+// // Get the bindings
+// $bindings = $financial_limit_query->getBindings();
+
+// // Display the SQL query with bindings
+// $fullSql = vsprintf(str_replace('?', '%s', $sql), $bindings);
+
+// print($fullSql);
+
+
+// exit();
+        
+        
+        // echo $department.$category.$contract_type.$contract_value ;die;
+        $financial_limit = [];
+        $financial_limit = FinancialLimit::select("id", "approval_type", "approval_status", "approval_required_users as approver")
+            ->where([['location', '=', $location], ['department', '=', $department], ['category', '=', $category], ['contract_type', '=', $contract_type], ['status', '=', 1]])
+            ->whereRaw('(' . $contract_value . ' BETWEEN lower_limit AND upper_limit)')
+            ->get();
+            
+            if(count($financial_limit) == 0){
+                 $financial_limit = FinancialLimit::select("id", "approval_type", "approval_status", "approval_required_users as approver")
+                ->where('id','9')
+                ->get();
+            }
+             
+            
+                    
+        // return $financial_limit;
+
+        $where_clause = array(
+            0 => 'location = ' . $location . ' AND  department = ' . $department . ' AND  category= ' . $category . ' AND ( contract_type = ' . $contract_type . ' OR contract_type = 0)',
+            1 => 'location = ' . $location . ' AND  department = ' . $department . ' AND  ( category= ' . $category . ' OR category = 0 ) AND ( contract_type = ' . $contract_type . ' OR contract_type = 0)',
+            2 => 'location = ' . $location . ' AND  ( department = ' . $department . ' OR department = 0) AND  ( category= ' . $category . ' OR category = 0 ) AND ( contract_type = ' . $contract_type . ' OR contract_type = 0)',
+            3 => '( location = ' . $location . '  OR location = 0) AND  ( department = ' . $department . ' OR department = 0) AND  ( category= ' . $category . ' OR category = 0 ) AND ( contract_type = ' . $contract_type . ' OR contract_type = 0)',
+            4 => '( location = ' . $location . '  OR location = 0) AND  ( department = ' . $department . ' OR department = 0) AND  ( category= ' . $category . ' OR category = 0 ) AND ( contract_type = ' . $contract_type . ' OR contract_type = 0)'
+        );
+
+        $contract_where_clause = array(
+            0 => '(' . $contract_value . ' BETWEEN lower_limit AND upper_limit)',
+            1 => '(' . $contract_value . ' BETWEEN lower_limit AND upper_limit)',
+            2 => '(' . $contract_value . ' BETWEEN lower_limit AND upper_limit)',
+            3 => '(' . $contract_value . ' BETWEEN lower_limit AND upper_limit)',
+            4 => '(' . $contract_value . ' BETWEEN lower_limit AND upper_limit OR lower_limit is null AND upper_limit is null)',
+        );
+        $i = 0;
+        
+        
+        do {
+            if (count($financial_limit) > 0) {
+                return $financial_limit;
+                break;
+            }
+            $financial_limit = FinancialLimit::select("id", "approval_type", "approval_status", "approval_required_users as approver")
+                ->whereRaw($where_clause[$i])
+                ->where('status', 1)
+                ->whereRaw($contract_where_clause[$i])
+                ->get();
+            
+            $i++;
+            if (($i == 5) && (count($financial_limit) == 0)) {
+                
+                 $financial_limit = FinancialLimit::select("id", "approval_type", "approval_status", "approval_required_users as approver")
+                ->where('status', 1) 
+                ->get();
+                 return $financial_limit;
+                return [];
+            }
+            
+            return $financial_limit;
+            break;
+        } while ($i < 6);
+    }
+
+    // public function financialLimit($location, $department, $category, $contract_type, $contract_value)
+    // {
+
+    //     $financial_limit = [];
+    //     $financial_limit = FinancialLimit::select("id", "approval_type", "approval_status", "approval_required_users as approver")
+    //         ->where([['location', '=', $location], ['department', '=', $department], ['category', '=', $category], ['contract_type', '=', $contract_type], ['status', '=', 1]])
+    //         ->whereRaw('(' . $contract_value . ' BETWEEN lower_limit AND upper_limit)')
+    //         ->get();
+
+    //     $where_clause = array(
+    //         0 => 'location = ' . $location . ' AND  department = ' . $department . ' AND  category= ' . $category . ' AND ( contract_type = ' . $contract_type . ' OR contract_type = 0)',
+    //         1 => 'location = ' . $location . ' AND  department = ' . $department . ' AND  ( category= ' . $category . ' OR category = 0 ) AND ( contract_type = ' . $contract_type . ' OR contract_type = 0)',
+    //         2 => 'location = ' . $location . ' AND  ( department = ' . $department . ' OR department = 0) AND  ( category= ' . $category . ' OR category = 0 ) AND ( contract_type = ' . $contract_type . ' OR contract_type = 0)',
+    //         3 => '( location = ' . $location . '  OR location = 0) AND  ( department = ' . $department . ' OR department = 0) AND  ( category= ' . $category . ' OR category = 0 ) AND ( contract_type = ' . $contract_type . ' OR contract_type = 0)',
+    //         4 => '( location = ' . $location . '  OR location = 0) AND  ( department = ' . $department . ' OR department = 0) AND  ( category= ' . $category . ' OR category = 0 ) AND ( contract_type = ' . $contract_type . ' OR contract_type = 0)'
+    //     );
+
+    //     $contract_where_clause = array(
+    //         0 => '(' . $contract_value . ' BETWEEN lower_limit AND upper_limit)',
+    //         1 => '(' . $contract_value . ' BETWEEN lower_limit AND upper_limit)',
+    //         2 => '(' . $contract_value . ' BETWEEN lower_limit AND upper_limit)',
+    //         3 => '(' . $contract_value . ' BETWEEN lower_limit AND upper_limit)',
+    //         4 => '(' . $contract_value . ' BETWEEN lower_limit AND upper_limit OR lower_limit is null AND upper_limit is null)',
+    //     );
+    //     $i = 0;
+    //     do {
+    //         if (count($financial_limit) > 0) {
+    //             return $financial_limit;
+    //             break;
+    //         }
+    //         $financial_limit = FinancialLimit::select("id", "approval_type", "approval_status", "approval_required_users as approver")
+    //             ->whereRaw($where_clause[$i])
+    //             ->where('status', 1)
+    //             ->whereRaw($contract_where_clause[$i])
+    //             ->get();
+    //         $i++;
+    //         if (($i == 5) && (count($financial_limit) == 0)) {
+    //             return [];
+    //         }
+    //     } while ($i < 6);
+    // }
+
+
+
+    public function contractCreateparties()
+    {
+
+ 
+
+        $customFields = CustomFields::where('status', 1)->where('contract_type', 1)->orderBy('order_id')->get();
+        $categorys = Category::where('category_group', 'contract')->get();
+        $contractTypes = ContractType::get();
+        
+        
+        $branchs = Branch::select(
+            'id',
+            decrypt_data('BranchName', 'branch'),
+            decrypt_data('branchstatus', 'branch'),
+            decrypt_data('Doorno', 'branch'),
+            decrypt_data('StreetName', 'branch'),
+            decrypt_data('AreaName', 'branch'),
+            decrypt_data('Landmark', 'branch'),
+            decrypt_data('PinCode', 'branch'),
+            decrypt_data('ContactNumber', 'branch'),
+            decrypt_data('branchheadname', 'branch'),
+            decrypt_data('departments', 'branch')
+        )->get();
+        
+        $branchsAvailable = BranchUser::pluck('id')->toArray();
+
+        $entities = DB::table('entity')
+            ->select('id',decrypt_data('Nameoftheentity', 'entity'))
+            ->get();
+            
+        $contractPartiesAll =  ContractParties::select('*')->get();
+        
+        
+        $contractParties = [];
+
+        foreach($contractPartiesAll  as $contractPartie){
+            $contractPartie->available = true;
+            //Only For Branch
+            if($contractPartie->engagement_level == 1){
+                if(!in_array($contractPartie->engagement_branch,$branchsAvailable)){
+                    $contractPartie->available = false;
+                }
+            }else{
+                if(!in_array($contractPartie->engagement_access_level,$branchsAvailable)){
+                    $contractPartie->available = false;
+                }                
+            }
+
+            if($contractPartie->available){
+                $contractParties[] = $contractPartie;
+            }
+
+        }
+        
+        
+
+        return view('contract::contract.partyDetails', compact('contractParties', 'entities', 'branchs', 'customFields', 'categorys', 'contractTypes'));
+    }
+    public function contractCreate()
+    {
+        
+        // return Controller::checkCurrentAuth("Contracts");
+
+//  if(Controller::checkCurrentAuth("Contracts") != 1){
+//           return abort('404');
+//       }
+        
+        // return Controller::checkCurrentAuth("Contracts");
+    //   if(Controller::checkCurrentAuth("Contracts")){
+    //       // return abort('404');
+    //   }
+
+ 
+ 
+     
+        $customFields = CustomFields::where('status', 1)->where('contract_type', 1)->orderBy('order_id')->get();
+        
+        $categorys = Category::where('category_group', 'contract')->get();
+        $contractTypes = ContractType::get();
+
+
+
+        $branchs = Branch::select(
+            'id',
+            decrypt_data('BranchName', 'branch'),
+            decrypt_data('branchstatus', 'branch'),
+            decrypt_data('Doorno', 'branch'),
+            decrypt_data('StreetName', 'branch'),
+            decrypt_data('AreaName', 'branch'),
+            decrypt_data('Landmark', 'branch'),
+            decrypt_data('PinCode', 'branch'),
+            decrypt_data('ContactNumber', 'branch'),
+            decrypt_data('branchheadname', 'branch'),
+            decrypt_data('departments', 'branch')
+        )->get();
+
+        $entities = DB::table('entity')
+            ->select('id', decrypt_data('Nameoftheentity', 'entity'))
+            ->get();
+
+
+        // $users = AddUsers::select('id',  decrypt_data('FirstName', 'AddUsers'))->get();
+        // $users = AddUsers::select(DB::raw("id, AES_DECRYPT(FirstName,'dummy.AddUsers') AS FirstName"))->get();
+
+$users = AddUsers::select('id',  decrypt_data('Salutation', 'AddUsers'), decrypt_data('FirstName', 'AddUsers') , decrypt_data('LastName', 'AddUsers'))->get();
+
+        $contractParties =  ContractParties::select('*')->get();
+        
+        
+        
+        
+           $parties_label = array();
+                $label = ContractPartiesLabel::selectRaw("contract_parties_label.id,contract_parties_label.name,contract_parties_label.label_name,if(is_required = 1,'required','unrequired') as is_required,error_text,is_regex,regex_id,regex.name as regex_name,regex.pattern")
+                    ->leftJoin('regex', 'regex.id', '=', 'contract_parties_label.regex_id')
+                    ->where('contract_parties_label.status', 1)->get();
+                //print_r($label);exit;
+                foreach ($label as $label_data) {
+                    $parties_label[$label_data->name] = [
+                        'name' => $label_data->name,
+                        'label_name' => $label_data->label_name,
+                        'is_required' => $label_data->is_required,
+                        'error_text' => $label_data->error_text,
+                        'is_regex' => $label_data->is_regex,
+                        'regex_id' => $label_data->regex_id,
+                        'regex_name' => $label_data->regex_name,
+                        'regex_pattern' => $label_data->pattern
+                    ];
+                }
+                // $branch = Branch::select(DB::raw("id, AES_DECRYPT(BranchName,'dummy.branch') AS BranchName"))->get();
+                $branch = Branch::select('id', decrypt_data('BranchName', 'branch'))->get();
+                //print_r($parties_label['gst']['regex_pattern']);exit;
+                $country = Country::select('id', 'name')->get();
+
+
+
+             $catego =  ContractCategories::select('*')->get();
+                
+                $ent = EntityBusiness::select('*')->get();
+        
+        return view('contract::contract.contractCreate', compact('catego','ent','branch','country','contractParties', 'entities', 'branchs', 'customFields', 'categorys', 'contractTypes', 'users', 'parties_label'));
+    }
+
+    public function index()
+    {
+        $customFields = CustomFields::where('status', 1)->where('contract_type', 1)->get();
+        $categorys = Category::where('category_group', 'contract')->get();
+        $contractTypes = ContractType::get();
+
+        return view('contract::contract.createfield')->with('contractTypes', $contractTypes)->with('categorys', $categorys)->with('lists', $customFields);
+    }
+
+
+
+    public function indexParty()
+    {
+        $customFields = CustomFields::where('status', 1)->where('contract_type', 1)->get();
+        $categorys = Category::where('category_group', 'party')->get();
+        $contractTypes = ContractType::get();
+
+        return view('contract::contract.partyCustomField')->with('contractTypes', $contractTypes)->with('categorys', $categorys)->with('lists', $customFields);
+    }
+
+
+
+    public function list(Request $request)
+    {
+        $categorys = Category::where('category_group', 'contract')->get();
+        $contractTypes = ContractType::get();
+        $contracttype = isset($request->contracttype) ? $request->contracttype : '1';
+        $customFields = CustomFields::where('status', 1)->where('contract_type', $contracttype)->orderBy('order_id')->get();
+        $currentcontractType = ContractType::where('contract_type_id', $contracttype)->first();
+
+
+        return view('contract::contract.createfieldlist')->with('currentcontractType', $currentcontractType)->with('contractTypes', $contractTypes)->with('lists', $customFields)->with('categorys', $categorys);
+    }
+
+    public function indexPartyList(Request $request)
+    {
+        $categorys = Category::where('category_group', 'party')->get();
+        $contractTypes = ContractType::get();
+        $contracttype = 0;
+        $customFields = CustomFields::where('status', 1)->where('contract_type', 0)->orderBy('order_id')->get();
+
+        return view('contract::contract.partyCustomFieldlist')->with('contractTypes', $contractTypes)->with('lists', $customFields)->with('categorys', $categorys);
+    }
+
+
+
+
+    public function store(Request $request)
+    {
+        $validator = Validator::make($request->all(), [
+            'label' => 'required',
+            'type' => 'required',
+            'category' => 'required',
+            'contracttype' => 'required',
+        ]);
+
+        if ($validator->fails()) {
+            return response()->json(['errors' => $validator->errors()], 422);
+        }
+        try {
+            $customField = new CustomFields();
+            $customField->category = $request->category;
+            $customField->field_name = $request->label;
+            $customField->field_type = $request->type;
+            $customField->contract_type = isset($request->contracttype) ? $request->contracttype : 1;
+            $customField->required = isset($request->required) ? $request->required : 0;
+            $customField->field_default_value = isset($request->val) ? $request->val : null;
+            $customField->save();
+
+            $customTimeline = new CustomFieldsTimeline();
+            $customTimeline->custom_field_id = $customField->id;
+            $customTimeline->updated_by = 1;
+            $customTimeline->action = 'created';
+            $customTimeline->data = json_encode($customField);
+            $customTimeline->save();
+
+
+            return response()->json(['message' => 'Form submitted successfully'], 200);
+        } catch (\Exception $e) {
+            return response()->json(['errors' => $e->getMessage()], 422);
+        }
+    }
+
+
+
+    public function update(Request $request)
+    {
+
+        // return $request->All();
+        foreach ($request->custom_fields as $field) {
+
+
+            CustomFields::where('custom_field_id', $field['id'])->update([
+                'field_name' => $field['name'],
+                'category' => $field['group'] ? $field['group'] : 1,
+                'field_type' => $field['type'],
+                'field_default_value' => $field['value'],
+                'required' => isset($field['required']) ? 1 : 0,
+                'order_id' => $field['order'],
+                'status' => $field['status'],
+            ]);
+            if ($field['status'] == 0) {
+                $customField = new CustomFieldsTimeline();
+                $customField->custom_field_id = $field['id'];
+                $customField->updated_by = 1;
+                $customField->action = 'deleted';
+                $customField->data = json_encode($field);
+                $customField->save();
+            } else {
+                $customField = new CustomFieldsTimeline();
+                $customField->custom_field_id = $field['id'];
+                $customField->updated_by = 1;
+                $customField->action = 'updated';
+                $customField->data = json_encode($field);
+                $customField->save();
+            }
+        }
+        return response()->json(['message' => 'Form submitted successfully'], 200);
+    }
+
+    // {
+    //     $id = $request->input('contactId');
+
+    //     $customFields = CustomFields::where('status', 1)->where('contract_type', 1)->orderBy('order_id')->get();
+
+    //     $contractTypes = ContractType::get();
+
+    //     $branchs = Branch::select(DB::raw("id,  AES_DECRYPT(BranchName, 'dummy.branch') as BranchName,
+    //      AES_DECRYPT(branchstatus, 'dummy.branch') as branchstatus,
+    //      AES_DECRYPT(Doorno, 'dummy.branch') as Doorno,
+    //      AES_DECRYPT(StreetName, 'dummy.branch') as StreetName,
+    //      AES_DECRYPT(AreaName, 'dummy.branch') as AreaName,
+    //      AES_DECRYPT(Landmark, 'dummy.branch') as Landmark,
+    //      AES_DECRYPT(PinCode, 'dummy.branch') as PinCode,
+    //      AES_DECRYPT(ContactNumber, 'dummy.branch') as ContactNumber,
+    //      AES_DECRYPT(branchheadname, 'dummy.branch') as branchheadname,
+    //      AES_DECRYPT(departments, 'dummy.branch') as departments "))->get();
+
+
+    //     $contractParty = ContractPartyData::where('custom_field_group_id', $id)->get();
+
+
+
+    //     foreach ($contractParty as $contractPart) {
+    //         $entities = DB::table('entity')
+    //             ->select(DB::raw("id, AES_DECRYPT(Nameoftheentity, 'dummy.entity') as Nameoftheentity"))
+    //             ->where('id', $contractPart->contract_party_id)
+    //             ->first();
+    //         $contractPart->Nameoftheentity = $entities->Nameoftheentity;
+
+
+    //         if ($contractPart->contract_party_location_id == !null) {
+
+    //             $branchs = Branch::select(DB::raw("id,  AES_DECRYPT(BranchName, 'dummy.branch') as BranchName,
+    //         AES_DECRYPT(branchstatus, 'dummy.branch') as branchstatus,
+    //         AES_DECRYPT(Doorno, 'dummy.branch') as Doorno,
+    //         AES_DECRYPT(StreetName, 'dummy.branch') as StreetName,
+    //         AES_DECRYPT(AreaName, 'dummy.branch') as AreaName,
+    //         AES_DECRYPT(Landmark, 'dummy.branch') as Landmark,
+    //         AES_DECRYPT(PinCode, 'dummy.branch') as PinCode,
+    //         AES_DECRYPT(ContactNumber, 'dummy.branch') as ContactNumber,
+    //         AES_DECRYPT(branchheadname, 'dummy.branch') as branchheadname,
+    //         AES_DECRYPT(departments, 'dummy.branch') as departments "))->where('id', $contractPart->contract_party_location_id)->first();
+
+    //             $contractPart->contract_party = $branchs;
+    //         }
+    //         if ($contractPart->contract_party_exe_id == !null) {
+
+    //             $contractParties =  ContractParties::select('*')->where('id', $contractPart->contract_party_exe_id)->get();
+
+    //             $contractPart->contract_party_id_exe = $contractParties;
+    //         }
+    //     }
+
+
+
+
+    //     $contracts = Contract::where('id', $id)->first();
+
+
+    //     if (isset($contracts->catgoery_id)) {
+    //         $Categoryname = ContractCategories::where('id', $contracts->catgoery_id)->first();
+    //         $contracts->catgoery_id = $Categoryname->name;
+    //     }
+
+    //     if (isset($contracts->department_id)) {
+    //         $EntityBusinessName = EntityBusiness::where('id', $contracts->department_id)->first();
+    //         $contracts->department_id = $EntityBusinessName->name;
+    //     }
+
+    //     if (isset($contracts->contract_type)) {
+    //         $contracts->contract_type = ContractType::where('contract_type_id', $contracts->contract_type)->first()->contract_type;
+    //     }
+
+    //     $approvalsArr = ApprovalContracts::where('contract_id', $id)->orderBy('id', 'desc')->get();
+
+
+    //     return view('contract::contract.viewDetailContract')->with('contract', $contracts)->with('contractPartyData', $contractParty)->with('approvalsArr', $approvalsArr);
+
+    //     // print_r($request->post());die;
+    //     // $button_text = $request->input('button_text');
+    //     // $contract_id = $request->input('contactId');
+    //     // $type = $request->input('type');
+
+    //     // $nextActionDate = $request->input('nextActionDate');
+    //     // $nextActionItem = $request->input('nextActionItem');
+    //     // $nextAction = $request->input('nextAction');
+
+    //     // if ($type == 'approve' && strpos($button_text, 'Negotiation') !== false) {
+    //     //     $appStatus = 'Approval';
+    //     //     $prevStatus = 'Negotiation';
+    //     //     $btnText = 'Send to';
+    //     // }
+
+    //     // ApprovalContracts::create([
+    //     //     'previous_status' => $prevStatus,
+    //     //     'status' => $appStatus,
+    //     //     'contract_id' => $contract_id,
+    //     //     'button_text' => $btnText,
+    //     // ]);
+
+    // }
+    
+     public function contractApprovals(Request $request)
+    {
+        // die;
+        
+        // echo $extension;die;
+        
+       $buttonTxt = "";
+        
+        $id = $request->input('contactId');
+        $indexId = $request->input('indexId');
+        $shortDesc = $request->input('nextActionItem'.$indexId);
+        $appId = $request->input('appId');
+        $desc = $request->input('nextAction'.$indexId);
+        $appType = $request->input('appType');
+        $appDataStatus = $request->input('appStatus');
+        $appPreStatus = $request->input('appPreStatus');
+        $orderval = $request->input('orderval');
+        $unique_id_old = $request->input('unique_id');
+
+        $controller = new LocalDriveController();
+
+        // if($request->file('photos')){
+        //     $files = $request->file('photos');
+           
+        //     $extension = $files->getClientOriginalExtension();
+ 
+        //     $filePath = $controller->storeFile($files, 'approvals', $id);
+        //     $filename = file_name($files);
+        // }else{
+        //     $filePath = ''; 
+        //     $filename = '';
+        // }  
+        
+         $filesData = [];
+        
+         if ($request->file('photos')) {
+            $files = $request->file('photos');
+
+            foreach ($files as $file) {
+                $fileObject = new stdClass();
+                $fileObject->path = $controller->storeFile($file, 'approvals', $id);
+                $fileObject->name = file_name($file);
+
+                // Add the file object to the filesData array
+                $filesData[] = $fileObject;
+            }
+        }
+        
+        if($appDataStatus == 'review' || $appDataStatus == 'Review'){
+            $buttonTxt = "Reviewed on";
+        }elseif($appDataStatus == 'approval' || $appDataStatus == 'Approval'){
+            $buttonTxt = "Approval on";
+        }elseif($appDataStatus == 'approved' || $appDataStatus == 'Approved'){
+            $buttonTxt = "Approved on";
+        }elseif($appDataStatus == 'signing' || $appDataStatus == 'Signing'){
+            $buttonTxt = "Signed on";
+        }
+        
+        
+        if($appType == 'rejected'){
+            $buttonTxt = "Rejected on";
+        }
+        
+        // echo $appDataStatus;
+        // die;
+        ApprovalContracts::where('id', $appId)->update([
+            'unique_id' => $unique_id_old,
+            'orderval' => $orderval,
+            'next_action_item' => encryptString($shortDesc, 'next_action_item'),
+            'next_action_description' => encryptString($desc, 'next_action_description'),
+            'button_text' => $buttonTxt,
+            'approval_status' => encryptString($appType, 'approval_status'),
+            'attachments' => $filesData, 
+        ]);
+
+        
+
+        
+        $contracts = Contract::where('id', $id)->first();
+        $approvalsDataArr = ApprovalContracts::select('id', 'username', 'status', 'previous_status', 'contract_id', 'next_action_item', 'next_action_description', 'button_text', 'attachments', 'approval_status', 'updated_at', 'created_at', 'orderval', 'unique_id', 'flag')
+                            ->where('contract_id', $id)
+                            ->get()
+                            ->map(function ($task) { 
+                                  $task->username = decryptString($task->username, 'username');
+                                  $task->status = decryptString($task->status, 'status');
+                                  $task->previous_status = decryptString($task->previous_status, 'previous_status');
+                                  $task->next_action_item = decryptString($task->next_action_item, 'next_action_item');
+                                  $task->next_action_description = decryptString($task->next_action_description, 'next_action_description');
+                                  $task->approval_status = decryptString($task->approval_status, 'approval_status');
+                                  return $task;
+                              })
+                            ->toArray();
+                            
+
+        $owner = $contracts->owner;
+        $users = AddUsers::select('id',  decrypt_data('Salutation', 'AddUsers'), decrypt_data('FirstName', 'AddUsers') , decrypt_data('LastName', 'AddUsers'))->where('id', $owner)->get();
+        // $users = AddUsers::select(DB::raw("id, AES_DECRYPT(FirstName,'dummy.AddUsers') AS FirstName"))->where('id', $owner)->get();
+            
+        // print_r($contracts);die;
+        // print_r($approvalsDataArr[count($approvalsDataArr)-1]);die;
+        // print_r($approvalsDataArr);die;
+
+        // \DB::enableQueryLog(); // Enable query log
+        if($appType == 'rejected'){
+            // echo $appDataStatus;
+            // echo $appId;
+            // die;
+
+
+
+            
+            
+            ApprovalContracts::where(['contract_id'=>$id,'status'=>$appDataStatus])->update([
+                'unique_id' => $unique_id_old,
+                'orderval' => $orderval,
+                'next_action_item' => encryptString($shortDesc, 'next_action_item'),
+                'next_action_description' => encryptString($desc, 'next_action_description'),
+                'approval_status' => encryptString($appType, 'approval_status'),
+                'button_text' => $buttonTxt,
+                'attachments' => $filesData, 
+            ]);
+            
+            ApprovalContracts::where('unique_id', $unique_id_old)->update([
+                'flag' => 0,
+            ]);
+
+            // // Your Eloquent query executed by using get()
+
+            // dd(\DB::getQueryLog());
+
+            if(isset($users[0])){
+                if($appPreStatus == 'Review' || $appPreStatus == 'review'){
+                    $prevStatus = 'Draft';
+                }elseif($appPreStatus == 'Approval'){
+                    $prevStatus = 'Review';
+                }else{
+                    $prevStatus = 'Draft';
+                }
+                // echo $prevStatus;die;
+                $username = $users[0]->FirstName;
+                $randNo = rand(0, 99999);
+                $orderval = 1;
+                $unique_id_new = $id.$randNo;
+                
+                // echo "pre".$prevStatus;
+                // echo "cur".$appDataStatus;
+                // die;
+                
+                
+                ApprovalContracts::create([
+                    'username' => encryptString($username, 'username'),
+                    'unique_id' => $unique_id_new,
+                    'orderval' => $orderval,
+                    'previous_status' => encryptString($appDataStatus, 'previous_status'),
+                    'status' => encryptString($prevStatus, 'status'),
+                    'contract_id' => $id,
+                    'approval_status' => encryptString('pending', 'approval_status'),
+                    'flag' => '1',
+                    
+                ]);
+            }
+        }
+        // echo $approvalsDataArr[count($approvalsDataArr)-1]['status'];die;
+        if(($approvalsDataArr[count($approvalsDataArr)-1]['status'] == 'review' || $approvalsDataArr[count($approvalsDataArr)-1]['status'] == 'Review')
+        && $approvalsDataArr[count($approvalsDataArr)-1]['approval_status'] == 'approved'){
+            $appStatus = 'Negotiation';
+            // $substatus = 'Review Finalized';
+        }
+        elseif($approvalsDataArr[count($approvalsDataArr)-1]['status'] == 'Negotiation' && $approvalsDataArr[count($approvalsDataArr)-1]['approval_status'] == 'approved'){
+            $appStatus = 'Approval';
+            // $substatus = 'Approval in Process';
+        }
+        elseif($approvalsDataArr[count($approvalsDataArr)-1]['status'] == 'Approval' && $approvalsDataArr[count($approvalsDataArr)-1]['approval_status'] == 'approved'){
+            $appStatus = 'Approved';
+            // $substatus = 'Approval Finalized';
+        }
+        elseif($approvalsDataArr[count($approvalsDataArr)-1]['status'] == 'Approved' && $approvalsDataArr[count($approvalsDataArr)-1]['approval_status'] == 'approved'){
+            $appStatus = 'Signing';
+            // $substatus = 'Signing in Process';
+        }
+        else{
+            $appStatus = '';
+        }
+        // print_r($approvalsDataArr[count($approvalsDataArr)-1]['approval_status']);
+        // echo $appStatus;die;
+        if($approvalsDataArr[count($approvalsDataArr)-1]['approval_status'] == 'approved'){
+            if($appStatus != 'Signing' &&  $appStatus != 'Negotiation' && $appStatus != 'Approved' && $appStatus != ''){
+                $approvalsArr = json_decode($contracts->rules_id);
+                $appArr = json_decode($approvalsArr[0]->approver);
+                $randNo = rand(0, 99999);
+                
+                foreach($appArr as $key=>$appVal){
+                    $unique_id_new = $id.$randNo;
+                    
+                    
+
+                    ApprovalContracts::create([
+                        'username' => encryptString($appVal->name, 'username'),
+                        'unique_id' => $unique_id_new,
+                        'orderval' => $key,
+                        'previous_status' => encryptString($approvalsDataArr[$indexId]['status'], 'previous_status'),
+                        'status' => encryptString($appStatus, 'status'),
+                        'contract_id' => $id,
+                        'approval_status' => encryptString('pending', 'approval_status'),
+                        'flag' => '1',
+                    ]);
+                }
+
+                ApprovalContracts::where('unique_id', $unique_id_old)->update([
+                    'flag' => 0,
+                ]);
+
+            }elseif($appStatus == 'Negotiation'){
+                if(isset($users[0])){
+                    
+                    $username = $users[0]->FirstName;
+                    $randNo = rand(0, 99999);
+                    $orderval = 1;
+                    $unique_id_new = $id.$randNo;
+                    
+                    
+                    
+                    
+                    ApprovalContracts::create([
+                        'username' => encryptString($username, 'username'),
+                        'unique_id' => $unique_id_new,
+                        'orderval' => $orderval,
+                        'previous_status' => encryptString('review', 'previous_status'),
+                        'status' => encryptString($appStatus, 'status'),
+                        'contract_id' => $id,
+                        'approval_status' => encryptString('pending', 'approval_status'),
+                        'flag' => '1',
+                    ]);
+
+                    ApprovalContracts::where('unique_id', $unique_id_old)->update([
+                        'flag' => 0,
+                    ]);
+                }
+            }
+            elseif($appStatus == 'Approved'){
+                if(isset($users[0])){
+                    
+                    $username = $users[0]->FirstName;
+                    $randNo = rand(0, 99999);
+                    $orderval = 1;
+                    $unique_id_new = $id.$randNo;
+                    
+                    
+                    
+                    ApprovalContracts::create([
+                        'username' => encryptString($username, 'username'),
+                        'unique_id' => $unique_id_new,
+                        'orderval' => $orderval,
+                        'previous_status' => encryptString('approval', 'previous_status'),
+                        'status' => encryptString($appStatus, 'status'),
+                        'contract_id' => $id,
+                        'approval_status' => encryptString('pending', 'approval_status'),
+                        'flag' => '1',
+                    ]);
+
+                    ApprovalContracts::where('unique_id', $unique_id_old)->update([
+                        'flag' => 0,
+                    ]);
+                }
+            }
+            elseif($appStatus == 'Signing'){
+                $signatory = $contracts->signatory;
+
+                // $users = AddUsers::select(DB::raw("id, AES_DECRYPT(FirstName,'dummy.AddUsers') AS FirstName"))->where('id', $signatory)->get();
+                $users = AddUsers::select('id',  decrypt_data('Salutation', 'AddUsers'), decrypt_data('FirstName', 'AddUsers') , decrypt_data('LastName', 'AddUsers'))->where('id', $signatory)->get();
+
+                if(isset($users[0])){
+
+                    $username = $users[0]->FirstName;
+                    $randNo = rand(0, 99999);
+                    $orderval = 1;
+                    $unique_id_new = $id.$randNo;
+                    
+                     
+
+                    
+                    
+                    ApprovalContracts::create([
+                        'username' => encryptString($username, 'username'),
+                        'unique_id' => $unique_id_new,
+                        'orderval' => $orderval,
+                        'previous_status' => encryptString('Approval', 'previous_status'),
+                        'status' => encryptString($appStatus, 'status'),
+                        'contract_id' => $id,
+                        'approval_status' => encryptString('pending', 'approval_status'),
+                        'flag' => '1',
+                    ]);
+                }
+                
+                ApprovalContracts::where('unique_id', $unique_id_old)->update([
+                    'flag' => 0,
+                ]);
+                
+            }else{
+
+            }
+            
+
+        }
+
+        if($buttonTxt == "Signed on"){
+            Contract::where(['id'=>$id])->update([
+                    'contract_status' => 'executed'
+                ]);
+        }else{
+           Contract::where(['id'=>$id])->update([
+                    'contract_status' => $appStatus,
+                    // 'substatus' => $substatus
+                ]); 
+        }
+        
+        
+        
+       
+        return response()->json(['message' => 'successful!'], 200);
+
+    }
+    
+    
+    public function approversInsertScript($appArr,$contract_id,$app_unique_id,$appId,$appstatus)
+    {
+        // foreach($appArr as $appVal){
+            // $appName = $appVal->name;
+            // $appName = encryptString($appVal->name, 'username');
+
+            $isNextStage = 0;
+            $approvalsDataArr = ApprovalContracts::select('id', 'username',  'contract_id', 'status', 'approval_status', 'unique_id', 'flag')
+            ->where('contract_id', $contract_id)
+            ->where('unique_id', $app_unique_id)
+            ->get()
+            ->map(function ($task) {
+                $task->username = decryptString($task->username, 'username');
+                $task->approval_status = decryptString($task->approval_status, 'approval_status');
+                $task->status = decryptString($task->status, 'status');
+                return $task;
+            })
+            ->toArray();
+            if(isset($appArr[count($approvalsDataArr)])){
+                $approver_name = $appArr[count($approvalsDataArr)]->name;
+                $cur_status = $approvalsDataArr[0]['status'];
+                if(isset($appArr[count($approvalsDataArr)+1] )){
+                    $next_status = $cur_status;
+                }else{
+                    if($cur_status == 'review'){
+                        $next_status = 'Negotiation';
+                    }else{
+                        $next_status = 'Signing';
+                    }
+                    
+                }
+                if($appstatus == 'Approval'){
+                    $substatus = 'Pending Approval';
+                }else{
+                    $substatus = $appstatus;
+                }
+
+                ApprovalContracts::create([
+                    'username' => encryptString($approver_name, 'username'),
+                    'unique_id' => $app_unique_id,
+                    'orderval' => count($approvalsDataArr),
+                    'previous_status' => encryptString('review', 'previous_status'),
+                    'status' => encryptString('review', 'status'),
+                    'next_status' => encryptString($next_status, 'next_status'),
+                    'contract_id' => $contract_id,
+                    'approval_status' => encryptString('pending', 'approval_status'),
+                    'flag' => '1',
+                ]);
+
+                Contract::where(['id' => $contract_id])->update([
+                    'contract_status' => $appstatus,
+                    'substatus' => $substatus
+                ]);
+            }
+    }
+    
+
+    
+    public function sendContractForReview(Request $request){
+        $contract_id =  $request->input('id');
+        $nextAppStatus =  $request->input('nextAppStatus');
+        $curAppStatus =  $request->input('curAppStatus');
+        $userInputVal =  $request->input('userInputVal');
+
+        // echo "ddd";die;
+        //---- users Data ------ //
+        
+        $contracts = Contract::where('id', $contract_id)->first();
+
+        $owner = $contracts->owner;
+        
+        $users = AddUsers::select('id',  decrypt_data('Salutation', 'AddUsers'), decrypt_data('FirstName', 'AddUsers') , decrypt_data('LastName', 'AddUsers'))->where('id', $owner)->get();
+        // $users = AddUsers::select(DB::raw("id, AES_DECRYPT(FirstName,'dummy.AddUsers') AS FirstName"))->where('id', $owner)->get();
+        
+
+        // -------End ---------//
+
+
+        //-------- approvers data from contracts --------//
+        
+        $approvalArr = Contract::select('rules_id')->where('id', $contract_id)->get();
+        
+
+        $appArr = json_decode(trim($approvalArr[0]['rules_id']));
+        $randNo = rand(0, 99999);
+
+        //-----------------------------------------------//
+        
+        
+
+        ApprovalContracts::where(['contract_id'=>$contract_id])->update([
+            'flag' => 0,
+            'approval_status' => encryptString($userInputVal, 'approval_status')
+        ]);
+
+
+        if($userInputVal == 'rejected'){
+            // $nextAppStatus = "";
+
+            foreach($appArr as $appData){
+                $approval_type = $appData->approval_type;
+                $approval_status = $appData->approval_status;
+                $approvalArr = json_decode($appData->approver);
+                
+                if($approval_type == 'sequential' && $approval_status == 'required'){
+    
+                    foreach($approvalArr as $key => $appVal){
+                        $unique_id = $contract_id.$randNo;
+                        
+                        ApprovalContracts::create([
+                            'username' => encryptString($appVal->name, 'username'),
+                            'previous_status' => encryptString($curAppStatus, 'previous_status'),
+                            'status' => encryptString($nextAppStatus, 'status'),
+                            'contract_id' => $contract_id,
+                            'orderval' => $key,
+                            'unique_id' => $unique_id,
+                            'flag' => 1,
+                            'approval_status' => encryptString('pending', 'approval_status'),
+                        ]);
+                    }
+                    
+                }
+            
+            }
+        }else{
+            foreach($appArr as $appData){
+                $approval_type = $appData->approval_type;
+                $approval_status = $appData->approval_status;
+                $approvalArr = json_decode($appData->approver);
+                
+                if($approval_type == 'sequential' && $approval_status == 'required'){
+    
+                    if($nextAppStatus == 'Signing'){
+                         
+                        if(isset($users[0])){
+                            
+                            $username = $users[0]->FirstName;
+                            $randNo = rand(0, 99999);
+                            $orderval = 0;
+                            $unique_id_new = $contract_id.$randNo;
+                            
+                            
+                            
+                            ApprovalContracts::create([
+                                'username' => encryptString($username, 'username'),
+                                'unique_id' => $unique_id_new,
+                                'orderval' => $orderval,
+                                'previous_status' => encryptString('Approved', 'previous_status'),
+                                'status' => encryptString('Signing', 'status'),
+                                'contract_id' => $contract_id,
+                                'approval_status' => encryptString('pending', 'approval_status'),
+                                'flag' => '1',
+                            ]);
+                        }
+                    }else{
+                        foreach($approvalArr as $key => $appVal){
+                            $unique_id = $contract_id.$randNo;
+                            
+                            ApprovalContracts::create([
+                                'username' => encryptString($appVal->name, 'username'),
+                                'previous_status' => encryptString($curAppStatus, 'previous_status'),
+                                'status' => encryptString($nextAppStatus, 'status'),
+                                'contract_id' => $contract_id,
+                                'orderval' => $key,
+                                'unique_id' => $unique_id,
+                                'flag' => 1,
+                                'approval_status' => encryptString('pending', 'approval_status'),
+                            ]);
+                        }
+                    }
+                    
+                }
+            
+            }
+        }
+        
+
+        Contract::where(['id'=>$contract_id])->update([
+            'contract_status' => $nextAppStatus
+        ]);
+
+        
+
+        return response()->json(['message' => 'successful!'], 200);
+    }
+    
+    public function contractImport(Request $request)
+    {
+        return view('contract::contract.contractImport');
+    }
+     public function contractImportStore(Request $request)
+    {
+        
+        
+        
+         $file = $request->file('csv_file');
+ 
+        $collection = (new FastExcel)->import($file);
+        
+        
+        echo '<pre>';
+        print_r($collection);
+        echo '</pre>';
+        
+        exit();
+        
+        
+        try {
+            foreach($collection as $collectio){
+                $contractTypeName = new ContractType();
+                $contractTypeName->contract_type = $collectio['Contract Type Name'];
+                $contractTypeName->departmentId = EntityBusiness::where('name', $collectio['Department'])->first()->id;
+                $contractTypeName->categoryId = ContractCategories::where('name', $collectio['Category'])->first()->id;
+                $contractTypeName->save();
+            }
+            return redirect()->back()->with('successupload', 'Data imported successfully.');
+        } catch (\Exception $e) {
+
+            return redirect()->back()->with('error', $e->getMessage());
+        }
+        
+        return;
+        
+        // $data = Excel::toCollection(null, $request->file('csv_file'));
+
+        // 'contract_mode' => 'new',
+
+
+
+
+
+
+
+        // foreach ($users as $em) {
+        //     print_r($em);
+        // }
+
+
+        function getuser($ems)
+        {
+            
+            $users = AddUsers::select('id',  decrypt_data('Email', 'AddUsers'))->get();
+
+            // $users = AddUsers::select(DB::raw("id, AES_DECRYPT(Email,'dummy.AddUsers') AS Email"))->get();
+            foreach ($users as $usr) {
+                if ($usr->Email == $ems) {
+                    return $usr->id;
+                }
+            }
+        }
+
+        // echo;
+
+        // return;
+
+        // $contractParties =  ContractParties::select('*')->get();
+
+        // $catego =  ContractCategories::select('*')->get();
+
+        // $ent = EntityBusiness::select('*')->get();
+
+
+        foreach ($data[0] as $col) {
+            if ($col[0] != null && $col[0] != 'Contract Type') {
+                print_r($col[1]);
+                $signatory = getuser($col[7]);
+                $Owner = getuser($col[8]);
+                $contract = Contract::create([
+                    'contract_mode' => 'new',
+                    'contract_name' => 'Rental Agreement',
+                    'contract_type' => 1,
+                    'currency' => 'INR',
+                    'currency_value' => $col[9],
+                    'contract_description' => '',
+                    'department_id' => 1,
+                    'catgoery_id' => 1,
+                    'signatory' => $signatory,
+                    'owner' => $Owner,
+                ]);
+            }
+        }
+
+
+        return redirect()->back()->with('successupload', 'Data imported successfully.');
+        
+//         // $request->validate([
+//         //     'csv_file' => 'required|file|mimes:csv,txt',
+//         // ]);
+//  $path = $request->file('csv_file')->getRealPath();
+//         $data = array_map('str_getcsv', file($path));
+
+//         // Assuming the first row contains headers, we remove it.
+//         $header = array_shift($data);
+//         // Assuming the first row contains headers, we remove it.
+//         $header = array_shift($data);
+//         return $data;
+//         // return view('contract::contract.contractImport');
+        
+//         // $request->validate([
+//         //     'file' => 'required|mimes:xlsx,xls,csv',
+//         // ]); 
+//         // try {
+//         //     $data = Excel::toCollection(null, $request->file('file')); 
+//         //     foreach($data[0] as $col){ 
+//         //         $contractTypeName = new ContractType();
+//         //         $contractTypeName->contract_type = $col[0];
+//         //         $contractTypeName->save();
+//         //     }   
+//         //     // return redirect()->back()->with('successupload', 'Data imported successfully.');
+//         // } catch (\Exception $e) {
+            
+//         //     return redirect()->back()->with('error', $e->getMessage());
+//         // }
+    }
+    
+    public function linkUnlinkContract(Request $request){
+        if(!isset($request->contractEndType)){
+            $request->contractEndType = "fixedTerm";
+        }
+        $messageCode = 200;
+        
+        if(isset($request->linkStatus))
+            if($request->linkStatus == 'link'){
+                
+                $contractLinked = Contract::where('id', $request->linkid)->update([
+                    'parentcontract' => $request->parentContract
+                ]);
+                
+                $messageUpdate = "Contract Linked Successfully";
+                $successType = true; 
+
+                if ($contractLinked) {
+                    
+                    $contracthisLinked = Contract::where('id', $request->linkid)->first();
+            
+                    $contractHistoryLinked = ContractHistory::create([
+                        'contract_name' => $contracthisLinked->contract_name,
+                        'id' => $contracthisLinked->id,
+                        'contract_mode' => $contracthisLinked->contract_mode,
+                        'contract_type' => $contracthisLinked->contract_type,
+                        // 'contract_name' => $contract->/ 'contract_name,
+                        'contract_description' => $contracthisLinked->contract_description,
+            
+                        'department_id' => $contracthisLinked->department_id,
+                        'catgoery_id' => $contracthisLinked->catgoery_id,
+            
+                        'signatory' => $contracthisLinked->signatory,
+                        'owner' => $contracthisLinked->owner,
+            
+            
+                        'confidentialityagreement' => $contracthisLinked->confidentialityagreement,
+                        'exclusivity' => $contracthisLinked->exclusivity,
+            
+                        // Contract Duration
+                        'signing_date' => $contracthisLinked->signing_date,
+                        'commencement_type' => $contracthisLinked->commencement_type,
+                        'fixed_date' => $contracthisLinked->fixed_date,
+                        'event_name' => $contracthisLinked->event_name,
+                        'end_contract_type' => $contracthisLinked->end_contract_type,
+                        'onetime_end_date' => $contracthisLinked->onetime_end_date,
+                        'fixedterm_end_date' => $contracthisLinked->fixedterm_end_date,
+                        'renewal_type' => $contracthisLinked->renewal_type,
+                        'period_auto_renewal' => $contracthisLinked->period_auto_renewal,
+                        'period_auto_renewal_unit' => $contracthisLinked->period_auto_renewal_unit,
+                        'auto_renewal_date' => $contracthisLinked->auto_renewal_date,
+                        'manual_renewal_date' => $contracthisLinked->manual_renewal_date,
+                        'evergreen_condition' => $contracthisLinked->evergreen_condition,
+                        'termination_date' => $contracthisLinked->termination_date,
+                        'termination_reason' => $contracthisLinked->termination_reason,
+            
+            
+                        // Contract Value
+                        'currency' => $contracthisLinked->currency,
+                        'currency_value' => $contracthisLinked->currency_value,
+                        'payment_schedule' => $contracthisLinked->payment_schedule,
+                        'currency_contract' => $contracthisLinked->currency_contract,
+                        'payment_terms' => $contracthisLinked->payment_terms,
+                        'billing_frequency' => $contracthisLinked->billing_frequency,
+                        'taxes' => $contracthisLinked->taxes,
+                        'escalation_clauses' => $contracthisLinked->escalation_clauses,
+                        'discounts' => $contracthisLinked->discounts,
+                        'retention' => $contracthisLinked->retention,
+                        'payment_escrow' => $contracthisLinked->payment_escrow,
+                        'financial_guarantees' => $contracthisLinked->financial_guarantees,
+                        'currency_conversion' => $contracthisLinked->currency_conversion,
+            
+                        // Reminder Value
+                        'reminder_first_alert' => $contracthisLinked->reminder_first_alert,
+                        'reminder_first_alertMeOn' => $contracthisLinked->reminder_first_alertMeOn,
+                        'reminder_first_alert_repeats' => $contracthisLinked->reminder_first_alert_repeats,
+                        'reminder_second_alert' => $contracthisLinked->reminder_second_alert,
+                        'reminder_second_alertMeOn' => $contracthisLinked->reminder_second_alertMeOn,
+                        'reminder_second_alert_repeats' => $contracthisLinked->reminder_second_alert_repeats,
+                        'reminder_escalation_alert' => $contracthisLinked->reminder_escalation_alert,
+                        'reminder_escalation_alertMeOn' => $contracthisLinked->reminder_escalation_alertMeOn,
+                        'reminder_escalation_alert_repeats' => $contracthisLinked->reminder_escalation_alert_repeats,
+            
+                        'rules_id' => $contracthisLinked->rules_id,
+            
+                        'custom_fields_data' => $contracthisLinked->custom_fields_data,
+                        'contract_attachment' => $contracthisLinked->contract_attachment,
+                        'contract_attachment_filename' => $contracthisLinked->contract_attachment_filename,
+                        'created_by' => $contracthisLinked->created_by ? $contracthisLinked->created_by : 1,
+                        'parentcontract' => $request->parentContract
+                    ]);
+                    
+                    $updateOldcontract = Contract::where('id', $request->parentContract)->update([
+                        'substatus' => 'renewed'
+                    ]);
+                    
+                    
+                    $contracthisOldContract = Contract::where('id', $request->parentContract)->first();
+            
+                    $contractHistoryOld = ContractHistory::create([
+                        'contract_name' => $contracthisOldContract->contract_name,
+                        'id' => $contracthisOldContract->id,
+                        'contract_mode' => $contracthisOldContract->contract_mode,
+                        'contract_type' => $contracthisOldContract->contract_type,
+                        // 'contract_name' => $contract->/ 'contract_name,
+                        'contract_description' => $contracthisOldContract->contract_description,
+            
+                        'department_id' => $contracthisOldContract->department_id,
+                        'catgoery_id' => $contracthisOldContract->catgoery_id,
+            
+                        'signatory' => $contracthisOldContract->signatory,
+                        'owner' => $contracthisOldContract->owner,
+            
+            
+                        'confidentialityagreement' => $contracthisOldContract->confidentialityagreement,
+                        'exclusivity' => $contracthisLinked->exclusivity,
+            
+                        // Contract Duration
+                        'signing_date' => $contracthisOldContract->signing_date,
+                        'commencement_type' => $contracthisOldContract->commencement_type,
+                        'fixed_date' => $contracthisOldContract->fixed_date,
+                        'event_name' => $contracthisOldContract->event_name,
+                        'end_contract_type' => $contracthisOldContract->end_contract_type,
+                        'onetime_end_date' => $contracthisOldContract->onetime_end_date,
+                        'fixedterm_end_date' => $contracthisOldContract->fixedterm_end_date,
+                        'renewal_type' => $contracthisOldContract->renewal_type,
+                        'period_auto_renewal' => $contracthisOldContract->period_auto_renewal,
+                        'period_auto_renewal_unit' => $contracthisOldContract->period_auto_renewal_unit,
+                        'auto_renewal_date' => $contracthisOldContract->auto_renewal_date,
+                        'manual_renewal_date' => $contracthisOldContract->manual_renewal_date,
+                        'evergreen_condition' => $contracthisOldContract->evergreen_condition,
+                        'termination_date' => $contracthisOldContract->termination_date,
+                        'termination_reason' => $contracthisOldContract->termination_reason,
+            
+            
+                        // Contract Value
+                        'currency' => $contracthisOldContract->currency,
+                        'currency_value' => $contracthisOldContract->currency_value,
+                        'payment_schedule' => $contracthisOldContract->payment_schedule,
+                        'currency_contract' => $contracthisOldContract->currency_contract,
+                        'payment_terms' => $contracthisOldContract->payment_terms,
+                        'billing_frequency' => $contracthisOldContract->billing_frequency,
+                        'taxes' => $contracthisOldContract->taxes,
+                        'escalation_clauses' => $contracthisOldContract->escalation_clauses,
+                        'discounts' => $contracthisOldContract->discounts,
+                        'retention' => $contracthisOldContract->retention,
+                        'payment_escrow' => $contracthisOldContract->payment_escrow,
+                        'financial_guarantees' => $contracthisOldContract->financial_guarantees,
+                        'currency_conversion' => $contracthisOldContract->currency_conversion,
+            
+                        // Reminder Value
+                        'reminder_first_alert' => $contracthisOldContract->reminder_first_alert,
+                        'reminder_first_alertMeOn' => $contracthisOldContract->reminder_first_alertMeOn,
+                        'reminder_first_alert_repeats' => $contracthisOldContract->reminder_first_alert_repeats,
+                        'reminder_second_alert' => $contracthisOldContract->reminder_second_alert,
+                        'reminder_second_alertMeOn' => $contracthisOldContract->reminder_second_alertMeOn,
+                        'reminder_second_alert_repeats' => $contracthisOldContract->reminder_second_alert_repeats,
+                        'reminder_escalation_alert' => $contracthisOldContract->reminder_escalation_alert,
+                        'reminder_escalation_alertMeOn' => $contracthisOldContract->reminder_escalation_alertMeOn,
+                        'reminder_escalation_alert_repeats' => $contracthisOldContract->reminder_escalation_alert_repeats,
+            
+                        'rules_id' => $contracthisOldContract->rules_id,
+            
+                        'custom_fields_data' => $contracthisOldContract->custom_fields_data,
+                        'contract_attachment' => $contracthisOldContract->contract_attachment,
+                        'contract_attachment_filename' => $contracthisOldContract->contract_attachment_filename,
+                        'created_by' => $contracthisOldContract->created_by ? $contracthisOldContract->created_by : 1,
+                        'substatus' => 'renewed'
+                    ]);                    
+                }
+                
+            
+            }else if($request->linkStatus == 'unlink'){
+                
+                $updateParentcon = Contract::where('id', $request->parentContract)->first();
+                
+                if($request->contractEndType == 'fixedTerm'){
+                    $end_date_of_contract = $updateParentcon->fixedterm_end_date;
+                }else{
+                    $end_date_of_contract = $updateParentcon->onetime_end_date;
+                }
+                
+                $cur_date = date("Y-m-d");
+                
+                $checkeDate = DateTime::createFromFormat("Y-m-d", $end_date_of_contract);
+                
+
+                
+                if($checkeDate !== false){
+                    
+                    if(strtotime($end_date_of_contract) > strtotime($cur_date)){
+                        $contract_sub_status = 'active';
+                    }elseif(strtotime($cur_date) > strtotime($end_date_of_contract)){
+                        $contract_sub_status = 'expired';
+                    }
+                    
+                    $contractUnlinked = Contract::where('id', $request->linkid)->update([
+                        'parentcontract' => 0
+                    ]); 
+                    
+                    $contracthisLinked = Contract::where('id', $request->linkid)->first();
+            
+                    $contractHistoryLinked = ContractHistory::create([
+                        'contract_name' => $contracthisLinked->contract_name,
+                        'id' => $contracthisLinked->id,
+                        'contract_mode' => $contracthisLinked->contract_mode,
+                        'contract_type' => $contracthisLinked->contract_type,
+                        // 'contract_name' => $contract->/ 'contract_name,
+                        'contract_description' => $contracthisLinked->contract_description,
+            
+                        'department_id' => $contracthisLinked->department_id,
+                        'catgoery_id' => $contracthisLinked->catgoery_id,
+            
+                        'signatory' => $contracthisLinked->signatory,
+                        'owner' => $contracthisLinked->owner,
+            
+            
+                        'confidentialityagreement' => $contracthisLinked->confidentialityagreement,
+                        'exclusivity' => $contracthisLinked->exclusivity,
+            
+                        // Contract Duration
+                        'signing_date' => $contracthisLinked->signing_date,
+                        'commencement_type' => $contracthisLinked->commencement_type,
+                        'fixed_date' => $contracthisLinked->fixed_date,
+                        'event_name' => $contracthisLinked->event_name,
+                        'end_contract_type' => $contracthisLinked->end_contract_type,
+                        'onetime_end_date' => $contracthisLinked->onetime_end_date,
+                        'fixedterm_end_date' => $contracthisLinked->fixedterm_end_date,
+                        'renewal_type' => $contracthisLinked->renewal_type,
+                        'period_auto_renewal' => $contracthisLinked->period_auto_renewal,
+                        'period_auto_renewal_unit' => $contracthisLinked->period_auto_renewal_unit,
+                        'auto_renewal_date' => $contracthisLinked->auto_renewal_date,
+                        'manual_renewal_date' => $contracthisLinked->manual_renewal_date,
+                        'evergreen_condition' => $contracthisLinked->evergreen_condition,
+                        'termination_date' => $contracthisLinked->termination_date,
+                        'termination_reason' => $contracthisLinked->termination_reason,
+            
+            
+                        // Contract Value
+                        'currency' => $contracthisLinked->currency,
+                        'currency_value' => $contracthisLinked->currency_value,
+                        'payment_schedule' => $contracthisLinked->payment_schedule,
+                        'currency_contract' => $contracthisLinked->currency_contract,
+                        'payment_terms' => $contracthisLinked->payment_terms,
+                        'billing_frequency' => $contracthisLinked->billing_frequency,
+                        'taxes' => $contracthisLinked->taxes,
+                        'escalation_clauses' => $contracthisLinked->escalation_clauses,
+                        'discounts' => $contracthisLinked->discounts,
+                        'retention' => $contracthisLinked->retention,
+                        'payment_escrow' => $contracthisLinked->payment_escrow,
+                        'financial_guarantees' => $contracthisLinked->financial_guarantees,
+                        'currency_conversion' => $contracthisLinked->currency_conversion,
+            
+                        // Reminder Value
+                        'reminder_first_alert' => $contracthisLinked->reminder_first_alert,
+                        'reminder_first_alertMeOn' => $contracthisLinked->reminder_first_alertMeOn,
+                        'reminder_first_alert_repeats' => $contracthisLinked->reminder_first_alert_repeats,
+                        'reminder_second_alert' => $contracthisLinked->reminder_second_alert,
+                        'reminder_second_alertMeOn' => $contracthisLinked->reminder_second_alertMeOn,
+                        'reminder_second_alert_repeats' => $contracthisLinked->reminder_second_alert_repeats,
+                        'reminder_escalation_alert' => $contracthisLinked->reminder_escalation_alert,
+                        'reminder_escalation_alertMeOn' => $contracthisLinked->reminder_escalation_alertMeOn,
+                        'reminder_escalation_alert_repeats' => $contracthisLinked->reminder_escalation_alert_repeats,
+            
+                        'rules_id' => $contracthisLinked->rules_id,
+            
+                        'custom_fields_data' => $contracthisLinked->custom_fields_data,
+                        'contract_attachment' => $contracthisLinked->contract_attachment,
+                        'contract_attachment_filename' => $contracthisLinked->contract_attachment_filename,
+                        'created_by' => $contracthisLinked->created_by ? $contracthisLinked->created_by : 1,
+                        'parentcontract' => 0
+                    ]);                    
+                    
+                    if ($contractUnlinked) {
+                        $updateParentcon->update([
+                            'substatus' => $contract_sub_status
+                        ]);
+                        
+                        $contracthisOldContract = Contract::where('id', $request->parentContract)->first();
+                
+                        $contractHistoryOld = ContractHistory::create([
+                            'contract_name' => $contracthisOldContract->contract_name,
+                            'id' => $contracthisOldContract->id,
+                            'contract_mode' => $contracthisOldContract->contract_mode,
+                            'contract_type' => $contracthisOldContract->contract_type,
+                            // 'contract_name' => $contract->/ 'contract_name,
+                            'contract_description' => $contracthisOldContract->contract_description,
+                
+                            'department_id' => $contracthisOldContract->department_id,
+                            'catgoery_id' => $contracthisOldContract->catgoery_id,
+                
+                            'signatory' => $contracthisOldContract->signatory,
+                            'owner' => $contracthisOldContract->owner,
+                
+                
+                            'confidentialityagreement' => $contracthisOldContract->confidentialityagreement,
+                            'exclusivity' => $contracthisLinked->exclusivity,
+                
+                            // Contract Duration
+                            'signing_date' => $contracthisOldContract->signing_date,
+                            'commencement_type' => $contracthisOldContract->commencement_type,
+                            'fixed_date' => $contracthisOldContract->fixed_date,
+                            'event_name' => $contracthisOldContract->event_name,
+                            'end_contract_type' => $contracthisOldContract->end_contract_type,
+                            'onetime_end_date' => $contracthisOldContract->onetime_end_date,
+                            'fixedterm_end_date' => $contracthisOldContract->fixedterm_end_date,
+                            'renewal_type' => $contracthisOldContract->renewal_type,
+                            'period_auto_renewal' => $contracthisOldContract->period_auto_renewal,
+                            'period_auto_renewal_unit' => $contracthisOldContract->period_auto_renewal_unit,
+                            'auto_renewal_date' => $contracthisOldContract->auto_renewal_date,
+                            'manual_renewal_date' => $contracthisOldContract->manual_renewal_date,
+                            'evergreen_condition' => $contracthisOldContract->evergreen_condition,
+                            'termination_date' => $contracthisOldContract->termination_date,
+                            'termination_reason' => $contracthisOldContract->termination_reason,
+                
+                
+                            // Contract Value
+                            'currency' => $contracthisOldContract->currency,
+                            'currency_value' => $contracthisOldContract->currency_value,
+                            'payment_schedule' => $contracthisOldContract->payment_schedule,
+                            'currency_contract' => $contracthisOldContract->currency_contract,
+                            'payment_terms' => $contracthisOldContract->payment_terms,
+                            'billing_frequency' => $contracthisOldContract->billing_frequency,
+                            'taxes' => $contracthisOldContract->taxes,
+                            'escalation_clauses' => $contracthisOldContract->escalation_clauses,
+                            'discounts' => $contracthisOldContract->discounts,
+                            'retention' => $contracthisOldContract->retention,
+                            'payment_escrow' => $contracthisOldContract->payment_escrow,
+                            'financial_guarantees' => $contracthisOldContract->financial_guarantees,
+                            'currency_conversion' => $contracthisOldContract->currency_conversion,
+                
+                            // Reminder Value
+                            'reminder_first_alert' => $contracthisOldContract->reminder_first_alert,
+                            'reminder_first_alertMeOn' => $contracthisOldContract->reminder_first_alertMeOn,
+                            'reminder_first_alert_repeats' => $contracthisOldContract->reminder_first_alert_repeats,
+                            'reminder_second_alert' => $contracthisOldContract->reminder_second_alert,
+                            'reminder_second_alertMeOn' => $contracthisOldContract->reminder_second_alertMeOn,
+                            'reminder_second_alert_repeats' => $contracthisOldContract->reminder_second_alert_repeats,
+                            'reminder_escalation_alert' => $contracthisOldContract->reminder_escalation_alert,
+                            'reminder_escalation_alertMeOn' => $contracthisOldContract->reminder_escalation_alertMeOn,
+                            'reminder_escalation_alert_repeats' => $contracthisOldContract->reminder_escalation_alert_repeats,
+                
+                            'rules_id' => $contracthisOldContract->rules_id,
+                
+                            'custom_fields_data' => $contracthisOldContract->custom_fields_data,
+                            'contract_attachment' => $contracthisOldContract->contract_attachment,
+                            'contract_attachment_filename' => $contracthisOldContract->contract_attachment_filename,
+                            'created_by' => $contracthisOldContract->created_by ? $contracthisOldContract->created_by : 1,
+                            'substatus' => $contract_sub_status
+                        ]);                        
+                    }  
+                    
+                    $messageUpdate = "Contract Unlinked Successfully";
+                    $successType = true;                    
+                }else{
+                    $messageUpdate = "Invalid Request";
+                    $successType = false;                    
+                }
+
+            }else{
+                $messageUpdate = "Invalid Request";
+                $successType = false;
+            }
+            
+            return response()->json(['success'=> $successType ,'message' => $messageUpdate], $messageCode);
+    }
+    
+}

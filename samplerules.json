@@ -1,0 +1,63 @@
+[
+    {
+        "id": 16,
+        "approval_type": "sequential",
+        "approval_status": "required",
+        "approver": [
+            {
+                "role": "Approver",
+                "approval_type": "parallel",
+                "approvers": [
+                    {
+                        "id": "5",
+                        "type": "name",
+                        "name": "verifier1",
+                        "email": "verifier1@legalitysimplified.com"
+                    },
+                    {
+                        "id": "6",
+                        "type": "name",
+                        "name": "verifier2",
+                        "email": "verifier2@legalitysimplified.com"
+                    },
+                    {
+                        "id": "10",
+                        "type": "name",
+                        "name": "Corp Approver1",
+                        "email": "corpapprover1@legalitysimplified.com"
+                    },
+                    {
+                        "id": "14",
+                        "type": "name",
+                        "name": "MMCode User",
+                        "email": "mmcode@legalitysimplified.com"
+                    }
+                ]
+            },
+            {
+                "role": "Approver",
+                "approval_type": "sequential",
+                "approvers": [
+                    {
+                        "id": "13",
+                        "type": "name",
+                        "name": "Corp Signatory1",
+                        "email": "corpsignatory1@legalitysimplified.com"
+                    },
+                    {
+                        "id": "12",
+                        "type": "name",
+                        "name": "Regional signatory1",
+                        "email": "regionalsignatory1@legalitysimplified.com"
+                    }
+                ]
+            }
+        ],
+        "signatory": {
+            "sign": "13",
+            "owner": "8",
+            "notify": [],
+            "signutform": []
+        }
+    }
+]

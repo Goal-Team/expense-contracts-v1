@@ -1,0 +1,136 @@
+.loadstatus{
+      opacity:0.5;
+      margin-bottom:3rem;
+  }
+    .loadstatus.active,  .loadstatus:hover{
+      opacity:1;
+  }
+  
+ 
+  
+  .loadstatus .setrount{ 
+    border: 7px solid blue;
+    width: 6rem;
+    height: 6rem;
+    display: inline-block;
+    border-radius: 100%;
+    text-align: center;
+        margin: 0 auto;
+        
+        margin-bottom: 3rem;
+  }
+  
+  .loadstatus .setrount .card-info{
+      width: 100%; 
+    height: 100%;
+  }
+    .loadstatus .setrount h5{
+ height: 6rem;
+    line-height: 5.3rem;
+    width: 100%;
+    }
+      .loadstatus .setrount small{
+          width: 100%; 
+      }
+  
+  .loadstatus .relatedrount{ 
+    border: 7px solid green;
+    width: 6rem;
+    height: 6rem;
+    display: inline-block;
+    border-radius: 100%;
+    text-align: center;
+        margin: 0 auto;
+        
+        margin-bottom: 3rem;
+  }
+  
+  .loadstatus .relatedrount .card-info{
+      width: 100%; 
+    height: 100%;
+  }
+    .loadstatus .relatedrount h5{
+ height: 6rem;
+    line-height: 5.3rem;
+    width: 100%;
+    }
+      .loadstatus .relatedrount small{
+          width: 100%; 
+      }
+  
+  
+  .loadstatus .vendorrount{ 
+    border: 7px solid yellow;
+    width: 6rem;
+    height: 6rem;
+    display: inline-block;
+    border-radius: 100%;
+    text-align: center;
+        margin: 0 auto;
+        
+        margin-bottom: 3rem;
+  }
+  
+  .loadstatus .vendorrount .card-info{
+      width: 100%; 
+    height: 100%;
+  }
+    .loadstatus .vendorrount h5{
+ height: 6rem;
+    line-height: 5.3rem;
+    width: 100%;
+    }
+      .loadstatus .vendorrount small{
+          width: 100%; 
+      }
+      
+      .loadstatus .customerrount{ 
+    border: 7px solid grey;
+    width: 6rem;
+    height: 6rem;
+    display: inline-block;
+    border-radius: 100%;
+    text-align: center;
+        margin: 0 auto;
+        
+        margin-bottom: 3rem;
+  }
+  
+  .loadstatus .customerrount .card-info{
+      width: 100%; 
+    height: 100%;
+  }
+    .loadstatus .customerrount h5{
+ height: 6rem;
+    line-height: 5.3rem;
+    width: 100%;
+    }
+      .loadstatus .customerrount small{
+          width: 100%; 
+      }
+      
+      
+      .loadstatus .supplierrount{ 
+    border: 7px solid #00cfe8;
+    width: 6rem;
+    height: 6rem;
+    display: inline-block;
+    border-radius: 100%;
+    text-align: center;
+        margin: 0 auto;
+        
+        margin-bottom: 3rem;
+  }
+  
+  .loadstatus .supplierrount .card-info{
+      width: 100%; 
+    height: 100%;
+  }
+    .loadstatus .supplierrount h5{
+ height: 6rem;
+    line-height: 5.3rem;
+    width: 100%;
+    }
+      .loadstatus .supplierrount small{
+          width: 100%; 
+      }

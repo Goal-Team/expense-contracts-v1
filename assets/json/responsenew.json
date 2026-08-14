@@ -1,0 +1,54 @@
+{
+    "renew": false,
+    "new_contract": {
+        "agreement_name": "Test",
+        "customer_id": 3,
+        "scope": "domestic",
+        "entity_type_id": 1,
+        "scope_of_services": [
+            "IP",
+            "OP",
+            "Others",
+            "Health Check"
+        ],
+        "discounts": [
+            {
+                "category": "IP",
+                "subcategory": "Room charges",
+                "discount_percent": 15,
+                "room_charges": []
+            },
+            {
+                "category": "IP",
+                "subcategory": "Investigation",
+                "discount_percent": 15,
+                "room_charges": []
+            }
+        ],
+        "health_check_rows": [
+            {
+                "row_name": "test",
+                "selected_test_ids": [
+                    105,
+                    106
+                ],
+                "package_price": 1500,
+                "selected_consultation_ids": [
+                    201
+                ],
+                "prices": {
+                    "201": 1500
+                },
+                "selected_others": []
+            }
+        ],
+        "locations": [
+            1,
+            2
+        ],
+        "start_date": "2025-12-01",
+        "end_date": "2025-12-31",
+        "duration_confirmed": false
+    },
+    "legacy_files": []
+}

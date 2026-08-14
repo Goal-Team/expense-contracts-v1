@@ -1,0 +1,169 @@
+@extends('layouts/layoutMaster')
+@section('title', ' Contracts')
+<!-- Vendor Styles -->
+@section('vendor-style')
+@vite([
+'resources/assets/vendor/libs/quill/typography.scss',
+'resources/assets/vendor/libs/quill/katex.scss',
+'resources/assets/vendor/libs/quill/editor.scss',
+'resources/assets/vendor/libs/select2/select2.scss',
+'resources/assets/vendor/libs/dropzone/dropzone.scss',
+'resources/assets/vendor/libs/flatpickr/flatpickr.scss',
+'resources/assets/vendor/libs/tagify/tagify.scss'
+])
+@endsection
+<!-- Vendor Scripts -->
+@section('vendor-script')
+@vite([
+'resources/assets/vendor/libs/quill/katex.js',
+ 'resources/assets/vendor/libs/quill/quill.js',
+'resources/assets/vendor/libs/cleavejs/cleave.js',
+'resources/assets/vendor/libs/cleavejs/cleave-phone.js',
+'resources/assets/vendor/libs/moment/moment.js',
+'resources/assets/vendor/libs/flatpickr/flatpickr.js',
+'resources/assets/vendor/libs/select2/select2.js',
+'resources/assets/vendor/libs/dropzone/dropzone.js',
+ 'resources/assets/vendor/libs/jquery-repeater/jquery-repeater.js'
+])
+
+<link href="{{url('/')}}/assets/css/custom.css" rel="stylesheet" />
+@endsection
+<!-- Page Scripts -->
+@section('page-script')
+@vite(['resources/assets/js/form-layouts.js','resources/assets/js/app-ecommerce-product-add.js'])
+
+<script type="module" src="{{url('/')}}/assets/js/jquery.validate.min.js"></script>
+<script type="module" src="{{url('/')}}/Modules/Contract/resources/assets/js/contract.js"></script>
+@endsection
+@section('content')
+<!--<h4 class="py-3 mb-4"><span class="text-muted fw-light">Add New Rules</span></h4>-->
+<div class="d-flex flex-column flex-md-row justify-content-between align-items-start align-items-md-center mb-3">
+   <div class="d-flex flex-column justify-content-center">
+      <h4 class="mb-1 mt-3">Import Contract Type</h4>
+   </div>
+   <div class="d-flex align-content-center flex-wrap gap-3">
+      <div class="d-flex gap-3">
+         <a href="{{url('/')}}" style="color: #FFF;text-decoration: none;"><button type="button" class="btn btn-label-primary">Back</button></a>
+      </div>
+   </div>
+</div>
+<!-- Multi Column with Form Separator -->
+<!-- Collapsible Section -->
+<div class="row my-4">
+    
+    <div class="card">
+   <div class="col">
+      
+      <div class="panel-group" id="accordion">
+    <div id="state" class="alert alert-success" style="display:none">Contract created successfully</div> 
+   <form    action="contract-type-store" method="POST" enctype="multipart/form-data">
+
+        @csrf 
+        @if ($message = Session::get('success'))
+        <p>{{ $message }}</p>
+        @endif
+        <div class="row">
+            <div class="col-sm-6 mt-3">
+                <div class="form-group">
+                    <label for="contractName">Contract Type Name <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control contractName" name="contractTypeName">
+                </div>
+            </div>
+            <div class="col-md-6 mt-3">
+                              <label class="form-label" for="catgoeryType">Department <span class="text-danger">*</span></label>
+                              <select id="catgoeryType" name="DepartmentType"
+                                 class="form-select select2" data-allow-clear="true">
+                                 <option value="">Select Department</option>
+                                 <option value="2">Admin</option>
+                                 <option value="3">Finance</option>
+                                 <option value="4">Secretarial</option>
+                                 <option value="5">Quality</option>
+                                 <option value="6">Legal</option>
+                                 <option value="7">Marketing</option>
+                                 <option value="8">Technology</option>
+                                 <option value="9">Human Resources</option>
+                                 <option value="10">Engineering</option>
+                                 <option value="11">Maintenance</option>
+                                 <option value="12">Food &amp; Beverages</option>
+                                 <option value="13">Pharmacy</option>
+                                 <option value="14">Blood Bank</option>
+                                 <option value="15">Radiology</option>
+                                 <option value="16">Oncology - NM</option>
+                                 <option value="17">Oncology - Therapy</option>
+                                 <option value="18">Ultrasound</option>
+                                 <option value="19">Gynecology</option>
+                                 <option value="20">Transplant</option>
+                                 <option value="21">Biomedical Engineering</option>
+                                 <option value="22">Medical Records</option>
+                                 <option value="23">House Keeping</option>
+                                 <option value="24">Transport</option>
+                                 <option value="25">Production</option>
+                                 <option value="26">Operations</option>
+                                 <option value="27">General Stores</option>
+                                 <option value="28">FEMA</option>
+                                 <option value="29">Fire</option>
+                                 <option value="30">Laboratory</option>
+                                 <option value="31">EHS</option>
+                                 <option value="32">EXIM</option>
+                                 <option value="33">Procurement</option>
+                                 <option value="34">Electrical Maintenance</option>
+                                 <option value="35">Mechanical</option>
+                                 <option value="36">Purchase</option>
+                                 <option value="37">Environmental Cell</option>
+                                 <option value="38">Estate</option>
+                                 <option value="39">Sales</option>
+                                 <option value="40">Corporate HR</option>
+                                 <option value="41">Energy Efficiency</option>
+                                 <option value="42">BOE</option>
+                                 <option value="43">Dump</option>
+                                 <option value="44">Materials</option>
+                              </select>
+                           </div>
+                           <div class="col-md-6 mt-3">
+                              <label class="form-label" for="DepartmentType">Category <span class="text-danger">*</span></label>
+                              <select id="DepartmentType" name="catgoeryType"
+                                 class="form-select select2 DepartmentType" data-allow-clear="true">
+                                 <option value="">Select Category</option>
+                                 <option value="1">C1</option>
+                                 <option value="2">C2</option>
+                                 <option value="3">C3</option>
+                                 <option value="4">C4</option>
+                                 <option value="5">C5</option>
+                                 <option value="6">C6</option>
+                                 <option value="7">C7</option>
+                                 <option value="8">C8</option>
+                                 <option value="9">C9</option>
+                                 <option value="10">C10</option>
+                              </select>
+                           </div>
+                          
+        </div> 
+        <button class="btn mt-3 btn-primary me-sm-3 me-1 waves-effect waves-light" type="submit">Submit</button>
+    </form>
+
+ <div class="d-flex flex-column justify-content-center mt-3 mb-3">
+      <h4 class="mb-1 mt-3">Upload excel file</h4>
+   </div> 
+    @if (session('error'))
+    <p>{{ session('error') }}</p>
+    @endif
+
+    @if ($message = Session::get('successupload'))
+    <p>{{ $message }}</p>
+    @endif
+
+      <form action="contract-type-import-store" class="mb-3" method="POST" enctype="multipart/form-data"> 
+        @csrf
+        <div class="col">
+            <label for="file">Choose Excel file:</label>
+            <input type="file" name="file" id="file" accept=".xlsx, .xls" required>
+        </div>
+        <div class="col mt-3">
+            <button class="btn btn-primary me-sm-3 me-1 waves-effect waves-light" type="submit">Import</button>
+        </div>
+        
+    </form>
+</div></div>
+   </div>
+</div>
+@endsection

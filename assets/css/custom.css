@@ -1,0 +1,239 @@
+.datepickr::after{
+   content: "";
+    font-family: tabler-icons !important;
+    speak: none;
+    font-style: normal;
+    font-weight: 400;
+    font-variant: normal;
+    text-transform: none;
+    line-height: 1;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+        float: right;
+    margin-top: -1.7rem;
+    margin-right: 0.5rem;
+        font-size: 1.3rem;
+}
+
+div.partiesPadding {
+    padding: 15px !important;
+}
+
+/* @media(max-width:767px){
+    table thead {
+      display: none;
+    }
+    table td {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-end;
+      border-bottom: 1px solid #eee;
+      font-size: 15px;
+      line-height: 1.35em;
+    }
+    table td:before {
+      content: attr(data-label);
+      font-size: 0.9em;
+      text-align: left;
+      font-weight: bold;
+      text-transform: capitalize;
+      max-width: 45%;
+      color: #545454;
+    }
+    table td + td {
+      margin-top: 0.8em;
+      text-align: left;
+    }
+    table td:last-child {
+      border-bottom: 0;
+    }
+    .project-list-table {
+      border-collapse: separate;
+      border-spacing: 0 12px
+    }
+    
+    .project-list-table tr {
+      background-color: #fff
+    }
+    
+    .table-nowrap td,
+    .table-nowrap th {
+      white-space: nowrap;
+    }
+    
+    .table-borderless>:not(caption)>*>* {
+      border-bottom-width: 0;
+    }
+    
+    .table>:not(caption)>*>* {
+      padding: 0.75rem 0.75rem;
+      background-color: var(--bs-table-bg);
+      border-bottom-width: 1px;
+      box-shadow: inset 0 0 0 9999px var(--bs-table-accent-bg);
+    }
+    table.table tbody tr:nth-of-type(odd) {
+        background-color: rgba(204, 209, 216, 0.5);
+    }
+    table.table tbody tr, table.table tbody td {
+    margin: 1rem 0;
+}
+} */
+.avatar-sm {
+  height: 2rem;
+  width: 2rem;
+}
+
+.rounded-circle {
+  border-radius: 50% !important;
+}
+
+.me-2 {
+  margin-right: 0.5rem !important;
+}
+
+img,
+svg {
+  vertical-align: middle;
+}
+
+a {
+  color: #3b76e1;
+  text-decoration: none;
+}
+
+.badge-soft-danger {
+  color: #f56e6e !important;
+  background-color: rgba(245, 110, 110, .1);
+}
+
+.badge-soft-success {
+  color: #63ad6f !important;
+  background-color: rgba(99, 173, 111, .1);
+}
+
+.badge-soft-primary {
+  color: #3b76e1 !important;
+  background-color: rgba(59, 118, 225, .1);
+}
+
+.badge-soft-info {
+  color: #57c9eb !important;
+  background-color: rgba(87, 201, 235, .1);
+}
+
+.avatar-title {
+  align-items: center;
+  background-color: #3b76e1;
+  color: #fff;
+  display: flex;
+  font-weight: 500;
+  height: 100%;
+  justify-content: center;
+  width: 100%;
+}
+
+.bg-soft-primary {
+  background-color: rgba(59, 118, 225, .25) !important;
+}
+#financial_list_table_length,#financial_list_table_filter
+{
+  display: none;
+}
+@media screen and (min-width: 600px) {
+  table caption {
+    font-size: 1.5em;
+  }
+  table thead {
+    display: table-header-group;
+  }
+  /*table tr {
+    display: table-row;
+    border: 0;
+  }*/
+  table th, table td {
+    text-align: center;
+  }
+  table th {
+    font-size: 0.85em;
+    text-transform: uppercase;
+  }
+  table td {
+    display: table-cell;
+  }
+  table td:before {
+    display: none;
+  }
+  table td:last-child {
+    border-bottom: 1px solid #eee;
+  }
+}
+
+@media screen and (min-width: 600px) {
+  table caption {
+    font-size: 1.5em;
+  }
+  table thead {
+    display: table-header-group;
+  }
+  /*table tr {
+    display: table-row;
+    border: 0;
+  }*/
+  table th, table td {
+    text-align: center;
+  }
+  table th {
+    font-size: 0.85em;
+    text-transform: uppercase;
+    font-weight: bold;
+  }
+  table td {
+    display: table-cell;
+  }
+  table td:before {
+    display: none;
+  }
+  table td:last-child {
+    border-bottom: 1px solid #eee;
+  }
+}
+
+@media screen and (max-width: 768px) {
+
+    .mx-2 {
+        margin-right: -13.5rem !important;
+        /* margin-left: .5rem !important; */
+    }
+    table td:before {
+      
+      text-align: left;
+      
+    }
+    table td + td {
+        margin-top: 0; 
+      text-align: left;
+    }
+    
+html:not([dir=rtl]) div.card-datatable table.dataTable tbody td:first-child {
+        padding-left: 1rem;
+    }
+}
+
+.buy-now .btn-buy-now {
+    position: fixed;
+    bottom: 3rem;
+    right: 1.5rem;
+    z-index: 1080;
+    box-shadow: 0 1px 20px 1px #3035a9!important;
+}
+
+
+
+
+
+
+
+  .form-control:disabled {
+    background-color: #4b465c14!important;
+    opacity: 1;
+  }

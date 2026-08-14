@@ -1,0 +1,796 @@
+<?php
+
+namespace Modules\Contract\Http\Controllers;
+
+use App\Http\Controllers\Controller;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+
+use Illuminate\Support\Facades\Validator;
+use App\Models\AddUsers;
+use App\Models\ApprovalContracts;
+use App\Models\Branch;
+use App\Models\Category;
+use App\Models\ContractParties;
+use App\Models\ContractType;
+use App\Models\CustomFields;
+use App\Models\CustomFieldsHistory;
+use App\Models\CustomFieldsTimeline;
+use App\Models\Contract;
+use App\Models\CustomFieldsData;
+use App\Models\ContractPartyData;
+use App\Models\ContractCategories;
+use App\Models\EntityBusiness;
+use DateTime;
+use App\Models\Country;
+use App\Models\ContractPartiesLabel;
+
+use App\Models\ContractsStatus;
+
+
+use App\Models\FinancialLimit;
+
+use Illuminate\Support\Facades\DB;
+
+use Illuminate\Support\Facades\Log;
+
+use App\Models\FlowActivity;
+
+use Rap2hpoutre\FastExcel\FastExcel;
+
+use Maatwebsite\Excel\Facades\Excel;
+
+
+use Modules\Contract\Exports\ArrayExport;
+
+
+use App\Helpers\Helpers;
+
+use PhpOffice\PhpSpreadsheet\Spreadsheet;
+use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
+use PhpOffice\PhpSpreadsheet\Cell\DataValidation;
+use PhpOffice\PhpSpreadsheet\IOFactory;
+
+use Modules\Contract\Http\Controllers\GoogleDriveController;
+
+class ContractImportController extends Controller
+{
+
+    public function __construct()
+    {
+        //   if(Controller::checkCurrentAuth("Contracts") != 1){
+        //       return abort('404');
+        //   }
+    }
+
+
+    public function storeFile(Request $request)
+    {
+
+        $controller = new GoogleDriveController();
+
+        // if ($request->hasFile('files')) {
+        //     $files = $request->file('files');
+
+        //     foreach ($files as $file) {
+        //         print_r($file->getClientOriginalName());
+        //         // $ss = $controller->storeFile($file, $namePartygroup . '-' . $contract->id);
+        //         // Contract::where('id', $contract->id)->update(['contract_attachment' => $ss]);
+        //     }
+        // }
+        // // 
+        // return  $request->all();;
+        $value = session('datafull');
+        foreach ($value as $key => $val) {
+            $contract_type_id = ContractType::where('contract_type', $key)->pluck('contract_type_id')->first();
+            $cname = $key;
+
+            echo '<pre>';
+            foreach ($val as $ckey => $chaildval) {
+                if ($ckey > 0) {
+                    // foreach ($chaildval as $cckey => $cchaildval) {
+
+
+                    // if ($cckey > 26) {
+
+                    // $entities = DB::table('entity')
+                    //     ->where(aes_decrypt('Nameoftheentity', 'dummy.entity'), $chaildval[1])
+                    //     ->pluck('id');
+
+                    if (isset($chaildval[1])) {
+                        $department_id =  EntityBusiness::where('name', $chaildval[1])->pluck('id')->first();
+
+                        $catgoery_id =  ContractCategories::where('name', $chaildval[2])->pluck('id')->first();
+
+                        $exclusivity = $chaildval[3];
+
+                        $contract_description = $chaildval[4];
+
+                        $party1_type = $chaildval[5];
+                        $party1_partyname = DB::table('entity')
+                            ->whereRaw("AES_DECRYPT(Nameoftheentity, 'dummy.entity') = ?", [$chaildval[6]])
+                            ->value('id');
+                        $party1_internalBranch =  DB::table('branch')
+                            ->whereRaw("AES_DECRYPT(BranchName, 'dummy.branch') = ?", [$chaildval[7]])
+                            ->value('id');
+
+                        $party1_external_partyname = ContractParties::where('company_name', decryptString($chaildval[8], 'company_name'))->pluck('id');
+
+                        $party2_type = $chaildval[9];
+                        $party2_partyname = DB::table('entity')
+                            ->whereRaw("AES_DECRYPT(Nameoftheentity, 'dummy.entity') = ?", [$chaildval[10]])
+                            ->value('id');;
+                        $party2_internalBranch =  DB::table('branch')
+                            ->whereRaw("AES_DECRYPT(BranchName, 'dummy.branch') = ?", [$chaildval[11]])
+                            ->value('id');
+                        $party2_external_partyname = ContractParties::where('company_name', decryptString($chaildval[12], 'company_name'))->pluck('id');
+
+
+                        $owner = AddUsers::whereRaw("AES_DECRYPT(FirstName, 'dummy.AddUsers') = ?", [$chaildval[13]])
+                            ->pluck('id')
+                            ->first();
+
+                        $signatory = AddUsers::whereRaw("AES_DECRYPT(FirstName, 'dummy.AddUsers') = ?", [$chaildval[14]])
+                            ->pluck('id')
+                            ->first();
+
+                        $signing_date = $chaildval[15];
+
+                        $currency = $chaildval[16];
+
+                        $currency_value = $chaildval[17];
+                        $payment_schedule = $chaildval[18];
+
+                        $payment_terms = $chaildval[19];
+                        $billing_frequency = $chaildval[17];
+
+                        $taxes = $chaildval[18];
+                        $escalation_clauses = $chaildval[19];
+                        $discounts = $chaildval[20];
+                        $retention = $chaildval[21];
+                        $payment_escrow = $chaildval[22];
+                        $financial_guarantees = $chaildval[23];
+
+
+                        // return $chaildval;
+
+
+                        $contract = Contract::create([
+                            'contract_mode' => 'old',
+                            'contract_name' => '',
+                            'contract_type' => $contract_type_id,
+                            'contract_description' => $contract_description,
+
+                            'department_id' => $department_id,
+                            'catgoery_id' => $catgoery_id,
+
+                            'signatory' => $signatory,
+                            'owner' => $owner,
+
+                            // Contract Duration
+                            // 'signing_date' => $signing_date,
+
+                            'reminder_first_alert' => 'Renewal/Internal Due Date',
+                            'reminder_first_alertMeOn' => '1 days prior',
+                            'reminder_first_alert_repeats' => 'Daily',
+
+                            'reminder_second_alert' =>  'Renewal/Internal Due Date',
+                            'reminder_second_alertMeOn' => '1 days prior',
+                            'reminder_second_alert_repeats' => 'Daily',
+
+                            'reminder_escalation_alert' =>  'Renewal/Internal Due Date',
+                            'reminder_escalation_alertMeOn' => '1 days prior',
+                            'reminder_escalation_alert_repeats' => 'Daily',
+                            'rules_id' => '',
+
+                            // Contract Value
+                            'currency' => $currency,
+                            'currency_value' => $currency_value,
+                            'payment_schedule' => $payment_schedule,
+                            'currency_contract' => $currency,
+                            'payment_terms' => $payment_terms,
+                            'billing_frequency' => $billing_frequency,
+                            'taxes' => $taxes,
+                            'escalation_clauses' => $escalation_clauses,
+                            'discounts' => $discounts,
+                            'retention' => $retention,
+                            'payment_escrow' => $payment_escrow,
+                            'financial_guarantees' => $financial_guarantees,
+                            'contract_attachment' => 0,
+                        ]);
+
+                        ContractPartyData::create([
+                            'custom_field_group_id' => $contract->id,
+                            'contract_party_type' => $party1_type,
+                            'contract_party_id' => $party1_partyname,
+                            'contract_party_exe_id' => $party1_external_partyname,
+                            'contract_party_location_id' => $party1_internalBranch,
+                        ]);
+                        ContractPartyData::create([
+                            'custom_field_group_id' => $contract->id,
+                            'contract_party_type' => $party2_type,
+                            'contract_party_id' => $party2_partyname,
+                            'contract_party_exe_id' => $party2_external_partyname,
+                            'contract_party_location_id' => $party2_internalBranch,
+                        ]);
+
+
+
+                        $namePartygroup = $cname . '-';
+
+                        if ($party1_type == 'external') {
+                            $namePartygroup .= $chaildval[6] . ',';
+                        } else {
+                            $namePartygroup .= $chaildval[8] . ',';
+                        }
+
+
+                        if ($party2_type == 'external') {
+                            $namePartygroup .= $chaildval[10];
+                        } else {
+                            $namePartygroup .= $chaildval[12];
+                        }
+
+                        $namePartygroup .= '-' . date("Y");
+                        Contract::where('id', $contract->id)->update(['contract_name' => $namePartygroup]);
+
+                        $customFields = CustomFields::where('status', 1)->where('contract_type', 1)->orderBy('order_id')->pluck('custom_field_id');
+
+                        // print_r($customFields);
+
+
+                        if ($request->hasFile('files')) {
+                            $files = $request->file('files');
+                            foreach ($files as $file) {
+                                if ($file->getClientOriginalName() == $chaildval['26']) {
+                                    $ss = $controller->storeFile($file, $namePartygroup . '-' . $contract->id, $contract->id);
+                                    Contract::where('id', $contract->id)->update(['contract_attachment' => $ss]);
+                                }
+                            }
+                        }
+
+                        $cudo = 0;
+                        foreach ($chaildval as $cckey => $customField) {
+                            if ($cckey > 26) {
+                                if (isset($customField) && isset($customFields[$cudo])) {
+                                    CustomFieldsData::create([
+                                        'custom_field_id' => $customFields[$cudo],
+                                        'custom_field_group' => 'contracts',
+                                        'custom_field_value' =>  $customField,
+                                        'custom_field_group_id' => $contract->id
+                                    ]);
+                                }
+                                $cudo++;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // return redirect()->back()->with('success', 'Files uploaded successfully.');
+    }
+    public function uploadFile(Request $request)
+    {
+
+
+
+        $file = $request->file('file');
+        $filePath = $file->getRealPath();
+
+        try {
+            // Load the spreadsheet
+            $spreadsheet = IOFactory::load($filePath);
+
+            $data = [];
+
+            // Loop through each sheet in the spreadsheet
+            foreach ($spreadsheet->getAllSheets() as $sheet) {
+                $sheetData = [];
+                $sheetName = $sheet->getTitle();
+
+                // Loop through each row of the worksheet
+                foreach ($sheet->getRowIterator() as $row) {
+                    $cellIterator = $row->getCellIterator();
+                    $cellIterator->setIterateOnlyExistingCells(false); // Loop through all cells, even if not set
+
+                    $rowData = [];
+                    foreach ($cellIterator as $cell) {
+                        $rowData[] = $cell->getValue();
+                    }
+                    $sheetData[] = $rowData;
+                }
+
+                // Add the sheet data to the main data array with the sheet name as the key
+                $data[$sheetName] = $sheetData;
+            }
+
+            // Pass the data to the view or redirect with the data
+            session(['datafull' => $data]);
+
+            return redirect()->back()->with('data', $data);
+        } catch (\Exception $e) {
+            // Handle exception
+            return redirect()->back()->with('error', 'Error loading spreadsheet: ' . $e->getMessage());
+        }
+    }
+
+
+
+    public function contractBuilkImport(Request $request)
+    {
+
+        $contractTypes = ContractType::get();
+        return view('contract::contractimport.contractBuilkImport')->with('contractTypes', $contractTypes);
+    }
+
+    public function templateDownload(Request $request)
+    {
+
+
+
+
+        $spreadsheet = new Spreadsheet();
+        $writer = new Xlsx($spreadsheet);
+
+        $sheet = $spreadsheet->getActiveSheet();
+
+
+        $customFields = CustomFields::where('status', 1)->where('contract_type', 1)->orderBy('order_id')->get();
+
+        $contractTypes = ContractType::get();
+        foreach ($customFields as $customField) {
+            // echo '<pre>';
+            // echo decryptString($customField->field_name, 'typename');
+            // echo '</pre>';
+        }
+
+        // {{ decryptString($customField->field_name, 'typename') }}
+
+
+        $categorys = Category::where('category_group', 'contract')->get();
+        $contractTypes = ContractType::get();
+
+
+        $entities = DB::table('entity')
+            ->select(DB::raw("id, AES_DECRYPT(Nameoftheentity, 'dummy.entity') as Nameoftheentity"))
+            ->get();
+        $contractParties =  ContractParties::select('*')->get();
+
+
+
+
+
+
+
+
+
+
+        $users = AddUsers::select(DB::raw("id, AES_DECRYPT(FirstName,'dummy.AddUsers') AS FirstName"))->get();
+
+
+        $contractParties =  ContractParties::pluck('company_name');
+        $contractPartiesData = [];
+        foreach ($contractParties as $contractPartie) {
+            if (decryptString($contractPartie, 'company_name') != null) {
+                $contractPartiesData[] = decryptString($contractPartie, 'company_name');
+            }
+        }
+
+        $contractPartiesData = '"' . implode('", "', $contractPartiesData) . '"';
+
+
+
+
+
+
+
+        $ent =  '"' . EntityBusiness::pluck('name')->implode(', ') . '"';
+
+        $catego =  '"' . ContractCategories::pluck('name')->implode(', ') . '"';
+
+
+        $branchs = '"' . Branch::select(
+            aes_decrypt('BranchName', 'dummy.branch'),
+        )->pluck('BranchName')->implode(', ') . '"';
+
+
+        $catego =  '"' . ContractCategories::pluck('name')->implode(', ') . '"';
+
+        $entities = '"' . DB::table('entity')
+            ->select(aes_decrypt('Nameoftheentity', 'dummy.entity'))
+            ->pluck('Nameoftheentity')->implode(', ') . '"';
+
+
+        $users = '"' . AddUsers::select(DB::raw("AES_DECRYPT(FirstName,'dummy.AddUsers') AS FirstName"))->pluck('FirstName')->implode(', ') . '"';
+
+        if (isset($request->ContractType)) {
+            $key = array_search(0, $request->ContractType);
+            // Get contract types from your model
+            if ($key !== false) {
+                $ContractTypes = ContractType::pluck('contract_type', 'contract_type_id')->toArray();
+            } else {
+                $ContractTypes = ContractType::whereNotIn('contract_type_id', [0])
+                    ->whereIn('contract_type_id', $request->ContractType)
+                    ->pluck('contract_type', 'contract_type_id')
+                    ->toArray();
+            }
+        } else {
+            $ContractTypes = ContractType::pluck('contract_type', 'contract_type_id')->toArray();
+        }
+
+        $maxrows = 5;
+        foreach ($ContractTypes as $key => $ContractType) {
+            // Create a new sheet for each contract type
+            $newSheet = clone $sheet;
+            $newSheet->setTitle($ContractType);
+
+            $newSheet->setCellValue('A1', 'Contract');
+            for ($row = 2; $row <= $maxrows; $row++) {
+                $cell = 'A' . $row;
+                $validation = $newSheet->getCell($cell)->getDataValidation();
+                $validation->setType(DataValidation::TYPE_LIST);
+                $validation->setErrorStyle(DataValidation::STYLE_STOP);
+                $validation->setShowDropDown(true);
+                $validation->setShowInputMessage(true);
+                $validation->setShowErrorMessage(true);
+                $validation->setErrorTitle('Input error');
+                $validation->setError('Value is not in list.');
+                $validation->setPromptTitle('Pick from list');
+                $validation->setPrompt('Please pick a value from the dropdown list.');
+                $validation->setFormula1('"' . implode(',', ['New', 'Legacy Contracts']) . '"');
+            }
+            $newSheet->setCellValue('B1', 'Department');
+            for ($row = 2; $row <= $maxrows; $row++) {
+                $cell = 'B' . $row;
+                $validation = $newSheet->getCell($cell)->getDataValidation();
+                $validation->setType(DataValidation::TYPE_LIST);
+                $validation->setErrorStyle(DataValidation::STYLE_STOP);
+                $validation->setShowDropDown(true);
+                $validation->setShowInputMessage(true);
+                $validation->setShowErrorMessage(true);
+                $validation->setErrorTitle('Input error');
+                $validation->setError('Value is not in list.');
+                $validation->setPromptTitle('Pick from list');
+                $validation->setPrompt('Please pick a value from the dropdown list.');
+                $validation->setFormula1($ent);
+            }
+            $newSheet->setCellValue('C1', 'Category');
+            for ($row = 2; $row <= $maxrows; $row++) {
+                $cell = 'C' . $row;
+                $validation = $newSheet->getCell($cell)->getDataValidation();
+                $validation->setType(DataValidation::TYPE_LIST);
+                $validation->setErrorStyle(DataValidation::STYLE_STOP);
+                $validation->setShowDropDown(true);
+                $validation->setShowInputMessage(true);
+                $validation->setShowErrorMessage(true);
+                $validation->setErrorTitle('Input error');
+                $validation->setError('Value is not in list.');
+                $validation->setPromptTitle('Pick from list');
+                $validation->setPrompt('Please pick a value from the dropdown list.');
+                $validation->setFormula1($catego);
+            }
+
+            $newSheet->setCellValue('D1', 'Exclusivity');
+
+            for ($row = 2; $row <= $maxrows; $row++) {
+                $cell = 'D' . $row;
+                $validation = $newSheet->getCell($cell)->getDataValidation();
+                $validation->setType(DataValidation::TYPE_LIST);
+                $validation->setErrorStyle(DataValidation::STYLE_STOP);
+                $validation->setShowDropDown(true);
+                $validation->setShowInputMessage(true);
+                $validation->setShowErrorMessage(true);
+                $validation->setErrorTitle('Input error');
+                $validation->setError('Value is not in list.');
+                $validation->setPromptTitle('Pick from list');
+                $validation->setPrompt('Please pick a value from the dropdown list.');
+                $validation->setFormula1('"' . implode(',', ['Exclusivity to Company', 'Exclusive to Contracting Party', 'Mutually Exclusive', 'Non Exclusive']) . '"');
+            }
+
+
+            $newSheet->setCellValue('E1', 'Contract Description');
+
+            $newSheet->setCellValue('F1', 'Party 1 Type');
+
+            for ($row = 2; $row <= $maxrows; $row++) {
+                $cell = 'F' . $row;
+                $validation = $newSheet->getCell($cell)->getDataValidation();
+                $validation->setType(DataValidation::TYPE_LIST);
+                $validation->setErrorStyle(DataValidation::STYLE_STOP);
+                $validation->setShowDropDown(true);
+                $validation->setShowInputMessage(true);
+                $validation->setShowErrorMessage(true);
+                $validation->setErrorTitle('Input error');
+                $validation->setError('Value is not in list.');
+                $validation->setPromptTitle('Pick from list');
+                $validation->setPrompt('Please pick a value from the dropdown list.');
+                $validation->setFormula1('"' . implode(',', ['Internal,External']) . '"');
+            }
+
+
+            $newSheet->setCellValue('G1', 'Party 1 Internal Party Name');
+            for ($row = 2; $row <= $maxrows; $row++) {
+                $cell = 'G' . $row;
+                $validation = $newSheet->getCell($cell)->getDataValidation();
+                $validation->setType(DataValidation::TYPE_LIST);
+                $validation->setErrorStyle(DataValidation::STYLE_STOP);
+                $validation->setShowDropDown(true);
+                $validation->setShowInputMessage(true);
+                $validation->setShowErrorMessage(true);
+                $validation->setErrorTitle('Input error');
+                $validation->setError('Value is not in list.');
+                $validation->setPromptTitle('Pick from list');
+                $validation->setPrompt('Please pick a value from the dropdown list.');
+                $validation->setFormula1($entities);
+            }
+
+
+
+
+
+            $newSheet->setCellValue('H1', 'Party 1 Internal Location (Branch Address)');
+
+            for ($row = 2; $row <= $maxrows; $row++) {
+                $cell = 'H' . $row;
+                $validation = $newSheet->getCell($cell)->getDataValidation();
+                $validation->setType(DataValidation::TYPE_LIST);
+                $validation->setErrorStyle(DataValidation::STYLE_STOP);
+                $validation->setShowDropDown(true);
+                $validation->setShowInputMessage(true);
+                $validation->setShowErrorMessage(true);
+                $validation->setErrorTitle('Input error');
+                $validation->setError('Value is not in list.');
+                $validation->setPromptTitle('Pick from list');
+                $validation->setPrompt('Please pick a value from the dropdown list.');
+                $validation->setFormula1($branchs);
+            }
+
+
+            $newSheet->setCellValue('I1', 'Party 1 External Party Name');
+            for ($row = 2; $row <= $maxrows; $row++) {
+                $cell = 'I' . $row;
+                $validation = $newSheet->getCell($cell)->getDataValidation();
+                $validation->setType(DataValidation::TYPE_LIST);
+                $validation->setErrorStyle(DataValidation::STYLE_STOP);
+                $validation->setShowDropDown(true);
+                $validation->setShowInputMessage(true);
+                $validation->setShowErrorMessage(true);
+                $validation->setErrorTitle('Input error');
+                $validation->setError('Value is not in list.');
+                $validation->setPromptTitle('Pick from list');
+                $validation->setPrompt('Please pick a value from the dropdown list.');
+                $validation->setFormula1($contractPartiesData);
+            }
+
+            $newSheet->setCellValue('J1', 'Party 2 Type');
+            for ($row = 2; $row <= $maxrows; $row++) {
+                $cell = 'J' . $row;
+                $validation = $newSheet->getCell($cell)->getDataValidation();
+                $validation->setType(DataValidation::TYPE_LIST);
+                $validation->setErrorStyle(DataValidation::STYLE_STOP);
+                $validation->setShowDropDown(true);
+                $validation->setShowInputMessage(true);
+                $validation->setShowErrorMessage(true);
+                $validation->setErrorTitle('Input error');
+                $validation->setError('Value is not in list.');
+                $validation->setPromptTitle('Pick from list');
+                $validation->setPrompt('Please pick a value from the dropdown list.');
+                $validation->setFormula1('"' . implode(',', ['Internal,External']) . '"');
+            }
+
+            $newSheet->setCellValue('K1', 'Party 2 Internal Party Name');
+            for ($row = 2; $row <= $maxrows; $row++) {
+                $cell = 'K' . $row;
+                $validation = $newSheet->getCell($cell)->getDataValidation();
+                $validation->setType(DataValidation::TYPE_LIST);
+                $validation->setErrorStyle(DataValidation::STYLE_STOP);
+                $validation->setShowDropDown(true);
+                $validation->setShowInputMessage(true);
+                $validation->setShowErrorMessage(true);
+                $validation->setErrorTitle('Input error');
+                $validation->setError('Value is not in list.');
+                $validation->setPromptTitle('Pick from list');
+                $validation->setPrompt('Please pick a value from the dropdown list.');
+                $validation->setFormula1($entities);
+            }
+
+
+
+            $newSheet->setCellValue('L1', 'Party 2 Internal Location (Branch Address)');
+            for ($row = 2; $row <= $maxrows; $row++) {
+                $cell = 'L' . $row;
+                $validation = $newSheet->getCell($cell)->getDataValidation();
+                $validation->setType(DataValidation::TYPE_LIST);
+                $validation->setErrorStyle(DataValidation::STYLE_STOP);
+                $validation->setShowDropDown(true);
+                $validation->setShowInputMessage(true);
+                $validation->setShowErrorMessage(true);
+                $validation->setErrorTitle('Input error');
+                $validation->setError('Value is not in list.');
+                $validation->setPromptTitle('Pick from list');
+                $validation->setPrompt('Please pick a value from the dropdown list.');
+                $validation->setFormula1($branchs);
+            }
+
+
+            $newSheet->setCellValue('M1', 'Party 2 External Party Name');
+            for ($row = 2; $row <= $maxrows; $row++) {
+                $cell = 'M' . $row;
+                $validation = $newSheet->getCell($cell)->getDataValidation();
+                $validation->setType(DataValidation::TYPE_LIST);
+                $validation->setErrorStyle(DataValidation::STYLE_STOP);
+                $validation->setShowDropDown(true);
+                $validation->setShowInputMessage(true);
+                $validation->setShowErrorMessage(true);
+                $validation->setErrorTitle('Input error');
+                $validation->setError('Value is not in list.');
+                $validation->setPromptTitle('Pick from list');
+                $validation->setPrompt('Please pick a value from the dropdown list.');
+                $validation->setFormula1($contractPartiesData);
+            }
+
+            $newSheet->setCellValue('N1', 'Co-ordinator');
+            for ($row = 2; $row <= $maxrows; $row++) {
+                $cell = 'N' . $row;
+                $validation = $newSheet->getCell($cell)->getDataValidation();
+                $validation->setType(DataValidation::TYPE_LIST);
+                $validation->setErrorStyle(DataValidation::STYLE_STOP);
+                $validation->setShowDropDown(true);
+                $validation->setShowInputMessage(true);
+                $validation->setShowErrorMessage(true);
+                $validation->setErrorTitle('Input error');
+                $validation->setError('Value is not in list.');
+                $validation->setPromptTitle('Pick from list');
+                $validation->setPrompt('Please pick a value from the dropdown list.');
+                $validation->setFormula1($users);
+            }
+
+            $newSheet->setCellValue('O1', 'Signatory');
+            for ($row = 2; $row <= $maxrows; $row++) {
+                $cell = 'O' . $row;
+                $validation = $newSheet->getCell($cell)->getDataValidation();
+                $validation->setType(DataValidation::TYPE_LIST);
+                $validation->setErrorStyle(DataValidation::STYLE_STOP);
+                $validation->setShowDropDown(true);
+                $validation->setShowInputMessage(true);
+                $validation->setShowErrorMessage(true);
+                $validation->setErrorTitle('Input error');
+                $validation->setError('Value is not in list.');
+                $validation->setPromptTitle('Pick from list');
+                $validation->setPrompt('Please pick a value from the dropdown list.');
+                $validation->setFormula1($users);
+            }
+
+            $newSheet->setCellValue('P1', 'Fixed Date');
+            // for ($row = 2; $row <= $maxrows; $row++) {
+            //     $cell = 'P' . $row;
+            //     $validation = $newSheet->getCell($cell)->getDataValidation();
+            //     $validation->setType(DataValidation::TYPE_DATE);
+            //     $validation->setErrorStyle(DataValidation::STYLE_STOP);
+            //     $validation->setShowDropDown(true);  // This is optional for date validation
+            //     $validation->setShowInputMessage(true);
+            //     $validation->setShowErrorMessage(true);
+            //     $validation->setErrorTitle('Input error');
+            //     $validation->setError('Value must be a valid date.');
+            //     $validation->setPromptTitle('Enter a date');
+            //     $validation->setPrompt('Please enter a date in the format YYYY-MM-DD.');
+            // }
+
+            $newSheet->setCellValue('Q1', 'Contract Currency');
+            $newSheet->setCellValue('R1', 'Contract Value');
+
+            $newSheet->setCellValue('S1', 'Payment Schedule');
+            $newSheet->setCellValue('T1', 'Billing Frequency');
+            for ($row = 2; $row <= $maxrows; $row++) {
+                $cell = 'T' . $row;
+                $validation = $newSheet->getCell($cell)->getDataValidation();
+                $validation->setType(DataValidation::TYPE_LIST);
+                $validation->setErrorStyle(DataValidation::STYLE_STOP);
+                $validation->setShowDropDown(true);
+                $validation->setShowInputMessage(true);
+                $validation->setShowErrorMessage(true);
+                $validation->setErrorTitle('Input error');
+                $validation->setError('Value is not in list.');
+                $validation->setPromptTitle('Pick from list');
+                $validation->setPrompt('Please pick a value from the dropdown list.');
+                $validation->setFormula1('"' . implode(',', ['Monthly', 'Quarterly', 'Annually']) . '"');
+            }
+
+            $newSheet->setCellValue('U1', 'Taxes and Fees');
+            $newSheet->setCellValue('V1', 'Escalation Clauses');
+            $newSheet->setCellValue('W1', 'Discounts or Rebates');
+            $newSheet->setCellValue('X1', 'Retention or Holdbacks');
+            $newSheet->setCellValue('Y1', 'Payment Escrow');
+            $newSheet->setCellValue('Z1', 'Financial Guarantees or Bonds');
+            $newSheet->setCellValue('AA1', 'Contract Attachments');
+
+            // Currency Conversion
+
+
+            // 
+            // $key
+
+            $categorys = Category::where('category_group', 'contract')->get();
+
+            // echo '<pre>';
+            $alphabetArray = range('A', 'Z');
+
+
+            foreach ($categorys as $category) {
+                $customFields = CustomFields::where('status', 1)->where('contract_type', $key)->where('category', $category->category_id)->orderBy('order_id')->get();
+                $k = 1;
+                foreach ($customFields as $customField) {
+                    $newSheet->setCellValue('A' . $alphabetArray[$k] . '1', decryptString($customField->field_name, 'typename'));
+
+                    for ($row = 2; $row <= $maxrows; $row++) {
+                        $cell = 'A' . $alphabetArray[$k] . $row;
+                        $validation = $newSheet->getCell($cell)->getDataValidation();
+
+                        if ($customField->field_type == 'date') {
+                            $validation->setType(DataValidation::TYPE_DATE);
+                            $validation->setErrorStyle(DataValidation::STYLE_STOP);
+                            $validation->setShowDropDown(true);  // This is optional for date validation
+                            $validation->setShowInputMessage(true);
+                            $validation->setShowErrorMessage(true);
+                            $validation->setErrorTitle('Input error');
+                            $validation->setError('Value must be a valid date.');
+                            $validation->setPromptTitle('Enter a date');
+                            $validation->setPrompt('Please enter a date in the format YYYY-MM-DD.');
+                        }
+                        if ($customField->field_type == 'currency') {
+                            $validation->setType(DataValidation::TYPE_LIST);
+                            $validation->setErrorStyle(DataValidation::STYLE_STOP);
+                            $validation->setShowDropDown(true);
+                            $validation->setShowInputMessage(true);
+                            $validation->setShowErrorMessage(true);
+                            $validation->setErrorTitle('Input error');
+                            $validation->setError('Value is not in list.');
+                            $validation->setPromptTitle('Pick from list');
+                            $validation->setPrompt('Please pick a value from the dropdown list.');
+                            $validation->setFormula1('"' . implode(',', ['INR', 'USD']) . '"');
+                        }
+                        if ($customField->field_type == 'number') {
+                            $validation->setType(DataValidation::TYPE_DECIMAL);
+                            $validation->setErrorStyle(DataValidation::STYLE_STOP);
+                            $validation->setShowDropDown(true);
+                            $validation->setShowInputMessage(true);
+                            $validation->setShowErrorMessage(true);
+                            $validation->setErrorTitle('Input error');
+                            $validation->setError('Value is not in list.');
+                            $validation->setPromptTitle('Pick from list');
+                            $validation->setPrompt('Please pick a value from the dropdown list.');
+                            $validation->setFormula1($users);
+                        }
+                        if ($customField->field_type == 'select') {
+                            $validation->setType(DataValidation::TYPE_LIST);
+                            $validation->setErrorStyle(DataValidation::STYLE_STOP);
+                            $validation->setShowDropDown(true);
+                            $validation->setShowInputMessage(true);
+                            $validation->setShowErrorMessage(true);
+                            $validation->setErrorTitle('Input error');
+                            $validation->setError('Value is not in list.');
+                            $validation->setPromptTitle('Pick from list');
+                            $validation->setPrompt('Please pick a value from the dropdown list.');
+
+                            $array = explode(',', $customField->field_default_value);
+
+                            $validation->setFormula1('"' . implode(',', $array) . '"');
+                        }
+                    }
+                    $k++;
+                }
+            }
+            $spreadsheet->addSheet($newSheet);
+        }
+
+        // return  $users;
+        $spreadsheet->removeSheetByIndex(0);
+
+        $temp_file = tempnam(sys_get_temp_dir(), 'phpspreadsheet');
+        $writer->save($temp_file);
+
+        return response()->download($temp_file, 'contracts.xlsx')->deleteFileAfterSend(true);
+    }
+}

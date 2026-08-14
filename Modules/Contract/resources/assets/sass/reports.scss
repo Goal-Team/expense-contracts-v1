@@ -1,0 +1,19 @@
+#deprtmentsChart .apexcharts-canvas {
+    margin: 0 auto !important;
+}
+
+#locationTable_filter input[type=search]{
+    max-width: 125px;
+}
+
+@media print {
+    body {
+      visibility: hidden;
+    }
+    #section-to-print {
+        visibility: visible;
+        position: absolute;
+        left: 0;
+        top: 0;
+    }
+}

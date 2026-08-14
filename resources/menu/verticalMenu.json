@@ -1,0 +1,121 @@
+{
+  "menu": [
+    {
+      "url": "",
+      "name": "Dashboard",
+      "icon": "menu-icon ti ti-layout-dashboard",
+      "slug": "contractDashboard"
+    },
+    {
+      "url": "contracts/list",
+      "name": "Contracts",
+      "icon": "menu-icon ti ti-clipboard-text",
+      "slug": "listContract,viewContract,renewCreateContract,renewContract,contractCreate,contractBuilkImport"
+    },
+    {
+      "url": "",
+      "name": "Setup",
+      "icon": "menu-icon tf-icons ti ti-settings",
+      "slug": "contract-setup.financial,contract-setup.index,contract-setup.indexParty,contract-setup.indexPartyIndividual,contract-setup.contractTypeList,contract-setup.fileConfig,contract-setup.clauseSetup,reminderEmails,contract-setup.clauseTemplateAdd,contract-setup.financial-edit,contract-setup.annexures.index",
+      "submenu": [
+        {
+          "url": "contract-setup/contract-custom-fields",
+          "name": "Custom Fields",
+          "slug": "contract-setup.index"
+        },
+        {
+          "url": "contract-setup/annexures",
+          "name": "Annexure Master",
+          "slug": "contract-setup.annexures.index"
+        },
+        {
+          "url": "contract-setup/party",
+          "name": "Parties Custom Fields",
+          "slug": "contract-setup.indexParty"
+        },
+        {
+          "url": "contract-setup/party-ind",
+          "name": "Parties Individual Custom Fields",
+          "slug": "contract-setup.indexPartyIndividual"
+        },
+        {
+          "url": "contract-setup/approval-rules",
+          "name": "Approval Rules",
+          "slug": "contract-setup.financial,contract-setup.financial-edit"
+        },
+        {
+          "url": "contract-setup/contract-type/list",
+          "name": "Contract Type",
+          "slug": "contract-setup.contractTypeList",
+          "onlySAdmin": true
+        },
+         {
+          "url": "contract-setup/file-config",
+          "name": "File Config",
+          "slug": "contract-setup.fileConfig",
+          "onlySAdmin": true
+        },
+         {
+          "url": "contract-setup/clauseconfig",
+          "name": "Clause Config",
+          "slug": "contract-setup.clauseSetup"
+        },
+         {
+          "url": "contract-setup/clause/template-add",
+          "name": "Template Setup",
+          "slug": "contract-setup.clauseTemplateAdd"
+        },
+         {
+          "url": "reminderEmails",
+          "name": "Contract Reminders",
+          "slug": "reminderEmails",
+          "onlySAdmin": true
+        },
+         {
+          "url": "reminderSettings",
+          "name": "Reminder Settings",
+          "slug": "reminderSettings",
+          "onlySAdmin": true
+        },
+         {
+          "url": "contract-setup/customvarconfig",
+          "name": "Custom Template Variables",
+          "slug": "contract-setup.customvarconfig",
+          "onlySAdmin": true
+        }
+        
+      ]
+    },
+    {
+      "url": "parties",
+      "name": "Parties",
+      "icon": "menu-icon tf-icons ti ti-messages",
+      "slug": "parties.parties,parties.parties-individual,parties.contract-parties-organization,parties.contract-parties-edit-organization,parties.contract-parties-view-organization,parties.contract-parties-edit-individual,parties.contract-parties-add-individual,parties.contract-parties-view-individual,parties.contract-parties-bulk-import-organization,parties.contract-parties-bulk-import-individual",
+      "submenu": [
+            {
+              "url": "parties",
+              "name": "Organization Parties",
+              "slug": "parties.parties,parties.contract-parties-organization,parties.contract-parties-edit-organization,parties.contract-parties-view-organization,parties.contract-parties-bulk-import-organization"
+            },
+            {
+              "url": "parties/individual",
+              "name": "Individual Parties",
+              "slug": "parties.parties-individual,parties.contract-parties-edit-individual,parties.contract-parties-add-individual,parties.contract-parties-view-individual,parties.contract-parties-bulk-import-individual",
+              "hideThis": false
+            }
+       ]
+    },
+    {
+      "url": "tasks",
+      "name": "Tasks",
+      "icon": "menu-icon tf-icons ti ti-pencil",
+      "slug": "tasks.tasks,tasks.tasks-edit,tasks.tasks-add"
+    },
+    {
+      "url": "contracts/reports",
+      "name": "Reports",
+      "icon": "menu-icon ti ti-report-analytics",
+      "slug": "contractReports,contractReportsExecuted,contractReportsExpired,contractReportsExcep,contractReportsType,contractReportsDept,contractReportsPartyType,contractClauseReports,contractDetailReports,contractReportsValue,contractReportsTags"
+    }
+  ]
+}

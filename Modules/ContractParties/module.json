@@ -1,0 +1,11 @@
+{
+    "name": "ContractParties",
+    "alias": "contractparties",
+    "description": "",
+    "keywords": [],
+    "priority": 0,
+    "providers": [
+        "Modules\\ContractParties\\Providers\\ContractPartiesServiceProvider"
+    ],
+    "files": []
+}

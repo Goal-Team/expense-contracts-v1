@@ -1,0 +1,7 @@
+{
+    "Contract": true,
+    "ContractParties": true,
+    "ApprovalRules": true,
+    "Contractsetup": true,
+    "Tasks": true
+}

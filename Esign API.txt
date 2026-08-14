@@ -1,0 +1,175 @@
+this esign will enable only when admin_setting('enable_authbridge_feature').
+When click esign button in contract detail page call below 4 API and get signed document and save to storage
+
+I need to create API for esign for below 4 API calls 
+
+1.For Get Token (GET)
+
+URL 
+https://signdrive-uat.authbridge.com/signdrive/msbapi/public/access_token?client_id=MSB APP&client_secret=password&grant_type=password&username=ramasubramanian_k@apollohospitals.com&password=Apolloclm@123
+
+Response 
+{
+    "access_token": "50821865-7213-4435-a245-446554517d96",
+    "token_type": "bearer",
+    "refresh_token": "35cae86f-2496-46a0-8d23-fb904af6579a",
+    "expires_in": 86398,
+    "scope": "read trust write",
+    "defaultTenantId": 5557,
+    "msb_token": "eyJhbGciOiJIUzUxMiJ9.eyJjbGllbnRJZCI6Ik1TQiBBUFAiLCJkZXZpY2VfaWQiOiIiLCJvYXV0aF90b2tlbiI6IjUwODIxODY1LTcyMTMtNDQzNS1hMjQ1LTQ0NjU1NDUxN2Q5NiIsImV4cCI6MTc2ODQ3MzA2MCwidXNlciI6InJhbWFzdWJyYW1hbmlhbl9rQGFwb2xsb2hvc3BpdGFscy5jb20iLCJ0cyI6MTc2ODM4NjY2MDU2MiwiMmZhIjp0cnVlfQ.5tH7XZg83-e33dDG2RbrDp9NjB9XzO75My8IZU7fef0id7BL1FRd_wLooszLQExqGd9DkePAmMYKmEe33pkoEQ",
+    "jwt_expires_in": 86400,
+    "twoFactorRequired": false
+}
+
+2.Get msb_token from previous response and call new api to send signature details (POST)
+
+URL
+https://signdrive-uat.authbridge.com/signdrive/msbapi/v2/compose/epak
+
+Headers
+access_token:eyJhbGciOiJIUzUxMiJ9.eyJjbGllbnRJZCI6Ik1TQiBBUFAiLCJkZXZpY2VfaWQiOiIiLCJvYXV0aF90b2tlbiI6IjBhOTljNzA5LTkyNDYtNDQxYy1iZGM0LWUxMmMwZDkwOGFiZiIsImV4cCI6MTc2NzQyNzg5OCwidXNlciI6InJhbWFzdWJyYW1hbmlhbl9rQGFwb2xsb2hvc3BpdGFscy5jb20iLCJ0cyI6MTc2NzM0MTQ5ODQ4NCwiMmZhIjp0cnVlfQ.KXGNVwyvYKVsSKmKCv3MSxZv2NJKR511Xdz645LkLILnRiUgy6VJOt_LKSa6KN9xFaBTU77dqr5P5PJFZyQvcA
+tenant_id:APOLLO_HOSPITALS
+
+Body (JSON)
+
+files = fileInput (Contract attachment uploaded file) if local file get diretly from storage else download from google/microsoft and send to below API
+epakData ={
+  "workflowData": [
+    {
+      "wfStateOrder": 1,
+      "action": "SIGN",
+      "signingPolicy": "AADHAAR",
+      "docTagsData": [
+        {
+          "docName": "SampleContract-Shuttle.pdf",
+          "signatureTagData": [
+            {
+              "email": "jeevanantham@legalitysimplified.com",
+              "firstName": "Jeevanantham",
+              "middleName": "",
+              "lastName": "Paramasivam",
+              "phoneNumber": "8056575706",
+              "countryCode": "IN",
+              "tagLocationData": [
+                {
+                  "pageNumber": "1",
+                  "x": "50",
+                  "y": "600",
+                  "height": "7.1",
+                  "width": "130.9",
+"replicateTag": "ALL"
+                }
+              ]
+            },
+            {
+              "email": "sathasivam@legalitysimplified.com",
+              "firstName": "sathasivam",
+              "middleName": "",
+              "lastName": "Soundararajan",
+              "phoneNumber": "8056575706",
+              "countryCode": "IN",
+              "tagLocationData": [
+                {
+                  "pageNumber": "1",
+                  "x": "150",
+                  "y": "600",
+                  "height": "7.1",
+                  "width": "130.9",
+"replicateTag": "ALL"
+                }
+              ]
+            },
+            {
+              "email": "sooriyan@legalitysimplified.com",
+              "firstName": "Sooriyan",
+              "middleName": "",
+              "lastName": "Chandran",
+              "phoneNumber": "8056575706",
+              "countryCode": "IN",
+              "tagLocationData": [
+                {
+                  "pageNumber": "1",
+                  "x": "300",
+                  "y": "600",
+                  "height": "7.1",
+                  "width": "130.9",
+"replicateTag": "ALL"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "useAutoAppend": false
+}
+
+Response
+{
+    "message": "Success",
+    "code": 1,
+    "data": "b1626538-b971-443a-8dc1-eac09810d152",
+    "metadata": {
+        "SampleContract-Shuttle.pdf": "f6b0e94f-857e-4ab1-b030-cd03d52ec760"
+    }
+}
+
+3.Get Links to Send Users to Sign (GET)
+
+from response of previous API call take data value and call below API
+
+URL
+https://signdrive-uat.authbridge.com/signdrive/msbapi/v2/epaks/easysignlinks/[data_value_from_previous_response]
+
+Headers as Like Previous
+
+Response
+{
+    "message": "Success",
+    "code": 1,
+    "data": [
+        {
+            "epakId": "b1626538-b971-443a-8dc1-eac09810d152",
+            "easySignInfo": [
+                {
+                    "userEmail": "jeevanantham@legalitysimplified.com",
+                    "easySignLink": "https://signdrive-uat.authbridge.com/signdrive/app/emailsign?link=esl-hwg2eB6iqXVQ5&tenantId=399d7a2a-f586-416f-b451-d6ffe523585f",
+                    "phone": "8056575706",
+                    "wfsOrderId": 1,
+                    "status": "Pending"
+                },
+                {
+                    "userEmail": "sathasivam@legalitysimplified.com",
+                    "easySignLink": "https://signdrive-uat.authbridge.com/signdrive/app/emailsign?link=esl-0wt7twAy6iqXWbH&tenantId=399d7a2a-f586-416f-b451-d6ffe523585f",
+                    "phone": "8056575706",
+                    "wfsOrderId": 1,
+                    "status": "Pending"
+                },
+                {
+                    "userEmail": "sooriyan@legalitysimplified.com",
+                    "easySignLink": "https://signdrive-uat.authbridge.com/signdrive/app/emailsign?link=esl-8yXWjy76iqXWhY&tenantId=399d7a2a-f586-416f-b451-d6ffe523585f",
+                    "phone": "8056575706",
+                    "wfsOrderId": 1,
+                    "status": "Pending"
+                }
+            ],
+            "code": 1,
+            "message": "Success"
+        }
+    ]
+}
+
+get userEmail and easySignLink from data->easySignInfo array send email to respective user with link
+
+4.Get Signed Document (GET)
+
+URL
+https://signdrive-uat.authbridge.com/signdrive/msbapi/v1/document/download?docId=[metadata pdf file name value]&docType=Current
+
+Headers as Like Previous
+
+Response
+Binary file (Signed PDF Document)
+
+download and save to storage based on storage type local/google/microsoft

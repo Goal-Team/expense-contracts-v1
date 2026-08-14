@@ -1,0 +1,67 @@
+    .title {
+        display: block;
+    }
+
+    .formlabel input { 
+    }
+    
+     .formlabel .form-control.inputtxt {
+         width: 23rem;
+    display: inline-block;
+      }
+
+    .formintype .form-control.inputtxt {
+        /*border: none;*/
+        /*background: none;*/
+        /*box-shadow: none;*/
+        /*margin-top: -0.5rem;*/
+    }
+
+    .formintype {
+        float: right;
+        color: #8d8d8d;
+        text-transform: capitalize;
+        font-size: 1.1rem;
+    }
+
+    .formlabel {
+        border: 1px solid #ccc;
+        background: #fff;
+        margin: 0 1px;
+        padding: 1.2rem;
+        margin-bottom: 1.6rem;
+    }
+
+    .cursor,
+    .cusor {
+        color: #fff;
+        cursor: move;
+        float: left;
+        width: 2.7rem;
+        background: transparent;
+        padding: 1rem;
+        height: 2.7rem;
+        line-height: 0.5;
+        margin-right: 0.5rem;
+        margin-left: -0.7rem;
+    }
+
+    .high {
+        opacity: 0.5;
+    }
+
+    .ui-sortable-helper {
+        opacity: 0.6;
+    }
+
+
+    .editselctopino, .editselctopino:hover{
+        background-color: #7367f0;
+        display: inline-block;
+        width: 1.5rem;
+        margin-left: 0.4rem;
+        margin-top: 0.2rem;
+        border-radius: 2.1px;
+        text-align: center;
+        color: #fff;;
+    }
