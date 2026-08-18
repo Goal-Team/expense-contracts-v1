@@ -175,7 +175,8 @@ return [
     App\Providers\EventServiceProvider::class,
     App\Providers\RouteServiceProvider::class,
     App\Providers\MenuServiceProvider::class,
-    App\Http\Customviewer\LaravelFileViewerServiceProvider::class
+    App\Http\Customviewer\LaravelFileViewerServiceProvider::class,
+    App\Providers\PerfTimingServiceProvider::class // local-only perf timing; remove with app/Perf + PerfTimingMiddleware
 
   ])->toArray(),
 

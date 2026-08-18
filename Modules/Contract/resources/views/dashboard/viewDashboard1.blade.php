@@ -289,6 +289,19 @@ $(document).ready(function() {
 <h4 class="py-3 mb-4"><span class="text-muted fw-light">Welcome Back</span> {{ Helper::userInfo()->FirstName ?? '' }}
 </h4>
 
+{{-- PERF PROBE (local-only, ticket 11): counts the approvalsArr walk without
+     altering it. The loop below is byte-identical to the original. Revert by
+     deleting this php block and the matching one after the loop. --}}
+@php
+$__pC0 = microtime(true); $__pGroups = 0; $__pRows = 0; $__pPending = 0; $__pSingletons = 0;
+foreach ($approvalsArr as $__g) {
+    $__pGroups++; $__pRows += count($__g);
+    if (count($__g) == 1) { $__pSingletons++; }
+    foreach ($__g as $__r) { if (($__r->approval_status ?? null) === 'pending') { $__pPending++; } }
+}
+$__pCountPassMs = (microtime(true) - $__pC0) * 1000;
+$__pT0 = microtime(true);
+@endphp
 @foreach($approvalsArr as $appr)
     @if(count($appr) == 1 && $appr[0]->approval_status == 'pending' && Helper::accessInfo(json_decode($appr[0]->username)->email ?? "", false))
     @php
@@ -306,6 +319,21 @@ $(document).ready(function() {
        @endforeach
     @endif
 @endforeach
+@php
+if (class_exists(\App\Perf\PerfRecorder::class)) {
+    \App\Perf\PerfRecorder::probe('approvals_walk_ms', (microtime(true) - $__pT0) * 1000);
+    \App\Perf\PerfRecorder::probe('approvals_probe_count_pass_ms', $__pCountPassMs);
+    \App\Perf\PerfRecorder::probe('approvals_groups', $__pGroups);
+    \App\Perf\PerfRecorder::probe('approvals_rows', $__pRows);
+    \App\Perf\PerfRecorder::probe('approvals_single_row_groups', $__pSingletons);
+    \App\Perf\PerfRecorder::probe('approvals_pending_rows', $__pPending);
+    \App\Perf\PerfRecorder::probe('contracts_visible', is_countable($contracts) ? count($contracts) : -1);
+    \App\Perf\PerfRecorder::probe('contract_status_map_size', is_countable($contractStatus) ? count($contractStatus) : -1);
+    \App\Perf\PerfRecorder::probe('counts_all', $counts['all'] ?? -1);
+    \App\Perf\PerfRecorder::probe('contract_types_options', is_countable($contractTypes) ? count($contractTypes) : -1);
+    \App\Perf\PerfRecorder::probe('branch_options', is_countable($branchs) ? count($branchs) : -1);
+}
+@endphp
 <form action="{{url('/filterDash')}}" method="POST" enctype="multipart/form-data">
     @csrf
     <div class="row">

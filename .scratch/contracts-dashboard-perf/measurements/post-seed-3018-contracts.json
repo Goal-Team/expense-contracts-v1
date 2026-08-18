@@ -1,0 +1,255 @@
+{
+  "url": "http://apollo.contracts.legality:8888/contracts/",
+  "wallClockMs": 33342,
+  "document": {
+    "status": 200,
+    "ttfbMs": 14457,
+    "totalMs": 14467,
+    "encodedBytes": 68848,
+    "rawHtmlBytes": 67434
+  },
+  "optionAccounting": {
+    "totalOptionTags": 136,
+    "totalOptionBytes": 10761,
+    "pctOfHtml": 15.96,
+    "selects": [
+      {
+        "identifier": "class=\"form-select select2 contracttype\"",
+        "optionCount": 73,
+        "bytes": 9239
+      },
+      {
+        "identifier": "class=\"form-select select2\"",
+        "optionCount": 63,
+        "bytes": 6080
+      }
+    ]
+  },
+  "inlineScriptBytes": 9414,
+  "headAssetRefs": [
+    "http://apollo.contracts.legality:8888/contracts/assets/fonts/font-main.css",
+    "http://[::1]:5173/@vite/client",
+    "http://[::1]:5173/resources/assets/vendor/fonts/tabler-icons.scss",
+    "http://[::1]:5173/resources/assets/vendor/fonts/fontawesome.scss",
+    "http://[::1]:5173/resources/assets/vendor/fonts/flag-icons.scss",
+    "http://[::1]:5173/@vite/client",
+    "http://[::1]:5173/resources/assets/vendor/scss/rtl/core.scss",
+    "http://[::1]:5173/resources/assets/vendor/scss/rtl/theme-default.scss",
+    "http://[::1]:5173/resources/assets/css/demo.css",
+    "http://[::1]:5173/@vite/client",
+    "http://[::1]:5173/resources/assets/vendor/libs/node-waves/node-waves.scss",
+    "http://[::1]:5173/resources/assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.scss",
+    "http://[::1]:5173/resources/assets/vendor/libs/typeahead-js/typeahead.scss",
+    "http://[::1]:5173/@vite/client",
+    "http://[::1]:5173/resources/assets/vendor/libs/apex-charts/apex-charts.scss",
+    "http://[::1]:5173/resources/assets/vendor/libs/select2/select2.scss",
+    "http://[::1]:5173/@vite/client",
+    "http://[::1]:5173/resources/assets/vendor/js/helpers.js",
+    "http://[::1]:5173/@vite/client",
+    "http://[::1]:5173/resources/assets/vendor/js/template-customizer.js",
+    "http://[::1]:5173/@vite/client",
+    "http://[::1]:5173/resources/assets/js/config.js"
+  ],
+  "hasDeadViteHost": true,
+  "requestSummary": {
+    "total": 31,
+    "failed": 28,
+    "byType": {
+      "Document": 1,
+      "Stylesheet": 12,
+      "Script": 17,
+      "Image": 1
+    },
+    "totalEncodedBytes": 118049
+  },
+  "failures": [
+    {
+      "url": "http://apollo.contracts.legality:8888/contracts/assets/fonts/font-main.css",
+      "error": "net::ERR_ABORTED",
+      "durMs": 1259
+    },
+    {
+      "url": "http://[::1]:5173/@vite/client",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 2011
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/fonts/tabler-icons.scss",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 2046
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/fonts/fontawesome.scss",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 2312
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/fonts/flag-icons.scss",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 3298
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/scss/rtl/core.scss",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 4048
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/scss/rtl/theme-default.scss",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 4076
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/css/demo.css",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 4343
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/node-waves/node-waves.scss",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 5316
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.scss",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 6095
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/typeahead-js/typeahead.scss",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 6128
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/apex-charts/apex-charts.scss",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 6394
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/select2/select2.scss",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 7335
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/js/helpers.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 8152
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/js/template-customizer.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 8416
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/js/config.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 8416
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/jquery/jquery.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 9370
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/popper/popper.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 10186
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/js/bootstrap.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 10454
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/node-waves/node-waves.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 10456
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 11406
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/hammer/hammer.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 12221
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/typeahead-js/typeahead.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 12488
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/js/menu.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 12488
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/apex-charts/apexcharts.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 13451
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/select2/select2.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 14260
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/js/main.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 14536
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/js/cards-statistics.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 14539
+    }
+  ],
+  "slowestRequests": [
+    {
+      "url": "http://apollo.contracts.legality:8888/contracts/",
+      "type": "Document",
+      "status": 200,
+      "durMs": 14467,
+      "ttfbMs": 14457,
+      "bytes": 68848
+    },
+    {
+      "url": "http://apollo.contracts.legality:8888/contracts/assets/logo/OnTrackLogo.png",
+      "type": "Image",
+      "status": 200,
+      "durMs": 14367,
+      "ttfbMs": 99,
+      "bytes": 46767
+    },
+    {
+      "url": "http://apollo.contracts.legality:8888/contracts/Modules/Contract/resources/assets/js/dashboard.js",
+      "type": "Script",
+      "status": 200,
+      "durMs": 14265,
+      "ttfbMs": 2,
+      "bytes": 2434
+    }
+  ],
+  "metrics": [
+    {
+      "name": "LayoutDuration",
+      "value": 0
+    },
+    {
+      "name": "RecalcStyleDuration",
+      "value": 0
+    },
+    {
+      "name": "ScriptDuration",
+      "value": 0
+    },
+    {
+      "name": "TaskDuration",
+      "value": 0.000033
+    },
+    {
+      "name": "DomContentLoaded",
+      "value": 20509.560113
+    }
+  ]
+}
