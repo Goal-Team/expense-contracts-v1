@@ -2,6 +2,13 @@
 
 ## Destination
 
+**Reached 2026-08-20 — the spec is [spec.md](spec.md).** Then **reopened the same day** by the dev
+with eight changes to the plan. Two tickets are still open:
+[ticket 17](issues/17-plain-columns-experiment.md) and
+[ticket 18](issues/18-goalapp-apollo-note.md).
+[Ticket 19](issues/19-new-function-names.md) closed 2026-08-20 — names in [names.md](names.md). The spec has been amended in place; the rule changes
+are recorded in Notes below and in [CLAUDE.md](../../CLAUDE.md).
+
 An agreed, measurement-backed optimisation spec for the contracts dashboard — the page served at
 `http://apollo.contracts.legality:8888/contracts/`, which is Laravel path `/` →
 [`ContractDashboardController::dashDetails`](../../Modules/Contract/app/Http/Controllers/ContractDashboardController.php:35) →
@@ -14,9 +21,17 @@ and shown for review before anything is applied.
 Done when: the spec is agreed, every open question below is closed, and nothing is left to decide
 before implementation begins.
 
+**Reopened scope, 2026-08-20.** Names for every new function are now agreed
+([names.md](names.md), from [ticket 19](issues/19-new-function-names.md)); the `goalapp_apollo` note must be written
+([ticket 18](issues/18-goalapp-apollo-note.md)); and the plain-column experiment
+([ticket 17](issues/17-plain-columns-experiment.md)) runs **after** the spec has shipped and been
+measured, so it is the last thing on this map.
+
 ## Notes
 
-**Domain.** Laravel 11 + nwidart/laravel-modules + Vuexy template. `/contracts` is the **IIS base
+**Domain.** **Laravel 10.48.29** (not 11 — the map said 11 until 2026-08-20; corrected from
+`vendor/laravel/framework/.../Application.php:43` and `composer.json:14`, which asks `^10.0`) +
+nwidart/laravel-modules + Vuexy template. `/contracts` is the **IIS base
 path**, not a Laravel route segment — `GOALv4/` is the IIS document root holding a legacy Angular
 app, and `contracts/` is the Laravel app flattened so `index.php` sits at the app root.
 
@@ -28,15 +43,85 @@ app, and `contracts/` is the Laravel app flattened so `index.php` sits at the ap
 - Scope is the `contracts/` folder only. The legacy Angular app and `/login/` are out.
 - **Dropdown option data must move to AJAX endpoints.** Decided by the dev 2026-08-14; this is a
   given, not an open question. What remains open is endpoint shape, caching, and selection state.
-- **Instrumentation may not add vendor packages.** `vendor/` ships with the project, so a shipped
-  debugger is an unacceptable risk. Use a self-written local-only middleware instead.
+- **Instrumentation tooling: reversed 2026-08-20.** The earlier rule ("no vendor packages, a shipped
+  debugger is an unacceptable risk") was the dev's call on 2026-08-14 and drove
+  [ticket 02](issues/02-timing-middleware.md)'s self-written middleware. The dev has since decided a
+  debug bar is worth having, for humans and for the agent, on the grounds that `APP_DEBUG=false` in
+  production hides it — the same discipline as the `LOG_LEVEL` rule. **Debugbar is now allowed,
+  gated on the production `.env` being correct.** The ticket 02 middleware stays; it is already
+  built, costs nothing, and found things a debug bar would not have (the 1000-id bug).
+  [Ticket 14](issues/14-debug-tooling-research.md) has now reported and **weakened the reasoning**: the
+  `APP_DEBUG`/`LOG_LEVEL` analogy does not hold, because a wrong `APP_DEBUG` puts query bindings on a
+  public page rather than noise in a file. The call itself moved to
+  [ticket 16](issues/16-debug-tooling-decision.md).
 - **Migrations are allowed** but the files are shown for review before being applied. Never apply
   directly.
+- **No shadow columns. Reversed by the dev 2026-08-20.** Adding plaintext copies of encrypted columns
+  is off the table. "My Actionable Items" instead decrypts in PHP over a narrowed row set and pays
+  ~0.5 s locally / ~2 s expected at 60,000 rows on every load ([spec.md](spec.md) §4). The real fix —
+  those two columns not being encrypted at all — is
+  [ticket 17](issues/17-plain-columns-experiment.md), scoped to
+  `apollo_contracts_expense.approval_contracts.approval_status` and `.username` **only**, and it runs
+  last so its win can be measured on its own.
+- **Nothing is rewritten in place. Set by the dev 2026-08-20.** Every improvement is a new function
+  beside the old one so both can run on the same page and be compared; the old one is deleted later,
+  once the new one is proven. Names are PSR-1 / PSR-12 — classes `StudlyCaps`, **methods `camelCase`**,
+  constants `UPPER_SNAKE_CASE`, plain procedural functions `snake_case`. Good old name -> add `x`; bad
+  old name -> suggest a better one and get it approved. One function, one concern, no copied blocks. In
+  doubt, ask. **All names are now decided and live in [names.md](names.md)** — the one file to edit if a
+  name changes; every session writing code reads it first. Rule in [CLAUDE.md](../../CLAUDE.md).
+- **One measurement report, set by the dev 2026-08-20.** Every change writes a row into
+  [measurements/report.md](measurements/report.md) — old number, new number, how measured, and a remark
+  for any side effect. Old and new measured in the same session on the same data, because absolute
+  milliseconds drift about 3× between sessions. Never a second report file.
+- **Local `.env` is ours to change, set by the dev 2026-08-20.** Debug-bar variables are in
+  [.env](../../.env) and documented with their production values in
+  [.env.example](../../.env.example): `DEBUGBAR_ENABLED=true` local / `false` production,
+  `DEBUGBAR_OPEN_STORAGE=false` both. The dev copies the keys to production and sets them there.
+- **Caveman English for questions, set by the dev 2026-08-20.** Questions are short and blunt, filler
+  cut. Explanations and specs stay in normal plain words. **No summary unless asked.** See
+  [CLAUDE.md](../../CLAUDE.md).
+- **Character set and collation, decided 2026-08-20.** Everything this effort creates or changes uses
+  character set **`utf8mb4`** and collation **`utf8mb4_unicode_ci`** — named explicitly in the migrations.
+  It works on both MySQL 8 and MariaDB 10.4, is case-insensitive, and is **already** the collation of
+  `contracts` and `approval_contracts`, so no mixed-collation comparison appears in the tables this work
+  touches. `utf8mb4_0900_ai_ci` was asked for first and dropped: it is MySQL 8 only and does not exist on
+  the local MariaDB 10.4.24. See [ticket 09](issues/09-index-and-migrations.md).
+- **Order of work, set by the dev 2026-08-20.** Fix the N+1 queries and the page dumping data the blade
+  never uses **first**. Measure. Only then consider indexes, and only then load-test at bigger row counts.
+  Growing the dataset before those two are fixed measures the wrong thing.
+- **Assumed production scale** for sizing migrations, given production data is off limits: ~10,000
+  contracts, ~500 approvers, ~60,000 approval/workflow rows.
+- **What that ~60,000 actually is, checked 2026-08-20** because the dev asked whether it meant hand-made
+  JSON. It does not. Two separate things:
+  - `approval_contracts` — **real rows**, one per contract per approver per stage, 12,816 locally for
+    3,018 contracts (about four per contract). The seeder already made 13,867 of them
+    ([ticket 04](issues/04-seed-realistic-dataset.md)); nothing is hand-written and there is no JSON in
+    it. Scale to ~10,000 contracts and it is ~40–60,000 rows.
+  - The approver **rules** are the JSON — `financial_limit.approval_required_users` and its seven
+    sibling columns, **one row locally**, holding the review / negotiation / finalization / approval
+    stages with approver name and email in each. Also `extension_approval_rules.approvers_json` (2 rows)
+    and `party_approval_rules` (0 rows).
+  **The dashboard never reads `financial_limit`**, so no rule JSON needs creating or copying — not 600
+  entries, not one. Worth noting for [ticket 17](issues/17-plain-columns-experiment.md): approver emails
+  already sit in **plaintext** in this same database, in that JSON and in
+  `approval_group_approvers.approver_email`.
 - **Seeding synthetic data into `apollo_contracts_expense` is allowed and expected** for realistic-N
   measurement.
 - **Targets:** under 2s is good; around 2s is tolerable; over 10s is unacceptable. A query-count
   ceiling matters more than the millisecond figure — it is what stops the regression returning.
 - This map is **planning**. It produces a spec, not the implementation.
+- **No git worktrees.** Branches only, in the primary working directory. See
+  [CLAUDE.md](../../CLAUDE.md). Currently on `claude/contracts-dashboard-perf-42d34c`; no new
+  branch needed.
+- **Only the `apollo_contracts_expense` database.** `goalapp_apollo` and every other database on
+  the local server are never changed. Every schema change is a Laravel migration, shown for review
+  before it runs. Adding columns is allowed when the gain is worth it. See [CLAUDE.md](../../CLAUDE.md).
+- **Plain words when talking to the dev.** Terms worth keeping live in
+  [CONTEXT.md](../../CONTEXT.md) with a plain meaning next to each. Add a term the first time it
+  is used. See [CLAUDE.md](../../CLAUDE.md).
+- `original_username` on `approval_contracts` has another purpose. It is **not** a plaintext
+  fallback for `username` and must not be repurposed.
 
 **Baseline facts established while charting** (all verified, 2026-08-14):
 
@@ -78,6 +163,98 @@ app, and `contracts/` is the Laravel app flattened so `index.php` sits at the ap
 ## Decisions so far
 
 <!-- one line per closed ticket: gist + link -->
+- [Assemble and agree the spec](issues/10-assemble-spec.md) — **Done: [spec.md](spec.md)**, the
+  destination of this map. 14 sections covering the measured baseline at both scales, the four
+  independent problems plus the 1000-id correctness bug, targets and **query-count ceilings** (10 queries
+  from `dashDetails`, flat as N grows), six changes A–F, all three migration files written out with
+  working `down()`s, preserved-vs-changed behaviour, a 12-step order with dependencies, expected outcome
+  per change, what was deliberately not done, and deployment notes. States plainly that it **does not
+  reach "under 2 s" on its own** — ~1.25 s of bootstrap is left for
+  [ticket 11](issues/11-per-request-overhead.md).
+- [Decide what debug tooling we actually add](issues/16-debug-tooling-decision.md) — **Debugbar: yes,
+  behind three locks** — a local-only wrapper provider (`APP_DEBUG` *and* `trim(APP_ENV)==='local'`,
+  copying [PerfTimingServiceProvider](../../app/Providers/PerfTimingServiceProvider.php)) with
+  auto-discovery disabled, `DEBUGBAR_ENABLED=false` in the production `.env`, and request storage off.
+  **Caps stay at 100/500** — raising them was rejected; Debugbar is for humans on normal pages, and the
+  tool for *this* effort stays the `DB::listen` recorder. **Boost: no** (v1.8.13 needs Laravel 10.49+,
+  upgrades are refused; v1.1.5 ships a bare `eval()` tool, and Boost has no query log anyway). **New
+  fact: `composer.lock` cannot be repaired by picking a side** — its `nwidart/laravel-modules` hunk is
+  v9.0.6 vs v11.1.4 while **10.0.6 is installed**, so neither side is real;
+  `vendor/composer/installed.json` (161 packages, `laravel/framework v10.48.29`) is the only truthful
+  record and the lock gets rebuilt from it, gated on `composer install --dry-run` reporting nothing to
+  do. **Standing rule from the dev: add new packages, never upgrade installed ones; escalate serious
+  security holes instead of bumping.** Ships separately; the spec does not depend on it.
+- [Decide the approval_contracts backfill plan](issues/15-approval-backfill-plan.md) — **The long pole
+  isn't one.** Measured: all 13,867 local rows, both columns, **27,734 values decrypted in 0.49 s** —
+  about **2 seconds one time** at the assumed 60,000 rows. So: no queue, no window, no progress table.
+  **The key is now understood exactly** — `APP_ENCRYPTION_KEY` is `"c0n|r@(t$" . <first dot-piece of
+  HTTP_HOST> . "4"`, i.e. `c0n|r@(t$apollo4`, and `encryptString`/`decryptString` **throw away their
+  `$key` argument**; the table-name-in-the-key scheme is the *legacy SQL* one
+  ([helpers.php:386](../../app/helpers.php:386)), not this table's. **Dev's call: a standalone script
+  with the key hardcoded**, bypassing the helpers, so there is no host dependency and no manual step
+  (he removes the literal later; if production's host doesn't start with `apollo`, the literal changes).
+  `chunkById(1000)`, stateless and re-runnable, **never `whereIn`**. Failed rows get a **marker**, are
+  logged by id only, and are retried on a later run. **Ticket 08's interim slow counter is dropped** —
+  the gap it covered is two seconds inside one deploy; release order is add columns -> fill -> switch.
+  Verification compares **every** row, not a sample. Columns: `approver_email varchar(191)`,
+  `approval_status_plain varchar(20)`, utf8mb4_unicode_ci, **no case normalising** (the 127 real rows
+  are lowercase, the capitalised ones are all seeded; the collation is case-insensitive anyway).
+- [Decide the logging and debug-output policy](issues/13-logging-policy.md) — **No lint gate**, by the
+  dev's call: there is **no build to fail** in this repo (no `.github/`, no CI config, no husky, no git
+  hooks; deploy is a file copy to IIS), and a write-blocking Claude Code hook was offered and declined.
+  The [CLAUDE.md](../../CLAUDE.md) rule stands on review alone, and applies to **new code only** — the
+  6 live and 58 commented-out print-debug calls are left alone. **Production `.env` is not this map's
+  problem:** the dev says those variables are carefully mapped and the production pipeline is not to be
+  worried about now, so nothing here waits on someone reading the live file. Carry-forward for
+  [ticket 16](issues/16-debug-tooling-decision.md): "`APP_DEBUG=false` hides it in production" is
+  reliable, which kills the *reachability* worry but not the risk itself — a wrong `APP_DEBUG` still
+  paints query bindings onto a public page. Nothing spun out; the spec carries one line naming the four
+  production values (`APP_ENV=production`, `APP_DEBUG=false`, `LOG_CHANNEL=daily`, `LOG_LEVEL=warning`).
+
+- [What is the safe way to add a debug bar, and is a Laravel MCP server the better fit?](issues/14-debug-tooling-research.md)
+  — Reported; decides nothing. Full findings in [research/debug-tooling.md](research/debug-tooling.md).
+  **Corrected two of this map's own facts:** the app is **Laravel 10.48.29, not 11**, and the ticket-02
+  middleware uses `DB::listen`, not `enableQueryLog` (deliberately — the query log would allocate tens of MB
+  at 12k queries). **The MCP server is real:** `laravel/boost` is official — but it has **no query-log tool**,
+  so it cannot show what a page ran, and only **v1.1.5** installs on Laravel 10.48, which ships a `Tinker`
+  tool running a bare `eval()` with the real `.env`. **Debugbar** is gated by `DEBUGBAR_ENABLED` else
+  `APP_DEBUG`, with **no local-only guard**; left on in production it shows query bindings to every visitor.
+  Its default caps (100/500 queries) make it **useless on a 12,000-query page** anyway; per-query cost is
+  microseconds but it adds ~19–21 MB. **No double counting** with the middleware — both listen to the same
+  event and each gets its own copy. **And nothing is installable at all until `composer.lock` is repaired**
+  (15 conflict markers, invalid JSON), which promotes that from adjacent debt to a prerequisite. Decision
+  moved to [ticket 16](issues/16-debug-tooling-decision.md).
+
+- [Decide the index and migration set](issues/09-index-and-migrations.md) — **Measured: the rewrite needs no
+  indexes at all.** With zero new indexes at N=3,018, the 15 counters run in **13–17 ms** and the approvals
+  join in **64–72 ms** — so ticket 08's rewrite replaces 12.6 s of controller time with ~15 ms on its own.
+  This ticket expected indexes might make the rewrite optional; the truth is the reverse — no index turns
+  3,018 round trips into one. So: **index `approval_contracts` only** (`contract_id`, plus a composite
+  `(approver_email, approval_status_plain)` over ticket 08's shadow columns, email first), nothing on
+  `contracts` or `contract_party_data` for speed. `contract_party_data` **is** converted — MyISAM/latin1 with
+  `TEXT` join columns becomes **InnoDB + utf8mb4 / utf8mb4_unicode_ci with `varchar`**, as its own migration
+  so the dashboard fix is not blocked on it. Missing `create_contracts_table` is **accepted debt**, written down. Build times
+  extrapolated at ~10,000 contracts / 500 approvers / ~60,000 approval rows: indexes are seconds and online;
+  the party conversion needs a window; **the shadow-column backfill is the long pole** (PHP decrypt per row).
+  **Order fixed by the dev: fix the N+1 and the throwaway page payload first, then measure, then index —
+  load testing at bigger row counts comes last.**
+
+- [Redesign the dashboard query layer](issues/08-query-layer-redesign.md) — **The dashboard stops calling
+  `availableContracts()`** and gets its own `DB::table()` query (the builder sidesteps `Contract`'s
+  app-wide `select('*')` and `$with` scopes by construction). Counters become **one
+  `GROUP BY contract_status, substatus`** → ~20 rows folded in PHP, keeping `contractStatusKey()` and the
+  `Terminated` casing where they already work. **`$contractIds` is deleted, not chunked** — approvals and
+  tasks `JOIN` the visibility scope, so the 1000-id bug becomes impossible rather than avoided; `$contracts`
+  stops being passed to the view (0 real uses). **"My Actionable Items" has no panel** — 13,867 rows are
+  decrypted to make six integers, and it is unfixable in SQL: `approval_status`/`username` are AES-CBC with
+  a random IV (all 13,867 rows), `original_username` is off limits. So **plain-text shadow columns +
+  index**, filled by a `saving` hook on the model — verified safe because all 6 controllers' 43 `create`
+  calls go through the model, zero raw SQL. Preserved: no-internal-party exclusion, `Terminated` casing,
+  Super Admin empty-branch (**role checked in PHP before the query**, never `IN ()`). Changed on purpose:
+  the `filterByLocationReport` cookie is dropped, and the Actionable-Items numbers move (they are silently
+  zero today). Proved by a throwaway artisan command diffing old vs new across roles. Expected recovery
+  **~11.9 s of the 12.6 s** controller time. The 55-call-site `availableContracts()` rewrite is **not**
+  here — scoped as a follow-on that extracts only the visibility predicate.
 
 - [Why is $approvalsArr empty?](issues/12-approvals-empty.md) — **A live production correctness bug, found
   by accident.** MariaDB 10.4.24 has `in_predicate_conversion_threshold = 1000`; at or above 1000 **bound
@@ -152,16 +329,24 @@ app, and `contracts/` is the Laravel app flattened so `index.php` sits at the ap
   `public/build/manifest.json`). **But `core.scss` genuinely costs 5.6–7.9s** — `sass@1.71.0` pure-JS on
   Vite 5.1.3's *legacy* sass API, and `api:'modern-compiler'` needs Vite 5.4+, so that is an upgrade not
   a flag. Both problems are real and independent.
+- [Name every new function and route, old beside new](issues/19-new-function-names.md) — Dev delegated
+  the naming; all names decided and recorded in **[names.md](names.md)**, the one file to edit if a name
+  changes. `dashboardSummary()` gets its **own routes** (`contractDashboardSummary`) rather than a
+  request flag, so the old URL cannot serve new behaviour by accident; the shared visibility rule
+  becomes the `ContractVisibilityQuery` service — deliberately not called a `Scope`, that word already
+  means an Eloquent global scope here. The duplicate `contractDashboard` route name is left alone as
+  pre-existing. Deleting an old function needs a report.md row **and** `dashboard:compare-counters`
+  showing no unexpected difference.
 
 ## Not yet specified
 
-- Whether cached counts belong in the design at all. There is a working precedent —
-  [ContractController.php:6896](../../Modules/Contract/app/Http/Controllers/ContractController.php:6896)
-  caches the party list for 10 minutes keyed by a `COUNT(*)`/`MAX(updated_at)` version stamp — but
-  whether the dashboard needs it depends on what the aggregate rewrite measures at.
-- Whether the fix to `availableContracts()` propagates to the other pages that call it (notably
-  `contractList`), and whether that is in scope or a follow-on effort. Hangs on the shape of the
-  query-layer redesign.
+<!-- All of the below now sit PAST the destination. The spec records each as deliberately
+     not done (spec.md section 12). They are follow-on efforts, not unfinished business here. -->
+
+- **What the `availableContracts()` follow-on effort actually contains.** Ticket 08 sized it (55 call
+  sites, 52 of one shape; the risk is verifying 23 report/export consumers with no test suite) and
+  framed it as "extract the visibility predicate, leave the decoration loop alone" — but its scope,
+  ordering against this spec, and whether `contractList` rides along are a separate charting job.
 - Whether the 110-column `contracts` table and its two coexisting encryption schemes need addressing
   for this page's performance, or are merely adjacent debt.
 - How to confirm the production symptom is the same one reproduced locally, given production data is
@@ -178,8 +363,11 @@ app, and `contracts/` is the Laravel app flattened so `index.php` sits at the ap
 
 ## Out of scope
 
-- The `goalapp_apollo` database and all other tenant databases on the local MySQL instance — ruled
-  out by the dev; realistic-N measurement uses seeded synthetic data instead.
+- **Changing** the `goalapp_apollo` database and all other tenant databases on the local MySQL
+  instance — ruled out by the dev; realistic-N measurement uses seeded synthetic data instead.
+  **Amended 2026-08-20:** still never changed, but the dev wants a written note of which changes there
+  *would* help, for a later effort. That note is [ticket 18](issues/18-goalapp-apollo-note.md) —
+  read-only investigation, nothing applied, nothing prescribed in this spec.
 - The legacy Angular `/login/` app and everything in `GOALv4/` outside `contracts/`.
 - A MySQL MCP server. The `mysql` CLI already on PATH covers every need, so an npm MCP server
   holding DB credentials would add supply-chain surface for no capability gain.
@@ -187,8 +375,22 @@ app, and `contracts/` is the Laravel app flattened so `index.php` sits at the ap
   ([config/app.php:7](../../config/app.php:7)) — under the web server it is a 16-byte string, from a bare
   CLI it is `localhost` and the Encrypter will not construct. This makes the hostname load-bearing for
   decrypting stored contract data. Genuinely alarming, entirely unrelated to dashboard response time.
+- ~~Repairing the conflicted `composer.lock`~~ — **moved out of Out of scope 2026-08-20**, see
+  [ticket 16](issues/16-debug-tooling-decision.md): it is now a prerequisite because Debugbar is being
+  installed. Kept below for the history.
 - Repairing the conflicted `composer.lock` and the `nwidart/laravel-modules` version mismatch. Real
   problems, but they sit past this destination — they affect dependency reproducibility, not dashboard
-  response time. Worth a separate effort.
+  response time. Worth a separate effort. **Caveat added 2026-08-20:** ticket 14 found that **no composer
+  command can run at all** while the lock file is invalid JSON, and that repairing it risks a
+  `composer update` downgrading `nwidart/laravel-modules` from the installed 10.0.6 to the `^9.0` that
+  `composer.json` asks for, breaking all five modules. So this stays out of scope only for as long as we
+  install nothing. If [ticket 16](issues/16-debug-tooling-decision.md) says install, this ruling is
+  revisited and it becomes a prerequisite.
+- **The 1000-id bug inside `ApprovalEntriesBackfillService`.** `buildLocationMap()`
+  ([:1073](../../Modules/Contract/app/Services/ApprovalEntriesBackfillService.php:1073)) does
+  `whereIn('custom_field_group_id', $contractIds)`, and "insert all" feeds it every missing contract id
+  - so at 1,000 or more it silently returns nothing and every contract gets location `-`. Same bug as
+  [ticket 12](issues/12-approvals-empty.md), different feature. Found while reading the backfill
+  precedent; it is not the dashboard, so it is not this effort's to fix. Worth its own ticket elsewhere.
 - Local MySQL `root` having an empty password with ~40 databases present, several appearing to hold
   real client data. Noted once; a security matter for a separate effort, not a performance decision.
