@@ -1,8 +1,31 @@
 # 15 — Replace the quadratic child-contract walk
 
 Type: `wayfinder:task` (AFK)
-Blocked by: 11 — the covering index makes the page load again, which this needs to verify against
+Blocked by: 18, and step 0 below must happen first
 Status: OPEN
+
+## Step 0 — the seeder has no parent-child chains, and this ticket is meaningless without them
+
+Ticket 16 measured it: `SUM(parentcontract <> 0)` over 3,018 contracts is **0**. No contract has a
+parent, so none has a child. **The parent walk and the child walk cost 2,496 ms to produce nothing**,
+and they cost the same either way, because MySQL user variables and `FIND_IN_SET` make the optimiser
+walk every row regardless of what it finds.
+
+So a rewrite measured on this data proves nothing about a rewrite. Add chains to
+[PerfDatasetSeeder](../../../database/seeders/PerfDatasetSeeder.php) first: a spread of depths — many
+contracts with one child, some with a chain two or three deep, and at least one wide fan-out — because
+a recursive walk behaves differently on a deep chain than on a wide one.
+
+**Do this after [ticket 18](18-guard-the-scans-by-tab.md) has taken its numbers**, not before. Changing
+the data mid-measurement invalidates it.
+
+**How to handle the baseline.** Do not edit row 0. Add a fresh row saying "same page, data now has
+parent-child chains", so the report stays honest about what changed when. Row 0 stays the record of a
+page measured on data with no chains, and it says so.
+
+**Check for cycles after seeding.** A contract whose `parentcontract` points at its own descendant makes
+the recursive CTE loop until MariaDB stops it. The seeder must not create one, and the query should cap
+depth anyway.
 
 ## Question
 
