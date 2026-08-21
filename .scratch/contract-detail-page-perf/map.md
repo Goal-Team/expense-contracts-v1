@@ -215,12 +215,14 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | [03 find remaining breaks](issues/03-find-remaining-breaks.md) | after 02 | Fix what is broken before measuring how slow it is. |
 | [04 baseline](issues/04-baseline-attribution.md) | after 03 | Every row in the report sits under this one. |
 | ~~[16 is Related Contracts dead?](issues/16-unreachable-blade-region.md)~~ | **CLOSED** | It is not dead. `?tab=details` renders it. Nothing deleted. But it found ticket 18. |
-| [18 guard the scans by tab](issues/18-guard-the-scans-by-tab.md) | **NOW, top of the map** | The three scans run on every tab and only `?tab=details` renders their results. About **3,400 ms of the edit tab's 4,400 is thrown away.** Cheaper and far safer than optimising any of the three. |
+| ~~[18 guard the scans by tab](issues/18-guard-the-scans-by-tab.md)~~ | **CLOSED** | **Edit tab 4,208-4,589 ms to 455 ms, 258 queries to 86.** The biggest win on this map. |
+| [20 `$contractsoldothers` scan](issues/20-contractsoldothers-scan.md) | **NOW, top of the map** | 898-1,045 ms, 24% of the Details tab. A missing index plus a `select *` on a 9,390-byte row. Takes one of ticket 11's six. |
+| [19 attachment tab, 2.2 s outside the database](issues/19-attachment-tab-slow-outside-db.md) | now, runs beside anything | The only tab whose cost is not queries: 91 queries, 2,638 ms. No other ticket on this map will touch it. |
 | [15 recursive child walk](issues/15-recursive-child-walk.md) | after 18, seed chains first | **2,337–2,616 ms on its own — the single most expensive thing on the page.** The index did not fix it: user variables and `FIND_IN_SET` make the optimiser walk every row anyway. 16 kept the caller, so this stands. Seed a parent-child chain first, or it measures a walk that returns nothing. |
-| [11 indexes](issues/11-missing-indexes.md) | part done, five left | An index added before the baseline hides itself. The `parentcontract` one was applied early because the page was returning 500. |
-| [12 delete the waste](issues/12-delete-waste.md) | after 18 | Cheap and safe, but the baseline says it buys **little time** - the 158 repeated lookups are 218 ms. It buys the **query count**, which is the number that must not regress. |
+| [11 indexes](issues/11-missing-indexes.md) | four left, one of them is ticket 20's | An index added before the baseline hides itself. The `parentcontract` one went early because the page was returning 500, and it took 474 s to build. |
+| [12 delete the waste](issues/12-delete-waste.md) | now, but re-scope it first | **Ticket 18 already collected most of this on every tab but Details.** The six unread results and the duplicate pairs still stand; the 158 repeated lookups mostly do not. Re-read before starting. |
 | [09 stop binding ids](issues/09-replace-wherein-with-joins.md) | after 04 | Four query shapes, nothing else. |
-| [13 visibleTo scope](issues/13-visible-to-scope.md) | after 18, 12 | **158 of the 253 queries, but only ~200 ms.** Biggest win by count, not by time. Ticket 18 may remove several of its callers on every tab but Details — check what is left before starting. |
+| [13 visibleTo scope](issues/13-visible-to-scope.md) | after 12 | **Now a Details-tab-only ticket.** Ticket 18 removed its callers everywhere else. On Details it is still about 274 of the 360 queries, so it is the count win there and nowhere else. |
 | [05 split viewContract](issues/05-query-layer-decision.md) | after 09, 12, 13 | Moving code last, so it is not moved twice. |
 | [10 eSign off the page load](issues/10-esign-check-after-page-render.md) | after 04 | Independent of the query work. **Unmeasured** — the block only fires on a Signing contract and the test set has none, so it needs a copy of one set to Signing first. |
 | [17 gzip the HTML](issues/17-gzip-the-html-document.md) | now, runs beside anything | 326 KB sent uncompressed while 39 assets are compressed. A config line for the biggest byte win on the page. |
@@ -239,6 +241,14 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
   dead.
 
 ## Not yet specified
+
+- **The Details tab is now the whole problem.** 4,285 ms and 360 queries, against 455 ms and 86 on every
+  other tab. Three things hold it: the child walk (2,337 ms,
+  [ticket 15](issues/15-recursive-child-walk.md)), `$contractsoldothers` (981 ms,
+  [ticket 20](issues/20-contractsoldothers-scan.md)), and the `availableContracts()` loops (about 274
+  queries, [ticket 13](issues/13-visible-to-scope.md)). Nothing else on the map moves it.
+- Why `SHOW TABLES` runs twice on every page view. Something asks the schema on a page load. Noticed by
+  the baseline, cheap, unexplained.
 
 <!-- The unreachable-blade question is ANSWERED 2026-08-22 by ticket 16: the region renders on
      ?tab=details. Nothing was deleted. -->
