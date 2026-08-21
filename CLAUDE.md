@@ -188,6 +188,23 @@ Then, for a function you change, pick by what is wrong with it:
 One function, one concern. But do not copy blocks of code to get there — pull the shared part out
 into its own function and call it from both.
 
+## Staying on a performance task
+
+**On a performance task, leave wrong code alone unless it throws or it costs time.** Set by the dev
+2026-08-21. Two tests decide whether a thing is yours to touch:
+
+1. **Does it break the page?** Then fix it. A page that does not render cannot be measured.
+2. **Does it cost queries, time or bytes?** Then fix it. Duplicate queries, dead queries, per-row
+   lookups, a second decrypt pass over the same rows.
+
+Neither of those? **Write it down and move on.** A wrong result, a null check that works by accident, a
+comparison that reads the wrong variable — real bugs, and none of them is the task. The dev's reason:
+logic gets fixed on its own later, and the performance is measured again then. Fixing it now buys
+nothing and it makes the diff harder to read.
+
+Write each one you leave into the effort's ticket, with the file and line, so a later effort picks it up
+instead of finding it again.
+
 ## Measurement report
 
 **Every performance change gets a row in the report file of the effort it belongs to** — one file per
