@@ -213,6 +213,19 @@ cost is shared too. The edit tab is what we measure and verify on.
   length and a **numeric** literal loses the index altogether; and the Details tab's remaining 3 s is
   the child walk, [ticket 15](issues/15-recursive-child-walk.md).
 
+- [20 — `$contractsoldothers` scans the whole table](issues/20-contractsoldothers-scan.md) — **Details tab
+  4,088-5,233 ms to 2,997-3,576 ms.** The query went from 928-1,823 ms to under 5 ms, and the optimiser
+  really uses the index (`type ALL, rows 1509` becomes `type ref, rows 1`). Two commits, one per half:
+  the index `contracts(contract_type, department_id, catgoery_id)` won all the time, and narrowing
+  `select *` to the seven columns the blade reads won one query and no time, because the index had
+  already stopped the scan. Four things worth carrying forward: **the build took 208 ms, not 474 s** —
+  build time follows the index's columns, not the table's size, so no window is needed for this one;
+  `catgoery_id` and `contract_type` are **`TEXT`**, so the index needs a prefix and `$table->index()`
+  cannot write one; **a numeric literal loses the index silently** — `contract_type=41` scans, `='41'`
+  does not, and Eloquent binds strings so only hand-written filters are at risk; and contract 100479
+  renders **0** rows in that table while contract 1 renders 11, so the control contract is the one that
+  proves it. Commits `5ffd9c1`, `8ae50df`.
+
 ## Order of work
 
 This tracker is markdown, so there is no query to find the frontier. The order is written down instead.
@@ -228,10 +241,10 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | [04 baseline](issues/04-baseline-attribution.md) | after 03 | Every row in the report sits under this one. |
 | ~~[16 is Related Contracts dead?](issues/16-unreachable-blade-region.md)~~ | **CLOSED** | It is not dead. `?tab=details` renders it. Nothing deleted. But it found ticket 18. |
 | ~~[18 guard the scans by tab](issues/18-guard-the-scans-by-tab.md)~~ | **CLOSED** | **Edit tab 4,208-4,589 ms to 455 ms, 258 queries to 86.** The biggest win on this map. |
-| ~~[20 `$contractsoldothers` scan](issues/20-contractsoldothers-scan.md)~~ | **CLOSED** | **928-1,823 ms to under 5 ms.** The index did it; the narrow select won one query. Took one of ticket 11's six. |
+| ~~[20 `$contractsoldothers` scan](issues/20-contractsoldothers-scan.md)~~ | **CLOSED** | Details tab **4,088-5,233 ms to 2,997-3,576 ms**. The query itself 928-1,823 ms to under 5 ms. |
 | [19 attachment tab, 2.2 s outside the database](issues/19-attachment-tab-slow-outside-db.md) | now, runs beside anything | The only tab whose cost is not queries: 91 queries, 2,638 ms. No other ticket on this map will touch it. |
-| [15 recursive child walk](issues/15-recursive-child-walk.md) | after 18, seed chains first | **2,337–2,616 ms on its own — the single most expensive thing on the page.** The index did not fix it: user variables and `FIND_IN_SET` make the optimiser walk every row anyway. 16 kept the caller, so this stands. Seed a parent-child chain first, or it measures a walk that returns nothing. |
-| [11 indexes](issues/11-missing-indexes.md) | **four left**, ticket 20 took one | An index added before the baseline hides itself. The `parentcontract` one went early because the page was returning 500, and it took 474 s to build. Ticket 20's took 208 ms, so build time depends on the columns, not the table. |
+| [15 recursive child walk](issues/15-recursive-child-walk.md) | **NOW, top of the map** | **1,977-3,377 ms of the Details tab's remaining 3 s.** The last big item on the page. Seed parent-child chains first - step 0 of the ticket - or it measures a walk that finds nothing. |
+| [11 indexes](issues/11-missing-indexes.md) | four left | Ticket 20 took one and **found a better column order than this ticket guessed** - order by selectivity, not by the order they appear in the `where`. Read its Resolution before adding the rest. |
 | [12 delete the waste](issues/12-delete-waste.md) | now, but re-scope it first | **Ticket 18 already collected most of this on every tab but Details.** The six unread results and the duplicate pairs still stand; the 158 repeated lookups mostly do not. Re-read before starting. |
 | [09 stop binding ids](issues/09-replace-wherein-with-joins.md) | after 04 | Four query shapes, nothing else. |
 | [13 visibleTo scope](issues/13-visible-to-scope.md) | after 12 | **Now a Details-tab-only ticket.** Ticket 18 removed its callers everywhere else. On Details it is still about 274 of the 360 queries, so it is the count win there and nowhere else. |
