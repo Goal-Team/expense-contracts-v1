@@ -2,7 +2,7 @@
 
 Type: `wayfinder:task` (AFK)
 Blocked by: 04 — take the baseline before adding an index, or the baseline measures the wrong thing
-Status: OPEN
+Status: PART DONE — the `parentcontract` covering index is applied. Five to go.
 
 ## Question
 
@@ -61,3 +61,24 @@ Local `innodb_buffer_pool_size` is 16 MB, so every scan reads from disk.
 
 Migration drafted for review, **not run**:
 [proposed-migration-parentcontract-index.php](../proposed-migration-parentcontract-index.php).
+
+## Progress — 2026-08-22
+
+**`contracts(parentcontract, id)` applied.** Migration
+[2026_08_22_000001_add_covering_index_to_contracts_parentcontract.php](../../../database/migrations/2026_08_22_000001_add_covering_index_to_contracts_parentcontract.php),
+commit `378ba21`. Applied on the local dev database under the dev's standing approval. `SHOW INDEX`
+confirms both columns.
+
+Result: the page went from **HTTP 500** on the FastCGI timeout to **4,422 ms TTFB**. Report row 2.
+
+**Two things to carry to production**, both worth more than the index itself:
+
+- **The index took 474 s to build** on 3,018 rows. On a client database this needs a maintenance
+  window, not a quiet deploy. Say so in the deployment notes.
+- **This hides the real problem.** The child-contract query stays quadratic, so it gets worse as any
+  client's data grows. [Ticket 15](15-recursive-child-walk.md) is the actual fix. Do not treat the
+  index as done work on its own.
+
+**Five indexes left**, and one of them may not be needed: the `user_action_log.group_id` one exists
+only to serve `$signedHistory`, which no blade reads. Check [ticket 12](12-delete-waste.md) first — if
+that query is deleted, the index is not needed.

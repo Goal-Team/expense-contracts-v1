@@ -233,3 +233,10 @@ Separate problems. Not fixed here, as the ticket asks.
 8. **The seeder had drifted from the app once already** — the `approval_status` encryption, under
    "What changed". Nothing tells anyone when a migration makes the seeder wrong. It surfaces as a
    seed that dies, or worse, as numbers measured against the wrong population.
+
+## The last open piece, now closed — 2026-08-22
+
+Ticket 02 could not read the seeded values off a rendered page, because the page was returning HTTP
+500. With the covering index applied it renders, and the seeded reminder fields come through:
+contract 100479 shows `90 days prior` and `30 days prior` in the edit tab. Real contract 1 still shows
+`30 days prior` and `15 days prior`. So the seeded values reach the form and the shapes match.
