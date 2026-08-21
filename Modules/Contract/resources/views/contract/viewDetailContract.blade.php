@@ -1835,25 +1835,25 @@ cookie()->queue('attachment', true, 60);
                                                         <div class="form-group row">
                                                             <h6 class="mb-2">Alert Me on</h6>
 
-                                                            <?php $fristarl  = explode(" ", decryptString($contract->reminder_first_alertMeOn, 'reminder_first_alertMeOn')); ?>
+                                                            <?php [$firstAlertDay, $firstAlertUnit, $firstAlertDirection] = reminder_alert_parts($contract->reminder_first_alertMeOn, 'reminder_first_alertMeOn'); ?>
                                                             <div class="col">
-                                                                {{ $fristarl[0]}}
+                                                                {{ $firstAlertDay }}
 
                                                             </div>
                                                             <div class="col">
-                                                                @if($fristarl[1] == 'days')
+                                                                @if($firstAlertUnit == 'days')
                                                                 <p>Days</p>
-                                                                @elseif($fristarl[1] == 'months')
+                                                                @elseif($firstAlertUnit == 'months')
                                                                 <p>Months</p>
-                                                                @elseif($fristarl[1] == 'years')
+                                                                @elseif($firstAlertUnit == 'years')
                                                                 <p>Years</p>
                                                                 @endif
 
                                                             </div>
                                                             <div class="col">
-                                                                @if($fristarl[2] == 'prior')
+                                                                @if($firstAlertDirection == 'prior')
                                                                 <p>Prior</p>
-                                                                @elseif($fristarl[2] == 'after')
+                                                                @elseif($firstAlertDirection == 'after')
                                                                 <p>After</p>
                                                                 @endif
 
@@ -1883,26 +1883,26 @@ cookie()->queue('attachment', true, 60);
                                                         <div class="form-group row">
 
                                                             <h6 class="mb-2">Alert Me on</h6>
-                                                            <?php $secondarl  = explode(" ", decryptString($contract->reminder_second_alertMeOn, 'reminder_second_alertMeOn')); ?>
+                                                            <?php [$secondAlertDay, $secondAlertUnit, $secondAlertDirection] = reminder_alert_parts($contract->reminder_second_alertMeOn, 'reminder_second_alertMeOn'); ?>
                                                             <div class="col">
-                                                                {{ $secondarl[0]}}
+                                                                {{ $secondAlertDay }}
 
                                                             </div>
                                                             <div class="col">
 
-                                                                @if($secondarl[1] == 'days')
+                                                                @if($secondAlertUnit == 'days')
                                                                 <p>Days</p>
-                                                                @elseif($secondarl[1] == 'months')
+                                                                @elseif($secondAlertUnit == 'months')
                                                                 <p>Months</p>
-                                                                @elseif($secondarl[1] == 'years')
+                                                                @elseif($secondAlertUnit == 'years')
                                                                 <p>Years</p>
                                                                 @endif
 
                                                             </div>
                                                             <div class="col">
-                                                                @if($secondarl[2] == 'prior')
+                                                                @if($secondAlertDirection == 'prior')
                                                                 <p>Prior</p>
-                                                                @elseif($secondarl[2] == 'after')
+                                                                @elseif($secondAlertDirection == 'after')
                                                                 <p>After</p>
                                                                 @endif
 
@@ -1932,25 +1932,25 @@ cookie()->queue('attachment', true, 60);
                                                         <div class="form-group row">
 
                                                             <h6 class="mb-2">Alert Me on</h6>
-                                                            <?php $escalationarl  = explode(" ", decryptString($contract->reminder_escalation_alertMeOn, 'reminder_escalation_alertMeOn')); ?>
+                                                            <?php [$escalationAlertDay, $escalationAlertUnit, $escalationAlertDirection] = reminder_alert_parts($contract->reminder_escalation_alertMeOn, 'reminder_escalation_alertMeOn'); ?>
                                                             <div class="col">
-                                                                {{ $escalationarl[0]}}
+                                                                {{ $escalationAlertDay }}
                                                             </div>
                                                             <div class="col">
 
-                                                                @if($escalationarl[1] == 'days')
+                                                                @if($escalationAlertUnit == 'days')
                                                                 <p>Days</p>
-                                                                @elseif($escalationarl[1] == 'months')
+                                                                @elseif($escalationAlertUnit == 'months')
                                                                 <p>Months</p>
-                                                                @elseif($escalationarl[1] == 'years')
+                                                                @elseif($escalationAlertUnit == 'years')
                                                                 <p>Years</p>
                                                                 @endif
 
                                                             </div>
                                                             <div class="col">
-                                                                @if($escalationarl[2] == 'prior')
+                                                                @if($escalationAlertDirection == 'prior')
                                                                 <p>Prior</p>
-                                                                @elseif($escalationarl[2] == 'after')
+                                                                @elseif($escalationAlertDirection == 'after')
                                                                 <p>After</p>
                                                                 @endif
 
@@ -1980,25 +1980,25 @@ cookie()->queue('attachment', true, 60);
                                                         <div class="form-group row">
 
                                                             <h6 class="mb-2">Alert Me on</h6>
-                                                            <?php $escalationarl  = explode(" ", decryptString($contract->reminder_escalation_alertMeOn_after, 'reminder_escalation_alertMeOn_after')); ?>
+                                                            <?php [$escalationAfterDay, $escalationAfterUnit, $escalationAfterDirection] = reminder_alert_parts($contract->reminder_escalation_alertMeOn_after, 'reminder_escalation_alertMeOn_after'); ?>
                                                             <div class="col">
-                                                                {{ $escalationarl[0] ?? 'Not Available'}}
+                                                                {{ $escalationAfterDay }}
                                                             </div>
                                                             <div class="col">
 
-                                                                @if($escalationarl[1] ?? 'Not Available' == 'days')
+                                                                @if($escalationAfterUnit == 'days')
                                                                 <p>Days</p>
-                                                                @elseif($escalationarl[1] ?? 'Not Available' == 'months')
+                                                                @elseif($escalationAfterUnit == 'months')
                                                                 <p>Months</p>
-                                                                @elseif($escalationarl[1] ?? 'Not Available' == 'years')
+                                                                @elseif($escalationAfterUnit == 'years')
                                                                 <p>Years</p>
                                                                 @endif
 
                                                             </div>
                                                             <div class="col">
-                                                                @if($escalationarl[2] ?? 'Not Available' == 'prior')
+                                                                @if($escalationAfterDirection == 'prior')
                                                                 <p>Prior</p>
-                                                                @elseif($escalationarl[2] ?? 'Not Available' == 'after')
+                                                                @elseif($escalationAfterDirection == 'after')
                                                                 <p>After</p>
                                                                 @endif
 
