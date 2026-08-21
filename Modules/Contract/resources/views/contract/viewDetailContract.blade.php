@@ -88,6 +88,15 @@ cookie()->queue(cookie()->forget('attachment')); ?>
 cookie()->queue('historical', $_GET['history'], 60);
 ?>
 @endif
+@php
+    // Which past version the Historical tab shows. The History tab links to it as
+    // ?tab=historical&history=<history_id>, and the cookie above remembers the last one so the
+    // tab stays reachable from the other tabs. The controller swaps the contract for that
+    // snapshot; see ContractController::viewContract().
+    // Empty means no version is chosen. Then the Historical nav item is not drawn, and the body
+    // falls back to the live contract, the same as the Details tab.
+    $historicalVersionId = $_GET['history'] ?? request()->cookie('historical') ?? '';
+@endphp
 @if(isset($_GET['attachment']))
 <?php
 die;
@@ -891,12 +900,14 @@ cookie()->queue('attachment', true, 60);
                         aria-selected="false">Obligations</button>
                 </a></li>                
 
-            <li class="nav-item active "><a href="{{ url('contracts/'.$contract->id.'?tab=historical&history='. $_GET['history'] )}}">
+            @if ($historicalVersionId !== '')
+            <li class="nav-item active "><a href="{{ url('contracts/'.$contract->id.'?tab=historical&history='. $historicalVersionId )}}">
                     <button type="button" class="nav-link active" role="tab" data-bs-toggle="tab"
                         data-bs-target="#navs-top-profile" aria-controls="navs-top-profile"
                         aria-selected="false">Historical</button>
                 </a> <a href="{{ url('contracts/'.$contract->id )}}?clearcokke="> X </a></li>
-                
+            @endif
+
             <li class="nav-item active"><a href="{{ url('contracts/'.$contract->id.'?tab=e-stamp' )}}">
                     <button type="button" class="nav-link" role="tab" data-bs-toggle="tab"
                         data-bs-target="#navs-top-profile" aria-controls="navs-top-profile"
@@ -1053,12 +1064,12 @@ cookie()->queue('attachment', true, 60);
             @endif
 
 
-            @if (request()->cookie('historical'))
+            @if ($historicalVersionId !== '')
 
             @if (isset($_GET['tab']) && $_GET['tab'] == 'historical')
 
             @else
-            <li class="nav-item  "><a href="{{ url('contracts/'.$contract->id.'?tab=historical&history='.request()->cookie('historical') )}}">
+            <li class="nav-item  "><a href="{{ url('contracts/'.$contract->id.'?tab=historical&history='. $historicalVersionId )}}">
                     <button type="button" class="nav-link" role="tab" data-bs-toggle="tab"
                         data-bs-target="#navs-top-profile" aria-controls="navs-top-profile"
                         aria-selected="false">Historical</button>
