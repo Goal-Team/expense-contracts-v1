@@ -335,6 +335,18 @@ cost is shared too. The edit tab is what we measure and verify on.
   stored token, so `isAccessTokenExpired()` is always true. Caching that token is the recommendation,
   and it is the one fix that needs no change to what any page renders.
 
+- [19 — The attachment tab takes 2.2 s and the database is not the reason](issues/19-attachment-tab-slow-outside-db.md)
+  — **2,171-2,428 ms to 1,327-1,384 ms.** The time was **84-89% in the blade render**, not the controller
+  and not the database — 154-176 ms of that request is queries. A 30-line view made **two** outbound
+  Google Drive calls that did the same work with the same file id, the same email and the same flag:
+  `fileViewUrl()` at 915-971 ms beside `get_google_drive_doc_link()` at 863-975 ms. Four round trips to
+  Google for one file link. The first only feeds the `Local` branch, so it moved inside that branch.
+  **The failure path and the success path cost the same** — seeded rows hold a made-up Drive id and throw,
+  contract 4 holds a real one and succeeds in 422 ms, and both pages cost 2,428 ms before the fix. So the
+  2.1 s was never a timeout. **915 ms stays and cannot be deleted**: `changePermission()` still runs
+  `permissions->create` even with `$onlyView = true`, so it is what grants the logged-in user access to
+  the file. Removing it shows Google's 403 to anyone not already granted. Commit `1d5a5a1`.
+
 ## Order of work
 
 This tracker is markdown, so there is no query to find the frontier. The order is written down instead.
@@ -351,7 +363,8 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | ~~[16 is Related Contracts dead?](issues/16-unreachable-blade-region.md)~~ | **CLOSED** | It is not dead. `?tab=details` renders it. Nothing deleted. But it found ticket 18. |
 | ~~[18 guard the scans by tab](issues/18-guard-the-scans-by-tab.md)~~ | **CLOSED** | **Edit tab 4,208-4,589 ms to 455 ms, 258 queries to 86.** The biggest win on this map. |
 | ~~[20 `$contractsoldothers` scan](issues/20-contractsoldothers-scan.md)~~ | **CLOSED** | Details tab **4,088-5,233 ms to 2,997-3,576 ms**. The query itself 928-1,823 ms to under 5 ms. |
-| ~~[19 attachment tab, 2.1-2.2 s outside the database](issues/19-attachment-tab-slow-outside-db.md)~~ | **CLOSED** | **2,171-2,428 ms to 1,327-1,384 ms.** The time was in the blade, not the database: two identical Google Drive round trips for one file link. One is gone. The other needs its own ticket. |
+| ~~[19 attachment tab, 2.1-2.2 s outside the database](issues/19-attachment-tab-slow-outside-db.md)~~ | **CLOSED** | **2,171-2,428 ms to 1,327-1,384 ms.** The time was in the blade, not the database: two identical Google Drive calls. |
+| [22 cache the Drive token](issues/22-cache-the-drive-token.md) | **NOW** | **The biggest single cost left on the page.** 494-582 ms of every Drive call is an OAuth refresh that depends on neither the file nor the user. |
 | ~~[15 recursive child walk](issues/15-recursive-child-walk.md)~~ | **CLOSED** | Details tab **3,235-7,109 ms to 1,198-2,207 ms**. The old query was also **wrong**, on 202 of 3,018 contracts. |
 | ~~[21 parent walk](issues/21-parent-walk.md)~~ | **CLOSED** | Details tab **1,198-2,207 ms to 686-785 ms**. The slowest query on that tab is now **7-11 ms**. |
 | [11 indexes](issues/11-missing-indexes.md) | four left | Ticket 20 took one and **found a better column order than this ticket guessed** - order by selectivity, not by the order they appear in the `where`. Read its Resolution before adding the rest. |
