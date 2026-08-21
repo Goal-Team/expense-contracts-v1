@@ -88,6 +88,11 @@ cost is shared too. The edit tab is what we measure and verify on.
 
 <!-- one line per closed ticket, newest last -->
 
+- [01 — Fix the crash on the edit tab when a reminder column is NULL](issues/01-fix-null-reminder-crash.md)
+  — one helper `reminder_alert_parts()` replaces four unguarded `explode()` calls; the page renders on a
+  NULL reminder and still shows stored values unchanged. Fixed a precedence bug in the same blocks that
+  made every unit dropdown show Years. Commit `37ddd2e`.
+
 ## Not yet specified
 
 - What `viewContract` should become. It is ~820 lines doing contract load, eSign polling and status

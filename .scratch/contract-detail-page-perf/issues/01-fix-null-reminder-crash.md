@@ -2,7 +2,7 @@
 
 Type: `wayfinder:task` (AFK)
 Blocked by: nothing
-Status: OPEN
+Status: CLOSED 2026-08-21
 
 ## Question
 
@@ -36,3 +36,26 @@ column is `NULL`, `explode` returns one element and `[1]` throws `Undefined arra
 Do not paste the same guard four times. Pull it into one helper that takes the column value and
 returns the three parts with sane defaults, and call it from all four places — CLAUDE.md, "one
 function, one concern, do not copy blocks".
+
+## Resolution — 2026-08-21
+
+One helper, `reminder_alert_parts($storedValue, $column)` in
+[app/helpers.php](../../../app/helpers.php), splits the stored value and returns
+`[$day, $unit, $direction]`. Missing parts come back as `''`, `'days'` and `''`, so an empty
+reminder shows an empty day box with Days selected and neither Prior nor After forced. The four
+blade blocks call it and read named variables instead of `$fristarl[0..2]`.
+
+**A second bug was fixed on the way.** The fourth block already carried `?? ''` bandaids, written as
+`{{ $fristarl[1] ?? '' == 'days' ? 'selected' : '' }}`. PHP parses that as
+`($fristarl[1] ?? ('' == 'days'))`, so any non-empty value is truthy and **all three unit options
+carried `selected`** — the browser then showed the last one, Years, whatever was stored. It shows the
+stored unit now.
+
+**Verified in the browser**, not by a backend check:
+
+- `contracts/100479?tab=edit` — all four columns NULL. Renders. Title is "Edit/View Contract", not
+  "Undefined array key 1".
+- `contracts/1?tab=edit` — real data. Still shows `30 days prior` and `15 days prior` unchanged, and
+  the after-unit dropdown now has exactly one selected option instead of three.
+
+Commit `37ddd2e` on `claude/contract-edit-page-perf`.
