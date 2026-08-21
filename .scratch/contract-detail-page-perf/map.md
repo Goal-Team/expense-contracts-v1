@@ -269,6 +269,18 @@ cost is shared too. The edit tab is what we measure and verify on.
   as it stood when the statement began, so the walk stops after the immediate parent and the 202
   contracts with two or more ancestors silently lose the rest.
 
+- [21 — The parent walk](issues/21-parent-walk.md) — **Details tab 1,198-2,207 ms to 686-785 ms; TTFB
+  824 ms.** Both recursive walks are now out of the ten-slowest list on every contract measured, and the
+  slowest query on that tab is **7-11 ms**. The two walks share one method, `ancestryCte()`, with the
+  32-level cap in one place; nothing is copied. Query count does not move — one query became one query.
+  **This old query was right**, unlike its sibling: one query, no `.=` gluing, no `GROUP_CONCAT`, so
+  neither of ticket 15's faults applied. **But its answer depended on a PDO flag.** It reads `@idlist` in
+  one branch while writing it in the branch above, and with *emulated* prepared statements MariaDB reads
+  the value from when the statement began — NULL — so the walk stopped at the immediate parent. Five runs
+  of five: native gives the whole chain, emulated gives one row. Laravel uses native, so it was not
+  broken; it was one config line from losing every ancestor above the first on the 202 contracts that
+  have more than one. Recorded, not fixed. Commits `c480b03`, `89087ae`, `d05d016`.
+
 ## Order of work
 
 This tracker is markdown, so there is no query to find the frontier. The order is written down instead.
@@ -280,14 +292,14 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | ~~[08 query inventory](issues/08-query-inventory.md)~~ | **CLOSED** | Read-only. Everything below leans on it. |
 | [02 realistic seeded rows](issues/02-seed-realistic-contract-rows.md) | now | A baseline on rows that are 60 columns of NULL measures the wrong page. |
 | [14 breakage and one duplicate](issues/14-correctness-bugs.md) | now | Narrowed 2026-08-21 to what throws or costs time. The rest is out of scope. |
-| [03 find remaining breaks](issues/03-find-remaining-breaks.md) | after 02 | Fix what is broken before measuring how slow it is. |
+| [03 find remaining breaks](issues/03-find-remaining-breaks.md) | **NOW** | `?tab=historical` returns **HTTP 500 on every contract** and the tab is in the nav bar. Five known breaks. Breakage is in scope by the dev's rule; wrong-but-harmless is not. |
 | [04 baseline](issues/04-baseline-attribution.md) | after 03 | Every row in the report sits under this one. |
 | ~~[16 is Related Contracts dead?](issues/16-unreachable-blade-region.md)~~ | **CLOSED** | It is not dead. `?tab=details` renders it. Nothing deleted. But it found ticket 18. |
 | ~~[18 guard the scans by tab](issues/18-guard-the-scans-by-tab.md)~~ | **CLOSED** | **Edit tab 4,208-4,589 ms to 455 ms, 258 queries to 86.** The biggest win on this map. |
 | ~~[20 `$contractsoldothers` scan](issues/20-contractsoldothers-scan.md)~~ | **CLOSED** | Details tab **4,088-5,233 ms to 2,997-3,576 ms**. The query itself 928-1,823 ms to under 5 ms. |
-| [19 attachment tab, 2.2 s outside the database](issues/19-attachment-tab-slow-outside-db.md) | now, runs beside anything | The only tab whose cost is not queries: 91 queries, 2,638 ms. No other ticket on this map will touch it. |
+| [19 attachment tab, 2.1-2.2 s outside the database](issues/19-attachment-tab-slow-outside-db.md) | after 03 | **Now the slowest tab on the page.** Every other tab is 330-460 ms; this one is 2,113-2,230 ms on ~91 queries, so no query work will touch it. |
 | ~~[15 recursive child walk](issues/15-recursive-child-walk.md)~~ | **CLOSED** | Details tab **3,235-7,109 ms to 1,198-2,207 ms**. The old query was also **wrong**, on 202 of 3,018 contracts. |
-| [21 parent walk](issues/21-parent-walk.md) | **NOW** | Same session-variable shape, and now the slowest single query on the page at 222-255 ms. Ticket 15 already wrote the CTE; reuse it. |
+| ~~[21 parent walk](issues/21-parent-walk.md)~~ | **CLOSED** | Details tab **1,198-2,207 ms to 686-785 ms**. The slowest query on that tab is now **7-11 ms**. |
 | [11 indexes](issues/11-missing-indexes.md) | four left | Ticket 20 took one and **found a better column order than this ticket guessed** - order by selectivity, not by the order they appear in the `where`. Read its Resolution before adding the rest. |
 | [12 delete the waste](issues/12-delete-waste.md) | now, but re-scope it first | **Ticket 18 already collected most of this on every tab but Details.** The six unread results and the duplicate pairs still stand; the 158 repeated lookups mostly do not. Re-read before starting. |
 | [09 stop binding ids](issues/09-replace-wherein-with-joins.md) | after 04 | Four query shapes, nothing else. |
