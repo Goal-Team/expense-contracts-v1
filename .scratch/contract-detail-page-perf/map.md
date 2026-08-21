@@ -186,7 +186,9 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | [14 breakage and one duplicate](issues/14-correctness-bugs.md) | now | Narrowed 2026-08-21 to what throws or costs time. The rest is out of scope. |
 | [03 find remaining breaks](issues/03-find-remaining-breaks.md) | after 02 | Fix what is broken before measuring how slow it is. |
 | [04 baseline](issues/04-baseline-attribution.md) | after 03 | Every row in the report sits under this one. |
-| [11 indexes](issues/11-missing-indexes.md) | after 04 | An index added before the baseline hides itself. |
+| [16 is Related Contracts dead?](issues/16-unreachable-blade-region.md) | after 04 | **Do this before any clever work.** If that region never renders, most of the page's queries are waste and a deletion beats an optimisation. |
+| [15 recursive child walk](issues/15-recursive-child-walk.md) | after 11, 16 | The index only hides it. Skip if 16 deletes the caller. |
+| [11 indexes](issues/11-missing-indexes.md) | part done, five left | An index added before the baseline hides itself. The `parentcontract` one was applied early because the page was returning 500. |
 | [12 delete the waste](issues/12-delete-waste.md) | after 04 | Cheapest and safest win. Goes first of the code changes. |
 | [09 stop binding ids](issues/09-replace-wherein-with-joins.md) | after 04 | Four query shapes, nothing else. |
 | [13 visibleTo scope](issues/13-visible-to-scope.md) | after 04, 12 | 138 of the 375 queries. The biggest single win. |
@@ -208,6 +210,9 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 
 ## Not yet specified
 
+- Whether a large part of `viewDetailContract.blade.php` is unreachable. The ticket 14 agent could not
+  make the Related Contracts region render on any contract. That is now
+  [ticket 16](issues/16-unreachable-blade-region.md), and it may be the biggest item on the map.
 - What `viewContract` should become. It is ~820 lines doing contract load, eSign polling and status
   update, history, parties, approvals, obligations and four `availableContracts()` passes. Splitting
   it is clearly coming, but the seams only become visible once the baseline says where the time goes.
