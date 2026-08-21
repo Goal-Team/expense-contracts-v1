@@ -97,12 +97,6 @@ cookie()->queue('historical', $_GET['history'], 60);
     // falls back to the live contract, the same as the Details tab.
     $historicalVersionId = $_GET['history'] ?? request()->cookie('historical') ?? '';
 @endphp
-@if(isset($_GET['attachment']))
-<?php
-die;
-cookie()->queue('attachment', true, 60);
-?>
-@endif
 @if (isset($_GET['tab']) && $_GET['tab'] == 'attachment')
 <script>
     if(document.getElementById("attachmentDivFocus")){
