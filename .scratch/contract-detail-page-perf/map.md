@@ -316,6 +316,25 @@ cost is shared too. The edit tab is what we measure and verify on.
   tab costs, because it falls into the same branch. The other eight fixes move no number and the agent
   said so rather than inventing one.
 
+- [19 - the attachment tab is slow outside the database](issues/19-attachment-tab-slow-outside-db.md) -
+  **the blade holds the time, not the controller.** 89 queries cost 154-176 ms while the view render
+  held 1,827-1,940 ms. The tab called `fileViewUrl()` and `get_google_drive_doc_link()` one after the
+  other, and both end in `GoogleDriveController::changePermission()` with the same file id, the same
+  email and the same `$onlyView` flag. Each of those makes **two** outbound requests to Google - an
+  OAuth token refresh of 494-582 ms and a Drive `files.get` of 359-422 ms - so one page load made four
+  round trips for one link. `fileViewUrl()`'s answer is read only by the `Local` branch, so it moved
+  inside that branch: `100479?tab=attachment` goes **2,171-2,428 ms and 91 queries to 1,327-1,384 ms
+  and 89**, and contract `4` - a real Drive file - goes 2,428 ms and 94 queries to 1,365 ms and 92.
+  Output unchanged on both. Report row 13. Commit `1d5a5a1`.
+  **Three things to remember:** the cost is the same whether the file is real or not, because contract
+  4's `files.get` **succeeded** in 422 ms and cost what the seeded contracts' 404 cost - so the 2.1 s
+  was never a timeout or a failure path; `changePermission()` is **not a read**, it runs
+  `permissions->create` even with `$onlyView = true`, so it is what grants the logged-in user access
+  and the remaining 915 ms cannot simply be deleted; and the token refresh is **half of every Drive
+  call in the repo**, because `changePermission()` builds a fresh `Google_Client` and never sets a
+  stored token, so `isAccessTokenExpired()` is always true. Caching that token is the recommendation,
+  and it is the one fix that needs no change to what any page renders.
+
 ## Order of work
 
 This tracker is markdown, so there is no query to find the frontier. The order is written down instead.
@@ -332,7 +351,7 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | ~~[16 is Related Contracts dead?](issues/16-unreachable-blade-region.md)~~ | **CLOSED** | It is not dead. `?tab=details` renders it. Nothing deleted. But it found ticket 18. |
 | ~~[18 guard the scans by tab](issues/18-guard-the-scans-by-tab.md)~~ | **CLOSED** | **Edit tab 4,208-4,589 ms to 455 ms, 258 queries to 86.** The biggest win on this map. |
 | ~~[20 `$contractsoldothers` scan](issues/20-contractsoldothers-scan.md)~~ | **CLOSED** | Details tab **4,088-5,233 ms to 2,997-3,576 ms**. The query itself 928-1,823 ms to under 5 ms. |
-| [19 attachment tab, 2.1-2.2 s outside the database](issues/19-attachment-tab-slow-outside-db.md) | after 03 | **Now the slowest tab on the page.** Every other tab is 330-460 ms; this one is 2,113-2,230 ms on ~91 queries, so no query work will touch it. |
+| ~~[19 attachment tab, 2.1-2.2 s outside the database](issues/19-attachment-tab-slow-outside-db.md)~~ | **CLOSED** | **2,171-2,428 ms to 1,327-1,384 ms.** The time was in the blade, not the database: two identical Google Drive round trips for one file link. One is gone. The other needs its own ticket. |
 | ~~[15 recursive child walk](issues/15-recursive-child-walk.md)~~ | **CLOSED** | Details tab **3,235-7,109 ms to 1,198-2,207 ms**. The old query was also **wrong**, on 202 of 3,018 contracts. |
 | ~~[21 parent walk](issues/21-parent-walk.md)~~ | **CLOSED** | Details tab **1,198-2,207 ms to 686-785 ms**. The slowest query on that tab is now **7-11 ms**. |
 | [11 indexes](issues/11-missing-indexes.md) | four left | Ticket 20 took one and **found a better column order than this ticket guessed** - order by selectivity, not by the order they appear in the `where`. Read its Resolution before adding the rest. |
