@@ -181,6 +181,16 @@ cost is shared too. The edit tab is what we measure and verify on.
   only 218 ms but are 62% of the query count**. So the seconds and the count need different fixes.
   Commit `ff88b2a`.
 
+- [16 — is Related Contracts dead?](issues/16-unreachable-blade-region.md) — **not dead.** `?tab=details`
+  renders it, and the nav bar links to that tab on every load. The two tab chains test **different**
+  values: `details` is in the button chain and not in the body chain, so it lands in the body chain's
+  `@else` at [line 1383](../../Modules/Contract/resources/views/contract/viewDetailContract.blade.php:1383),
+  and the region sits inside that block at lines 2240–2450. Earlier agents tried `edit`, `history` and no
+  `?tab`; all three hit a named branch. **Nothing deleted.** The Details tab runs **362 queries** against
+  the edit tab's 253. Two further facts: **no contract in the set has a parent**, so the two recursive
+  walks cost 2,496 ms to build empty tables; and **the three scans run on every tab**, so the edit tab
+  pays for a region it never renders. Report row 4.
+
 ## Order of work
 
 This tracker is markdown, so there is no query to find the frontier. The order is written down instead.
@@ -194,8 +204,8 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | [14 breakage and one duplicate](issues/14-correctness-bugs.md) | now | Narrowed 2026-08-21 to what throws or costs time. The rest is out of scope. |
 | [03 find remaining breaks](issues/03-find-remaining-breaks.md) | after 02 | Fix what is broken before measuring how slow it is. |
 | [04 baseline](issues/04-baseline-attribution.md) | after 03 | Every row in the report sits under this one. |
-| [16 is Related Contracts dead?](issues/16-unreachable-blade-region.md) | **NOW, first of the code work** | The baseline puts **3,840 ms of the 4,400 ms** in three scans that all feed this region, and "Related Contracts" appeared in none of four rendered pages. If it is dead, the page goes to about 600 ms by deletion. |
-| [15 recursive child walk](issues/15-recursive-child-walk.md) | after 16 | **2,616 ms on its own — the single most expensive thing on the page.** The index did not fix it: user variables and `FIND_IN_SET` make the optimiser walk every row anyway. Skip only if 16 deletes the caller. |
+| ~~[16 is Related Contracts dead?](issues/16-unreachable-blade-region.md)~~ | **CLOSED** | It is not dead. `?tab=details` renders it. Nothing deleted. |
+| [15 recursive child walk](issues/15-recursive-child-walk.md) | now | **2,337–2,616 ms on its own — the single most expensive thing on the page.** The index did not fix it: user variables and `FIND_IN_SET` make the optimiser walk every row anyway. 16 kept the caller, so this stands. Seed a parent-child chain first, or it measures a walk that returns nothing. |
 | [11 indexes](issues/11-missing-indexes.md) | part done, five left | An index added before the baseline hides itself. The `parentcontract` one was applied early because the page was returning 500. |
 | [12 delete the waste](issues/12-delete-waste.md) | after 16 | Cheap and safe, but the baseline says it buys **little time** - the 158 repeated lookups are 218 ms. It buys the **query count**, which is the number that must not regress. |
 | [09 stop binding ids](issues/09-replace-wherein-with-joins.md) | after 04 | Four query shapes, nothing else. |
@@ -204,7 +214,7 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | [10 eSign off the page load](issues/10-esign-check-after-page-render.md) | after 04 | Independent of the query work. **Unmeasured** — the block only fires on a Signing contract and the test set has none, so it needs a copy of one set to Signing first. |
 | [17 gzip the HTML](issues/17-gzip-the-html-document.md) | now, runs beside anything | 326 KB sent uncompressed while 39 assets are compressed. A config line for the biggest byte win on the page. |
 | [06 dropdowns on demand](issues/06-dropdown-decision.md) | after 12, 13 | **Demoted by the baseline: the dropdown data costs about 60 ms, 1.4%.** This is a page-weight change, not a speed change. Still worth doing, no longer urgent. |
-| [07 tabs on demand](issues/07-page-size-decision.md) | last | The one change that can silently wipe a column on save. Do it when everything else is proved. |
+| [07 tabs on demand](issues/07-page-size-decision.md) | last | The one change that can silently wipe a column on save. Do it when everything else is proved. **Ticket 16 raised its value:** the three scans run on every tab, so the edit tab pays 3,840 ms for a region only the Details tab renders. |
 
 - [14 - Correctness bugs found while reading](issues/14-correctness-bugs.md) - **the dev narrowed
   it to speed only 2026-08-21**: bad logic that neither breaks the page nor costs time stays. Three
@@ -219,9 +229,8 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 
 ## Not yet specified
 
-- Whether a large part of `viewDetailContract.blade.php` is unreachable. The ticket 14 agent could not
-  make the Related Contracts region render on any contract. That is now
-  [ticket 16](issues/16-unreachable-blade-region.md), and it may be the biggest item on the map.
+<!-- The unreachable-blade question is ANSWERED 2026-08-22 by ticket 16: the region renders on
+     ?tab=details. Nothing was deleted. -->
 - What `viewContract` should become. It is ~820 lines doing contract load, eSign polling and status
   update, history, parties, approvals, obligations and four `availableContracts()` passes. Splitting
   it is clearly coming, but the seams only become visible once the baseline says where the time goes.
