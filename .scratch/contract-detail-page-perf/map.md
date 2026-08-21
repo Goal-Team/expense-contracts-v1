@@ -257,6 +257,18 @@ cost is shared too. The edit tab is what we measure and verify on.
   three deep, 50 four deep, fan-outs of 12 and 20 — with the cycle check run twice. Row 0 of the report
   is untouched; row 9 is the honest starting number on the new data. Four commits.
 
+- [21 - the recursive parent walk](issues/21-parent-walk.md) - **the upward walk is now one shared
+  method.** `ancestryCte()` returns the `WITH RECURSIVE` fragment; `ancestorContractIds()` reads the
+  ancestors from it and `subsequentContractIds()` uses the same fragment to find the top of the tree.
+  Nothing copied. `100479?tab=details` goes **1,198-2,207 ms to 686-785 ms**, same 369 queries, and
+  **neither walk is in the ten slowest any more** - the slowest query on the page is now 7-11 ms.
+  Id sets match on all 20 contracts checked and every document is byte-identical. Report row 11.
+  Commit `c480b03`. **One thing to remember:** this query had **neither** of the child walk's faults -
+  no `.=` gluing, no `GROUP_CONCAT`, so no 1,024-byte cap - but it was correct only because Laravel
+  uses **native** prepared statements. With emulated prepares the `FIND_IN_SET` branch reads `@idlist`
+  as it stood when the statement began, so the walk stops after the immediate parent and the 202
+  contracts with two or more ancestors silently lose the rest.
+
 ## Order of work
 
 This tracker is markdown, so there is no query to find the frontier. The order is written down instead.
@@ -299,11 +311,11 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 
 ## Not yet specified
 
-- **The Details tab is still the slowest tab, but the seconds are gone.** 1,198-2,207 ms and 369
-  queries on `100479`, against 306-514 ms and 83-98 on every tab but `attachment`. Ticket 15 closed the
-  child walk. What is left: the **parent walk** at 222-255 ms, the same session-variable shape the
-  child walk had, which the same `ancestry` CTE can replace; and the `availableContracts()` loops,
-  about 280 of the 369 queries ([ticket 13](issues/13-visible-to-scope.md)).
+- **The Details tab is still the slowest tab, and no single query holds it any more.** 686-785 ms and
+  369 queries on `100479`, against 306-514 ms and 83-98 on every tab but `attachment`. Tickets 15 and
+  21 closed both walks, and the slowest query on the page is now 7-11 ms. What is left is the **count**:
+  the `availableContracts()` loops, about 280 of the 369 queries
+  ([ticket 13](issues/13-visible-to-scope.md)).
 - **The query count on the Details tab now grows with the family tree.** 369 on `100479` (one child),
   426 on contract `1`, **619 on `101101`** (a 12-child fan-out). The blade lazy-loads
   `select * from contracts where parentcontract = ? limit 1` for every related contract, and the four
