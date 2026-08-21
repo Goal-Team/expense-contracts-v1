@@ -363,6 +363,22 @@ cost is shared too. The edit tab is what we measure and verify on.
   `GoogleDriveController` still refresh their own token**, one line each to move over, all on POST paths
   and so out of this page's scope.
 
+- [22 — Cache the Google Drive access token](issues/22-cache-the-drive-token.md) — **attachment tab
+  1,327-1,384 ms to 1,066-1,212 ms**, and contract 4 improved by the same amount, as predicted. New
+  `authorizedClient()` holds the token in the `file` cache, keyed on a `sha1` of the client id, secret,
+  token endpoint and refresh token, so two accounts can never share an entry. It lives `expires_in` minus
+  120 s — 3,479 s in practice. A 401 or 403 naming an authentication fault drops it, refreshes once and
+  retries once; a 404 for a missing file does **not** touch the cache, which matters because every seeded
+  contract holds a made-up Drive id and 404s on every load. The retry was proved by writing a bogus token
+  into the cache by hand, not assumed.
+  **Honest caveat: the refresh cost about 230 ms on the day it was measured, not the 494-582 ms ticket 19
+  saw.** The cache removes the whole refresh either way; the milliseconds are that day's round trip to
+  Google. The refresh **count** is the proof — one miss and ten hits over 12 calls — and the report row
+  says so rather than claiming the bigger number.
+  **Cheapest follow-up on the board:** ten more methods in the same class still refresh their own token,
+  six identical lines each, and `authorizedClient()` is public so each is a one-line change. All ten sit
+  on POST paths, so the scope rule leaves them here. Commit `5396884`.
+
 ## Order of work
 
 This tracker is markdown, so there is no query to find the frontier. The order is written down instead.
@@ -380,7 +396,7 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | ~~[18 guard the scans by tab](issues/18-guard-the-scans-by-tab.md)~~ | **CLOSED** | **Edit tab 4,208-4,589 ms to 455 ms, 258 queries to 86.** The biggest win on this map. |
 | ~~[20 `$contractsoldothers` scan](issues/20-contractsoldothers-scan.md)~~ | **CLOSED** | Details tab **4,088-5,233 ms to 2,997-3,576 ms**. The query itself 928-1,823 ms to under 5 ms. |
 | ~~[19 attachment tab, 2.1-2.2 s outside the database](issues/19-attachment-tab-slow-outside-db.md)~~ | **CLOSED** | **2,171-2,428 ms to 1,327-1,384 ms.** The time was in the blade, not the database: two identical Google Drive calls. |
-| [22 cache the Drive token](issues/22-cache-the-drive-token.md) | **NOW** | **The biggest single cost left on the page.** 494-582 ms of every Drive call is an OAuth refresh that depends on neither the file nor the user. |
+| ~~[22 cache the Drive token](issues/22-cache-the-drive-token.md)~~ | **CLOSED** | Attachment tab **1,327-1,384 ms to 1,066-1,212 ms**. One refresh per hour instead of one per call. |
 | ~~[22 cache the Drive access token](issues/22-cache-the-drive-token.md)~~ | **CLOSED** | **One refresh, then none.** `100479?tab=attachment` 1,327-1,384 ms to **1,066-1,212 ms**; contract `4` to 1,194-1,256 ms. The refresh cost 230 ms today, not the 494-582 ms ticket 19 saw. |
 | ~~[15 recursive child walk](issues/15-recursive-child-walk.md)~~ | **CLOSED** | Details tab **3,235-7,109 ms to 1,198-2,207 ms**. The old query was also **wrong**, on 202 of 3,018 contracts. |
 | ~~[21 parent walk](issues/21-parent-walk.md)~~ | **CLOSED** | Details tab **1,198-2,207 ms to 686-785 ms**. The slowest query on that tab is now **7-11 ms**. |
@@ -390,7 +406,7 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | [13 visibleTo scope](issues/13-visible-to-scope.md) | after 21 | **Now the whole remaining problem on Details, and it is a scaling one.** The query count grows with the family tree: 369 on 100479, 426 on contract 1, **619 on 101101** with its 20-child fan-out. |
 | [05 split viewContract](issues/05-query-layer-decision.md) | after 09, 12, 13 | Moving code last, so it is not moved twice. |
 | [10 eSign off the page load](issues/10-esign-check-after-page-render.md) | after 04 | Independent of the query work. **Unmeasured** — the block only fires on a Signing contract and the test set has none, so it needs a copy of one set to Signing first. |
-| [17 gzip the HTML](issues/17-gzip-the-html-document.md) | now, runs beside anything | 326 KB sent uncompressed while 39 assets are compressed. A config line for the biggest byte win on the page. |
+| [17 gzip the HTML](issues/17-gzip-the-html-document.md) | **NOW** | **The biggest win left.** 326 KB of HTML sent uncompressed while 39 assets are compressed. Config, not page code, so it touches no PHP. |
 | [06 dropdowns on demand](issues/06-dropdown-decision.md) | after 12, 13 | **Demoted by the baseline: the dropdown data costs about 60 ms, 1.4%.** This is a page-weight change, not a speed change. Still worth doing, no longer urgent. |
 | [07 tabs on demand](issues/07-page-size-decision.md) | last | Still last — it is the one change that can silently wipe a column on save. **Ticket 18 takes most of what ticket 16 credited to this one, at a fraction of the risk.** Weigh whether the rest is worth it once 18 lands. |
 
