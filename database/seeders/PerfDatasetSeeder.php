@@ -121,6 +121,8 @@ class PerfDatasetSeeder extends Seeder
         $this->insertChunked('contracts', $contracts, self::CHUNK_CONTRACTS);
         unset($contracts);
 
+        $this->assignParentChains();
+
         $parties = $this->buildParties($meta, $pools);
         $this->command->info('Inserting ' . count($parties) . ' contract_party_data rows...');
         $this->insertChunked('contract_party_data', $parties);
@@ -676,6 +678,122 @@ class PerfDatasetSeeder extends Seeder
         }
 
         return $rows;
+    }
+
+    // ------------------------------------------------------------ parent-child
+
+    /**
+     * Links some seeded contracts to a parent, so the detail page has real renewal chains to
+     * walk. Without this every parentcontract is 0, so the parent walk and the child walk on
+     * the Details tab return nothing and a rewrite of either one cannot be measured.
+     * See .scratch/contract-detail-page-perf/issues/15-recursive-child-walk.md step 0.
+     *
+     * The shapes, because a recursive walk behaves differently on each:
+     *   - 300 pairs: one contract, one renewal. The common shape.
+     *   - 100 chains three rows deep.
+     *   - 50 chains four rows deep.
+     *   - two wide fan-outs, 12 children and 20 children, and one branch of the first
+     *     fan-out goes two rows deeper, so a fan-out and a chain meet in one tree.
+     *
+     * 684 of the 3,000 seeded rows get a parent, so 77% stay a root. Not every contract is
+     * a renewal.
+     *
+     * NO CYCLE IS POSSIBLE HERE. Every parent index is smaller than its child index, so a
+     * parent id is always smaller than its child id, and a chain of strictly falling ids
+     * cannot return to where it started. assertNoParentCycles() checks the written rows.
+     *
+     * Public so it can be run on an already-seeded database without re-running run().
+     */
+    public function assignParentChains(): void
+    {
+        $links = []; // child row number => parent row number
+
+        // 300 pairs: one contract, one renewal.
+        for ($n = 0; $n < 600; $n += 2) {
+            $links[$n + 1] = $n;
+        }
+
+        // 100 chains three rows deep.
+        for ($n = 600; $n < 900; $n += 3) {
+            $links[$n + 1] = $n;
+            $links[$n + 2] = $n + 1;
+        }
+
+        // 50 chains four rows deep.
+        for ($n = 900; $n < 1100; $n += 4) {
+            $links[$n + 1] = $n;
+            $links[$n + 2] = $n + 1;
+            $links[$n + 3] = $n + 2;
+        }
+
+        // Two wide fan-outs: one master contract with many children.
+        for ($n = 1101; $n <= 1112; $n++) {
+            $links[$n] = 1100;
+        }
+        for ($n = 1121; $n <= 1140; $n++) {
+            $links[$n] = 1120;
+        }
+
+        // One branch of the first fan-out goes two rows deeper.
+        $links[1141] = 1101;
+        $links[1142] = 1141;
+
+        foreach ($links as $childN => $parentN) {
+            if ($parentN >= $childN) {
+                throw new \RuntimeException('Parent row number must be smaller than the child row number.');
+            }
+        }
+
+        // A parent id is always the child id minus a fixed offset, so the rows group by that
+        // offset and the whole set is written in about 20 statements. The id lists are short
+        // literal values built here, not ids read from another query.
+        $byOffset = [];
+        foreach ($links as $childN => $parentN) {
+            $byOffset[$childN - $parentN][] = self::ID_BASE + $childN;
+        }
+
+        foreach ($byOffset as $offset => $childIds) {
+            foreach (array_chunk($childIds, 500) as $chunk) {
+                DB::table('contracts')
+                    ->whereIn('id', $chunk)
+                    // DB::raw because the new value is column arithmetic on the row being
+                    // updated. Eloquent has no expression for "this row's id minus 5".
+                    ->update(['parentcontract' => DB::raw('id - ' . (int) $offset)]);
+            }
+        }
+
+        $this->assertNoParentCycles();
+
+        $withParent = DB::table('contracts')->where('parentcontract', '<>', 0)->count();
+        $this->say('Linked ' . count($links) . ' contracts to a parent; ' . $withParent . ' rows now have one.');
+    }
+
+    /**
+     * Proves no contract is its own ancestor. A cycle makes the recursive child walk on the
+     * detail page spin until MariaDB's max_recursive_iterations stops it.
+     */
+    private function assertNoParentCycles(): void
+    {
+        // A parent id below the child id on every row is the proof: an ancestor chain of
+        // strictly falling ids cannot come back to its start. Eloquent cannot compare two
+        // columns of the same row, so whereColumn is the closest it gets.
+        $rising = DB::table('contracts')
+            ->where('parentcontract', '<>', 0)
+            ->whereColumn('parentcontract', '>=', 'id')
+            ->count();
+
+        if ($rising > 0) {
+            throw new \RuntimeException($rising . ' contracts point at a parent id at or above their own id. A cycle is possible.');
+        }
+
+        $this->say('Cycle check: 0 contracts point at a parent id at or above their own id.');
+    }
+
+    private function say(string $message): void
+    {
+        if (isset($this->command)) {
+            $this->command->info($message);
+        }
     }
 
     // ---------------------------------------------------------------- plumbing
