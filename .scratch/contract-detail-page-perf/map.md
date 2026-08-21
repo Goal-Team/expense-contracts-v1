@@ -189,7 +189,7 @@ cost is shared too. The edit tab is what we measure and verify on.
   `?tab`; all three hit a named branch. **Nothing deleted.** The Details tab runs **362 queries** against
   the edit tab's 253. Two further facts: **no contract in the set has a parent**, so the two recursive
   walks cost 2,496 ms to build empty tables; and **the three scans run on every tab**, so the edit tab
-  pays for a region it never renders. Report row 4.
+  pays for a region it never renders. Report row 4. Commit `3409cc4`.
 
 ## Order of work
 
