@@ -161,7 +161,7 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | ~~[01 reminder crash](issues/01-fix-null-reminder-crash.md)~~ | **CLOSED** | The page did not render at all. |
 | ~~[08 query inventory](issues/08-query-inventory.md)~~ | **CLOSED** | Read-only. Everything below leans on it. |
 | [02 realistic seeded rows](issues/02-seed-realistic-contract-rows.md) | now | A baseline on rows that are 60 columns of NULL measures the wrong page. |
-| [14 correctness bugs](issues/14-correctness-bugs.md) | now | Not speed work. Independent of every measurement. |
+| [14 breakage and one duplicate](issues/14-correctness-bugs.md) | now | Narrowed 2026-08-21 to what throws or costs time. The rest is out of scope. |
 | [03 find remaining breaks](issues/03-find-remaining-breaks.md) | after 02 | Fix what is broken before measuring how slow it is. |
 | [04 baseline](issues/04-baseline-attribution.md) | after 03 | Every row in the report sits under this one. |
 | [11 indexes](issues/11-missing-indexes.md) | after 04 | An index added before the baseline hides itself. |
@@ -183,13 +183,31 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 <!-- The availableContracts question GRADUATED 2026-08-21: the dev chose the Eloquent scope, so it is
      now [ticket 13](issues/13-visible-to-scope.md). -->
 
-- Whether the `user_action_log` write on every page load belongs in ticket 10 with the eSign write, or
-  stays. Written up in [ticket 14](issues/14-correctness-bugs.md) item 7 for the dev.
-- What Chart View is meant to show, and what the correct party-to-signature mapping is. Both are real
-  bugs and both need the dev's intent, so both are listed in
-  [ticket 14](issues/14-correctness-bugs.md) rather than guessed.
+<!-- All three of these went OUT OF SCOPE 2026-08-21 on the dev's ruling: bad logic that neither
+     breaks the page nor costs time is not this effort's. See the Out of scope section. -->
 
 ## Out of scope
+
+- **Bad logic that neither breaks the page nor costs time. The dev's ruling 2026-08-21**, when asked
+  about four bugs ticket 08 found: *"even bad logic, as long as it is not breaking the page, is okay to
+  have. just focus on the performance of the page."* Two tests decide it now: **does it throw, or does
+  it cost queries or time?** If neither, write it down and move on.
+
+  Ruled out under it, all written up in [ticket 14](issues/14-correctness-bugs.md):
+  - External party names never appear in the Related Contracts column (`Controller.php:295` tests a
+    variable that does not exist in that scope). Wrong output, costs nothing.
+  - `X == !null` used as a null check in 7 places. Works by accident on positive ids.
+  - Chart View lost its pre-approval stages to a commented-out clause. **The duplicate query itself is
+    still fixed**, because that is speed — one query now feeds both lists, with the rows unchanged.
+  - External party signatures matched to parties by position, so an internal party listed first shifts
+    every signature one place along.
+  - The signature list counts cancelled and superseded approval rows, unlike every other read here.
+  - The `user_action_log` row written on every page load of a Signing or Approved contract.
+
+  These are real bugs. They are simply not this effort's. **Ticket 10 still stands** — the eSign block
+  leaves the page load because two outbound HTTP calls in a page view is a speed problem, not because a
+  GET should not write.
+
 
 - **Every other page.** One page per effort, one branch per page, done one at a time — the dev's call
   2026-08-21. The contract list, reports and create pages get their own maps later.
