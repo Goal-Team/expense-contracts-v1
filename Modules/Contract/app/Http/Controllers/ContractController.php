@@ -823,21 +823,44 @@ class ContractController extends Controller
             }
         }
 
+        // The three lookups below swap an id for the name the page prints. Each one threw when
+        // the row was missing, and then the page did not render at all: an id that points at a
+        // deleted category, business or contract type is enough to stop it. The id stays in the
+        // column beside it, so a missing name now shows as empty and the page still loads.
         if (isset($contracts->catgoery_id)) {
             $Categoryname = ContractCategories::where('id', $contracts->catgoery_id)->first();
             $contracts->catgoery_identity = $contracts->catgoery_id;
-            $contracts->catgoery_id = $Categoryname->name;
+            $contracts->catgoery_id = $Categoryname->name ?? '';
+            if ($Categoryname === null) {
+                Log::warning('Contract detail page found no contract category row', [
+                    'contract_id' => $contracts->id,
+                    'catgoery_id' => $contracts->catgoery_identity,
+                ]);
+            }
         }
 
         if (isset($contracts->department_id)) {
             $EntityBusinessName = EntityBusiness::where('id', $contracts->department_id)->first();
             $contracts->department_identity = $contracts->department_id;
-            $contracts->department_id = $EntityBusinessName->name;
+            $contracts->department_id = $EntityBusinessName->name ?? '';
+            if ($EntityBusinessName === null) {
+                Log::warning('Contract detail page found no entity business row', [
+                    'contract_id' => $contracts->id,
+                    'department_id' => $contracts->department_identity,
+                ]);
+            }
         }
 
         if (isset($contracts->contract_type)) {
             $contracts->contract_type_id = $contracts->contract_type;
-            $contracts->contract_type = ContractType::where('contract_type_id', $contracts->contract_type)->first()->contract_type;
+            $contractTypeRow = ContractType::where('contract_type_id', $contracts->contract_type)->first();
+            $contracts->contract_type = $contractTypeRow->contract_type ?? '';
+            if ($contractTypeRow === null) {
+                Log::warning('Contract detail page found no contract type row', [
+                    'contract_id' => $contracts->id,
+                    'contract_type_id' => $contracts->contract_type_id,
+                ]);
+            }
         }
 
         $approvalsAttach = ApprovalContracts::select('*')
