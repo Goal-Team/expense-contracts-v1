@@ -204,17 +204,18 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | [14 breakage and one duplicate](issues/14-correctness-bugs.md) | now | Narrowed 2026-08-21 to what throws or costs time. The rest is out of scope. |
 | [03 find remaining breaks](issues/03-find-remaining-breaks.md) | after 02 | Fix what is broken before measuring how slow it is. |
 | [04 baseline](issues/04-baseline-attribution.md) | after 03 | Every row in the report sits under this one. |
-| ~~[16 is Related Contracts dead?](issues/16-unreachable-blade-region.md)~~ | **CLOSED** | It is not dead. `?tab=details` renders it. Nothing deleted. |
-| [15 recursive child walk](issues/15-recursive-child-walk.md) | now | **2,337–2,616 ms on its own — the single most expensive thing on the page.** The index did not fix it: user variables and `FIND_IN_SET` make the optimiser walk every row anyway. 16 kept the caller, so this stands. Seed a parent-child chain first, or it measures a walk that returns nothing. |
+| ~~[16 is Related Contracts dead?](issues/16-unreachable-blade-region.md)~~ | **CLOSED** | It is not dead. `?tab=details` renders it. Nothing deleted. But it found ticket 18. |
+| [18 guard the scans by tab](issues/18-guard-the-scans-by-tab.md) | **NOW, top of the map** | The three scans run on every tab and only `?tab=details` renders their results. About **3,400 ms of the edit tab's 4,400 is thrown away.** Cheaper and far safer than optimising any of the three. |
+| [15 recursive child walk](issues/15-recursive-child-walk.md) | after 18, seed chains first | **2,337–2,616 ms on its own — the single most expensive thing on the page.** The index did not fix it: user variables and `FIND_IN_SET` make the optimiser walk every row anyway. 16 kept the caller, so this stands. Seed a parent-child chain first, or it measures a walk that returns nothing. |
 | [11 indexes](issues/11-missing-indexes.md) | part done, five left | An index added before the baseline hides itself. The `parentcontract` one was applied early because the page was returning 500. |
-| [12 delete the waste](issues/12-delete-waste.md) | after 16 | Cheap and safe, but the baseline says it buys **little time** - the 158 repeated lookups are 218 ms. It buys the **query count**, which is the number that must not regress. |
+| [12 delete the waste](issues/12-delete-waste.md) | after 18 | Cheap and safe, but the baseline says it buys **little time** - the 158 repeated lookups are 218 ms. It buys the **query count**, which is the number that must not regress. |
 | [09 stop binding ids](issues/09-replace-wherein-with-joins.md) | after 04 | Four query shapes, nothing else. |
-| [13 visibleTo scope](issues/13-visible-to-scope.md) | after 16, 12 | **158 of the 253 queries, but only ~200 ms.** Biggest win by count, not by time. Skip or shrink it if ticket 16 deletes its callers. |
+| [13 visibleTo scope](issues/13-visible-to-scope.md) | after 18, 12 | **158 of the 253 queries, but only ~200 ms.** Biggest win by count, not by time. Ticket 18 may remove several of its callers on every tab but Details — check what is left before starting. |
 | [05 split viewContract](issues/05-query-layer-decision.md) | after 09, 12, 13 | Moving code last, so it is not moved twice. |
 | [10 eSign off the page load](issues/10-esign-check-after-page-render.md) | after 04 | Independent of the query work. **Unmeasured** — the block only fires on a Signing contract and the test set has none, so it needs a copy of one set to Signing first. |
 | [17 gzip the HTML](issues/17-gzip-the-html-document.md) | now, runs beside anything | 326 KB sent uncompressed while 39 assets are compressed. A config line for the biggest byte win on the page. |
 | [06 dropdowns on demand](issues/06-dropdown-decision.md) | after 12, 13 | **Demoted by the baseline: the dropdown data costs about 60 ms, 1.4%.** This is a page-weight change, not a speed change. Still worth doing, no longer urgent. |
-| [07 tabs on demand](issues/07-page-size-decision.md) | last | The one change that can silently wipe a column on save. Do it when everything else is proved. **Ticket 16 raised its value:** the three scans run on every tab, so the edit tab pays 3,840 ms for a region only the Details tab renders. |
+| [07 tabs on demand](issues/07-page-size-decision.md) | last | Still last — it is the one change that can silently wipe a column on save. **Ticket 18 takes most of what ticket 16 credited to this one, at a fraction of the risk.** Weigh whether the rest is worth it once 18 lands. |
 
 - [14 - Correctness bugs found while reading](issues/14-correctness-bugs.md) - **the dev narrowed
   it to speed only 2026-08-21**: bad logic that neither breaks the page nor costs time stays. Three
