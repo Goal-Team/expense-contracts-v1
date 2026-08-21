@@ -802,8 +802,6 @@ class ContractController extends Controller
         }
 
 
-        $contractsSubseqList = Contract::whereIn('id', $finalListChild)->where('id', '<>', $id)->where('status', 1)->get();
-
         // Required fields with labels
         $reqfieldsText = [
             'currency_value' => 'Contract Value',
