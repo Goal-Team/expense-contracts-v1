@@ -819,7 +819,21 @@ class ContractController extends Controller
                     $contractPart->mails = $partyMails[$externalSigned];
                 }
                 $externalSigned++;
-                $contractPart->Nameoftheentity = decryptString($contractParties[0]->company_name, 'company_name');
+
+                // ContractParties carries the PartiesRoleBasedScope global scope, so this read
+                // comes back empty for a party the user may not see, and for a party row that no
+                // longer exists. Element 0 of an empty collection threw and the page did not
+                // render, so the name is empty instead.
+                $externalParty = $contractParties->first();
+                if ($externalParty === null) {
+                    Log::warning('Contract detail page found no external party row', [
+                        'contract_id' => $contracts->id,
+                        'contract_party_exe_id' => $contractPart->contract_party_exe_id,
+                    ]);
+                }
+                $contractPart->Nameoftheentity = $externalParty === null
+                    ? ''
+                    : decryptString($externalParty->company_name, 'company_name');
             }
         }
 
