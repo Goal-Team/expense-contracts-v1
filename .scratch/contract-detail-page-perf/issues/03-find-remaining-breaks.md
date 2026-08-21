@@ -2,7 +2,7 @@
 
 Type: `wayfinder:task` (AFK, subagent)
 Blocked by: 01, 02
-Status: OPEN
+Status: CLOSED 2026-08-22
 
 ## Question
 
@@ -63,3 +63,206 @@ Four more things that break or throw, found while enumerating the page's reads:
 4. `viewDetailContract.blade.php:1732` reads `contract_eauto_renewal_datend_date`. No such column
    and no such accessor anywhere in the repo, so the block is unreachable. Meant to be
    `auto_renewal_date`. Harmless, so out of scope by the CLAUDE.md rule — recorded, not fixed.
+
+## Resolution
+
+Status: **CLOSED**, 2026-08-22. Nine commits, one for each break.
+
+**Nine things threw, not four.** The ticket named four and the walk found five more. Every one of the
+nine stopped the page from rendering, so every one is this ticket's under the CLAUDE.md rule. Nothing
+else was touched.
+
+| # | break | file | commit |
+|---|---|---|---|
+| 1 | `?tab=historical` read `$_GET['history']` with no guard | `viewDetailContract.blade.php` | `2f20da8` |
+| 2 | four reminder columns exploded with no guard | `viewDetailContract.blade.php` | `9989237` |
+| 3 | `rules_id` decoded and indexed with no guard, twice | `viewDetailContract.blade.php`, `signApprovals.blade.php` | `bab22dc` |
+| 4 | `$ContractsFinal[0]` read before the empty-list redirect | `ContractController.php` | `d3be98d` |
+| 5 | three name lookups read `->first()->name` | `ContractController.php` | `ddfc093` |
+| 6 | the external party name read element 0 of an empty result | `ContractController.php` | `63a1c43` |
+| 7 | `?attachment=` ran `die()` and blanked the page | `viewDetailContract.blade.php` | `77e0ecd` |
+| 8 | `?tab=timelineedit` looped a variable nobody sets | `contractApprovals.blade.php` | `41483c6` |
+| 9 | a missing history snapshot left `$contracts` null | `ContractController.php` | `74776e6` |
+
+### 1. `?tab=historical`, and what was not obvious
+
+The Historical tab shows one past version of the contract. The History tab links to it as
+`?tab=historical&history=<history_id>`, the controller swaps the contract for that snapshot, and the
+blade renders the Details body with the snapshot's values — `historical` has no body block of its
+own. A 60-minute cookie called `historical` remembers the last version, and `?clearcokke=` forgets it.
+
+One line built the tab's own nav link from `$_GET['history']` with no guard, so a load with no
+`history` parameter threw. Twelve lines further down the same link was already built from the cookie.
+So the rule now lives in one variable, `$historicalVersionId`: the parameter, else the cookie, else
+empty. Both places read it. Empty draws no Historical nav item and the body shows the live contract,
+which is what every unknown tab value already does.
+
+**What was not obvious, and was left alone:** with the cookie set but no `?history=` in the URL, the
+page draws the Historical nav item and shows the **live** contract, not the snapshot. The controller
+only reads the parameter, never the cookie. Clicking the item fixes it, because the item's link
+carries the id. Making the cookie load the snapshot would be a new feature, so it is written down
+here instead. It does not throw.
+
+### 2. The four reminder columns
+
+`reminder_alert_parts()` from [ticket 01](01-fix-null-reminder-crash.md) does the work. No second
+helper, no guard pasted four times. The variables are named now — `$firstAlertUnit` instead of
+`$fristarl[1]` — and blocks three and four no longer share one `$escalationarl`.
+
+The fourth block carried the same `?? '' == 'days'` precedence bug ticket 01 found on the edit side.
+PHP reads `$x ?? ('' == 'days')`, so the stored value was truthy and the first branch always won: a
+reminder of `14 days after` printed **Prior**. It prints **After** now.
+
+### 3. `rules_id`
+
+Both reads now test `is_string()` before the decode and `is_array()` after it, the way
+`contractFlow.blade.php` already did. `signApprovals.blade.php` was the one that threw:
+`$approvalsDetails[0]` on null gives "Trying to access array offset on null", which Laravel turns
+into a 500.
+
+### 4. `$ContractsFinal[0]`
+
+`availableContracts()` returns an empty list for a contract the user may not see, **and** for a
+contract whose `department_id` points at a row that is gone. `viewContract()` read element 0 of it and
+threw "Undefined array key 0". The redirect that handles the empty list already existed — 122 lines
+further down, after the eSign block had run. It is the first thing after the call now. Two things
+follow: the page redirects to the contract list instead of throwing, and a contract the user may not
+see no longer gets its eSign status polled and written.
+
+### 5, 6. The four name lookups
+
+Three lookups swap an id for a name — category, business unit, contract type. The fourth reads the
+external party's company name. All four threw when the row was missing. `ContractParties` also
+carries the `PartiesRoleBasedScope` global scope, so its result is empty for a party the current user
+may not see, not only for a deleted row.
+
+Each one falls back to an empty name and writes a `Log::warning` with the contract id and the id that
+missed. The id itself still sits in the column beside the name, so nothing is lost. No decrypted field
+is logged.
+
+### 7. `?attachment=`
+
+`contracts/{id}?attachment=1` returned a **70-character** document with HTTP 200. A `die;` sat on the
+first line of the block that reads that parameter. Nothing else in the block has ever run: the
+`cookie()->queue('attachment', ...)` below the `die` is unreachable, nothing else in the repo sets
+that cookie, and the one line that reads it can never have been true. The whole block is gone, so the
+URL now renders the same page as no parameter at all.
+
+### 8. `?tab=timelineedit`
+
+`contractApprovals.blade.php` loops `$reqfields` and nothing in the repo passes it, so the tab
+returned 500 on "Undefined variable $reqfields". The tab is in no nav bar, so only a typed URL reaches
+it. The loop fills a `display:none` table of the contract fields that are missing.
+`ContractController` holds `$reqfieldsText`, a `key => label` map of exactly that shape, which looks
+like the name this was renamed to — **but that is a guess, so the fix guards the loop and renders an
+empty table.** The dev decides whether `$reqfieldsText` belongs there.
+
+### 9. A missing history snapshot
+
+`?tab=historical&history=999999` returned 500: `ContractHistory::...->first()` came back null and the
+page read `contract_status` off it. The id reaches the page from a link a user kept and from the
+60-minute cookie, so a deleted snapshot is enough. It falls back to the live contract now, the same as
+a load with no `?history=`. A second read of the party rows, 300 lines further down, made the same
+decision on its own from `$_GET`; it reads the one variable now, so the page cannot show the live
+contract with a snapshot's parties.
+
+### Every tab, four contracts
+
+52 loads, one fetch each, warm, `DEBUGBAR_ENABLED=false`, cookie cleared with `?clearcokke=` first.
+`100479` a plain root, `101101` a 20-child fan-out, `101143` three ancestors, `1` a real pre-existing
+contract. `zzz` stands for any unknown tab value; `timelineedit` is in the table because it was one of
+the breaks.
+
+| tab | 100479 | 101101 | 101143 | 1 |
+|---|---|---|---|---|
+| `details` | 200, 239,076 | 200, 313,381 | 200, 247,844 | 200, 261,223 |
+| `pre-approval` | 200, 105,779 | 200, 125,430 | 200, 125,361 | 200, 100,708 |
+| `timeline` | 200, 105,779 | 200, 125,430 | 200, 125,361 | 200, 100,708 |
+| `timelineedit` | 200, 80,873 | 200, 100,765 | 200, 100,696 | 200, 109,462 |
+| `edit` | 200, 326,231 | 200, 349,476 | 200, 322,022 | 200, 321,430 |
+| `flow` | 200, 72,388 | 200, 80,855 | 200, 80,786 | 200, 89,080 |
+| `history` | 200, 61,437 | 200, 62,805 | 200, 62,735 | 200, 62,752 |
+| `historical` | **200**, 239,117 | **200**, 313,422 | **200**, 247,885 | **200**, 261,264 |
+| `attachment` | 200, 61,350 | 200, 57,654 | 200, 57,584 | 200, 57,345 |
+| `obligation` | 200, 85,534 | 200, 82,901 | 200, 81,731 | 200, 81,584 |
+| `e-stamp` | 200, 67,003 | 200, 63,307 | 200, 63,237 | 200, 62,993 |
+| `zzz` | 200, 239,076 | 200, 313,381 | 200, 247,844 | 200, 261,223 |
+| none | 200, 105,779 | 200, 125,430 | 200, 125,361 | 200, 100,708 |
+
+**Every document ticket 21 recorded is unchanged, character for character** — `details` 313,381 on
+`101101`, 261,223 on `1`, 247,844 on `101143`, and 326,231 / 349,476 / 322,022 / 321,430 on `edit`.
+`?tab=historical` renders 41 characters more than `?tab=details` on every contract; the difference is
+the tab bar, which lists a different set of links on that branch.
+
+Contract `4` was checked too, because it is a Signing contract and the one that renders
+`signApprovals.blade.php`: all eleven tab values return 200.
+
+`storage/logs/laravel.log` across the 52 loads holds **no error and no warning** — only the expected
+40 `skips the Related Contracts queries` and 12 of each family-tree walk. Twelve, not four, because
+`details`, `historical` and `zzz` all fall into the same branch.
+
+Browser console on `101101?tab=details`: the same **nine** entries ticket 21 recorded — three
+accessibility issues, one deprecation, one 403 for an asset, one Tagify warning, three logs. Nothing
+new. The two font preload warnings ticket 21 saw did not appear this time; they are load timing.
+
+### How each break was proved, not assumed
+
+Every fix was checked both ways in the browser: the page loads with the guard, and the same URL on the
+same data throws without it. The data for the NULL and orphan cases was made, then put back.
+
+| break | data used | before the fix | after |
+|---|---|---|---|
+| reminder columns | **all four columns on `100479` set to NULL**, then restored from a dump | ticket 01 measured `Undefined array key 1` | renders; empty day, Days selected, no direction |
+| `rules_id` | `rules_id` on contract 4 set to NULL, then restored | `Trying to access array offset on null`, HTTP 500 | 200, and 170,885 characters again on the real value |
+| the three name lookups | `catgoery_id` and `contract_type` on `100479` set to `99999` | `Attempt to read property "name" on null`, HTTP 500 | 200, two `Log::warning` lines |
+| `$ContractsFinal[0]` | `department_id` on `100479` set to `99999` | `Undefined array key 0`, HTTP 500 | redirects to the contract list |
+| external party | `contract_party_exe_id` on party row 101103 set to `999999` | `Undefined array key 0`, HTTP 500 | 200, one `Log::warning` |
+| `?attachment=` | none needed | 70-character document, HTTP 200 | 200, 105,779 characters |
+| `?tab=timelineedit` | none needed | `Undefined variable $reqfields`, HTTP 500 | 200, 81,421 characters |
+| missing snapshot | `?history=999999` | `Attempt to read property "contract_status" on null` | 200, one `Log::warning` |
+
+**The seeder fills all four reminder columns now, so a contract with NULLs had to be made.** All 3,018
+rows carry a value. `100479`'s four columns were set to NULL, the Details tab was loaded, and the
+encrypted values were then written back from a dump taken first. The tab renders **248,378 characters
+of DOM** before and after the round trip, so the restore is exact. The same round trip was done for
+contract 4's `rules_id`, for `100479`'s three lookup ids, and for party row 101103. Every one is back
+to its seeded value.
+
+### Numbers
+
+One row, [row 12](../measurements/report.md). `?tab=historical` goes from HTTP 500 to **200 at 760–777
+ms and 369 queries**, which is what the Details tab costs on the same contract (row 11 reads 686–785
+ms and 369 queries). Nothing was made faster or slower: `historical` falls into the Details branch and
+runs the same work, and the 3,700–4,100 ms this tab used to burn before failing was the two
+family-tree walks that tickets 15 and 21 have since replaced.
+
+**The other eight fixes move no number.** Each is a null check, an `is_string()` test, one moved `if`,
+or a deleted `die`, on a path that runs once per request. There is nothing to measure, and no number
+is invented here.
+
+### Wrong, and left alone
+
+Under the CLAUDE.md rule: it does not throw and it does not cost time, so it is written down here for
+a later effort.
+
+- **`viewDetailContract.blade.php:1732` reads `$contract->contract_eauto_renewal_datend_date`.** No
+  such column and no such accessor exist anywhere in the repo, so the block never renders. It looks
+  like it means `auto_renewal_date`. Found by ticket 02; still true.
+- **`preApprovalFlow.blade.php:133` does `$steps->first()->approval_type_row` with no guard.** It
+  cannot throw today because `$steps` is a group from a `groupBy` and a group is never empty. Line 214
+  guards the identical read with `?? 0`, so the two lines disagree about whether a guard is needed.
+- **The Historical tab shows the live contract when only the cookie carries a version.** Written up
+  under break 1. The controller reads the parameter and never the cookie.
+- **`$reqfields` in `contractApprovals.blade.php` is probably `$reqfieldsText`.** Written up under
+  break 8. The guard renders an empty table until the dev says.
+- **`?tab=<anything unknown>` renders the Details body.** `zzz` returns the Details tab byte for byte.
+  That is how the blade's last branch works, and `contract_detail_shows_related_contracts()` records
+  it, but a typo in a URL silently gives a different tab than the one asked for.
+- **Four `explode(',', $reqFieldsOptions['value'][$key])` reads** in `contractApprovalsView`,
+  `contractApprovalsViewParallel` and `signApprovals` index a second array by the same `$key`. None
+  threw on any of the 52 loads, and the two arrays are built together, so the keys line up.
+- **`viewExDetailContract.blade.php:63` holds the same `die;` block** that break 7 deleted. That is
+  the external portal, another page, so the map's scope leaves it alone.
+- **`ContractController.php` has a second copy of the history swap** at about line 10597, with the
+  same null break that break 9 fixed, and a second copy of the three name lookups at about line 4435.
+  Another page each time. A later effort on those pages can take the same fix.

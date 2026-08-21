@@ -281,6 +281,25 @@ cost is shared too. The edit tab is what we measure and verify on.
   broken; it was one config line from losing every ancestor above the first on the 202 contracts that
   have more than one. Recorded, not fixed. Commits `c480b03`, `89087ae`, `d05d016`.
 
+- [03 - walk every tab and collect what else is broken](issues/03-find-remaining-breaks.md) - **nine
+  breaks, not four.** `?tab=historical` returned HTTP 500 on every contract; it renders now, and it
+  costs what the Details tab costs because it falls into the same branch. The other eight: the four
+  reminder columns on the Details side now read `reminder_alert_parts()`; both unguarded `rules_id`
+  decodes match `contractFlow`'s `is_string()` test; the three id-to-name lookups and the external
+  party name no longer read `->first()->name`; `$ContractsFinal[0]` no longer runs before the
+  empty-list redirect, which sat 122 lines too late; `?attachment=` no longer hits a `die;` that
+  returned a 70-character page; `?tab=timelineedit` no longer throws on `$reqfields`, a variable
+  nothing in the repo sets; and a missing history snapshot falls back to the live contract instead of
+  leaving `$contracts` null. **52 loads, 13 tab values on four contracts, all 200, no error and no
+  warning in `laravel.log`, and every document ticket 21 recorded is unchanged character for
+  character.** Report row 12 - the only fix with a number; the other eight move nothing.
+  **Three things to remember:** the seeder now fills all four reminder columns, so proving a NULL
+  needs a row edited by hand and put back; a warning is a 500 here, because Laravel turns every PHP
+  error into an `ErrorException`, so `$x[0]` on null throws just as hard as a missing key; and
+  `?tab=<anything unknown>` renders the Details body, so a typo in a URL silently gives the slowest
+  tab. Commits `2f20da8`, `9989237`, `bab22dc`, `d3be98d`, `ddfc093`, `63a1c43`, `77e0ecd`,
+  `41483c6`, `74776e6`.
+
 ## Order of work
 
 This tracker is markdown, so there is no query to find the frontier. The order is written down instead.
@@ -292,7 +311,7 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | ~~[08 query inventory](issues/08-query-inventory.md)~~ | **CLOSED** | Read-only. Everything below leans on it. |
 | [02 realistic seeded rows](issues/02-seed-realistic-contract-rows.md) | now | A baseline on rows that are 60 columns of NULL measures the wrong page. |
 | [14 breakage and one duplicate](issues/14-correctness-bugs.md) | now | Narrowed 2026-08-21 to what throws or costs time. The rest is out of scope. |
-| [03 find remaining breaks](issues/03-find-remaining-breaks.md) | **NOW** | `?tab=historical` returns **HTTP 500 on every contract** and the tab is in the nav bar. Five known breaks. Breakage is in scope by the dev's rule; wrong-but-harmless is not. |
+| ~~[03 find remaining breaks](issues/03-find-remaining-breaks.md)~~ | **CLOSED** | **Nine breaks, not four.** Every tab value on four contracts returns 200 now, `?tab=historical` included. |
 | [04 baseline](issues/04-baseline-attribution.md) | after 03 | Every row in the report sits under this one. |
 | ~~[16 is Related Contracts dead?](issues/16-unreachable-blade-region.md)~~ | **CLOSED** | It is not dead. `?tab=details` renders it. Nothing deleted. But it found ticket 18. |
 | ~~[18 guard the scans by tab](issues/18-guard-the-scans-by-tab.md)~~ | **CLOSED** | **Edit tab 4,208-4,589 ms to 455 ms, 258 queries to 86.** The biggest win on this map. |
