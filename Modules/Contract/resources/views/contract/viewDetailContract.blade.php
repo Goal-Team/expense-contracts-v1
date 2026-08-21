@@ -685,19 +685,9 @@ cookie()->queue('attachment', true, 60);
         <ul class="nav nav-tabs m-0 m0 {{ $errors->any() ? '' : 'sticky-element1' }}" id="mainTabDetails" role="tablist" style="padding: 5px;">
 
             @php
-                $isPreApproval = ($contract->contract_status === 'Pre-Approval') || !empty($contract->preapproval_stage);
-                $defaultTab = $isPreApproval ? 'pre-approval' : 'timeline';
-                $currentTab = $_GET['tab'] ?? $defaultTab;
-                
-                // Force pre-approval tab if contract is in pre-approval status
-                if ($isPreApproval && $currentTab === 'timeline') {
-                    $currentTab = 'pre-approval';
-                }
-                
-                // Force timeline tab if contract is NOT in pre-approval status
-                if (!$isPreApproval && $currentTab === 'pre-approval') {
-                    $currentTab = 'timeline';
-                }
+                // One place owns the tab rule - contract_detail_current_tab() in app/helpers.php.
+                // The controller calls the same helper, so it skips the work this tab never shows.
+                $currentTab = contract_detail_current_tab($contract);
             @endphp
             
             @if ($currentTab == 'pre-approval')
@@ -1380,7 +1370,9 @@ cookie()->queue('attachment', true, 60);
 
 @include('contract::contract.contractObligation', ['paryda', $contractPartys , 'ContractObligations' , $ContractObligations])
 
-@else
+{{-- The Details tab. It is the only tab that renders the Related Contracts region below, so the
+     controller reads the same helper and skips the three scans that fill it on every other tab. --}}
+@elseif (contract_detail_shows_related_contracts($currentTab))
 
 <div class="row my-4">
     <div class="col">

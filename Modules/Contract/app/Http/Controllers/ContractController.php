@@ -255,7 +255,120 @@ class ContractController extends Controller
         Storage::put($outputSignedPath, file_get_contents($outputFile));
         return $outputSignedPath;
     }
-    
+
+    /**
+     * Build the four Related Contracts lists the Details tab shows.
+     *
+     * This code came out of viewContract(). It is one concern - the contracts that relate to this
+     * one - and only the Details tab renders it. The three queries inside scan the whole
+     * contracts table, so viewContract() calls this method only when the open tab shows the
+     * region.
+     *
+     * Returns the four lists the blade loops. Each one is empty when there is nothing to show.
+     *
+     * $id is the contract id from the URL. $contracts is the contract row the page shows.
+     */
+    private function relatedContractLists($id, $contracts): array
+    {
+        $contractsold = Contract::select('*')->where('id', $id)->first();
+
+        // The blade loops $contractsoldothers with no guard, so it always needs a value.
+        // Without this default a missing contract row throws the page.
+        $contractsoldothers = collect();
+
+        if ($contractsold) {
+            $contractsoldothers = Contract::select('*')->where([
+                ['catgoery_id', $contractsold->catgoery_id],
+                ['department_id', $contractsold->department_id],
+                ['contract_type', $contractsold->contract_type],
+            ])->whereNot('id', $id)->get();
+        }
+
+        $contract_party_locations = ContractPartyData::where('custom_field_group_id', $contracts->id)->where('contract_party_type', 'internal')->pluck('contract_party_location_id');
+
+        $contract_party_id = ContractPartyData::where('custom_field_group_id', $contracts->id)->where('contract_party_type', 'External')->pluck('contract_party_exe_id');
+
+        $ContractPartyLocList = ContractPartyData::whereIn('contract_party_location_id', $contract_party_locations)->pluck('custom_field_group_id');
+
+        $ContractPartyDataList = ContractPartyData::whereIn('contract_party_exe_id', $contract_party_id)->pluck('custom_field_group_id');
+
+
+        $FinalContractList = $ContractPartyLocList->intersect($ContractPartyDataList);
+
+        $contractspartsList = Contract::select('*')->whereIn('id', $FinalContractList)->where('id', '<>', $id)->where('status', 1)->get();
+
+        $contractspartsList = $this->availableContracts($contractspartsList, true);
+
+
+        //Get Parent Contracts
+        $getParentContracts = "SELECT parentcontract FROM
+        (SELECT id,parentcontract,
+               CASE WHEN id in ('" . $id . "') THEN @idlist := CONCAT(IFNULL(@idlist,''),',',parentcontract)
+                    WHEN FIND_IN_SET(id,@idlist) THEN @idlist := CONCAT(@idlist,',',parentcontract)
+                    END as checkId
+        FROM contracts
+        ORDER BY id DESC)T
+        WHERE checkId IS NOT NULL";
+
+        $contractsparentListQuery = DB::select($getParentContracts);
+
+        $parentContractArr = [];
+
+        foreach ($contractsparentListQuery as $conpar) {
+            $parentContractArr[] = $conpar->parentcontract;
+        }
+
+
+        $contractsparentList = Contract::select('*')->whereIn('id', $parentContractArr)->get();
+
+        $contractsparentList = $this->availableContracts($contractsparentList, true);
+
+
+        //Get Susequesnt Contracts
+        $childsList = NULL;
+        $finalListChild = [];
+
+
+        if (count($parentContractArr) == 1 && $parentContractArr[0] == 0) {
+            $parentContractArr[] = $id;
+        }
+
+
+
+        foreach ($parentContractArr as $parCon) {
+            if ($parCon > 0) {
+                $getSubSequesntContracts = "SELECT GROUP_CONCAT(lv SEPARATOR ',') as childList FROM (
+                                   SELECT @pv:=(SELECT GROUP_CONCAT(id SEPARATOR ',') FROM contracts 
+                                   WHERE FIND_IN_SET(parentcontract, @pv)) AS lv FROM contracts 
+                                   JOIN
+                                   (SELECT @pv:=" . $parCon . ") tmp
+                                   ) a";
+
+                $contractsSubSeqList = DB::select($getSubSequesntContracts);
+
+                foreach ($contractsSubSeqList as $conSubSeq) {
+
+                    if ($conSubSeq->childList != "" && $conSubSeq->childList !== NULL) {
+                        $childsList .= $conSubSeq->childList;
+                    }
+                }
+
+                $finalListChild = explode(",", $childsList);
+            }
+        }
+
+        $contractsSubseqList = Contract::select('*')->whereIn('id', $finalListChild)->where('id', '<>', $id)->where('status', 1)->get();
+
+        $contractsSubseqList = $this->availableContracts($contractsSubseqList, true);
+
+        return [
+            'contractsoldothers' => $contractsoldothers,
+            'contractsparentList' => $contractsparentList,
+            'contractsSubseqList' => $contractsSubseqList,
+            'contractspartsList' => $contractspartsList,
+        ];
+    }
+
     public function viewContract(Request $request, $id)
     {
         
@@ -712,94 +825,33 @@ class ContractController extends Controller
         }
 
 
-        $contractsold = Contract::select('*')->where('id', $id)->first();
+        // The four Related Contracts tables only render on the Details tab. Three whole-table
+        // scans fill them and they cost about 3,400 ms, so every other tab used to pay for a
+        // region it never shows. contract_detail_current_tab() and
+        // contract_detail_shows_related_contracts() hold the rule, and the blade reads the same
+        // two helpers. The empty lists keep the blade loops safe on every other tab.
+        $currentTab = contract_detail_current_tab($contracts);
 
-        // The blade loops $contractsoldothers with no guard, so it always needs a value.
-        // Without this default a missing contract row throws the page.
-        $contractsoldothers = collect();
+        $relatedContracts = [
+            'contractsoldothers' => collect(),
+            'contractsparentList' => collect(),
+            'contractsSubseqList' => collect(),
+            'contractspartsList' => collect(),
+        ];
 
-        if ($contractsold) {
-            $contractsoldothers = Contract::select('*')->where([
-                ['catgoery_id', $contractsold->catgoery_id],
-                ['department_id', $contractsold->department_id],
-                ['contract_type', $contractsold->contract_type],
-            ])->whereNot('id', $id)->get();
+        if (contract_detail_shows_related_contracts($currentTab)) {
+            $relatedContracts = $this->relatedContractLists($id, $contracts);
+        } else {
+            Log::debug('Contract detail page skips the Related Contracts queries', [
+                'contract_id' => $id,
+                'tab' => $currentTab,
+            ]);
         }
 
-        $contract_party_locations = ContractPartyData::where('custom_field_group_id', $contracts->id)->where('contract_party_type', 'internal')->pluck('contract_party_location_id');
-
-        $contract_party_id = ContractPartyData::where('custom_field_group_id', $contracts->id)->where('contract_party_type', 'External')->pluck('contract_party_exe_id');
-
-        $ContractPartyLocList = ContractPartyData::whereIn('contract_party_location_id', $contract_party_locations)->pluck('custom_field_group_id');
-
-        $ContractPartyDataList = ContractPartyData::whereIn('contract_party_exe_id', $contract_party_id)->pluck('custom_field_group_id');
-
-
-        $FinalContractList = $ContractPartyLocList->intersect($ContractPartyDataList);
-
-        $contractspartsList = Contract::select('*')->whereIn('id', $FinalContractList)->where('id', '<>', $id)->where('status', 1)->get();
-
-        $contractspartsList = $this->availableContracts($contractspartsList, true);
-
-
-        //Get Parent Contracts
-        $getParentContracts = "SELECT parentcontract FROM
-        (SELECT id,parentcontract,
-               CASE WHEN id in ('" . $id . "') THEN @idlist := CONCAT(IFNULL(@idlist,''),',',parentcontract)
-                    WHEN FIND_IN_SET(id,@idlist) THEN @idlist := CONCAT(@idlist,',',parentcontract)
-                    END as checkId
-        FROM contracts
-        ORDER BY id DESC)T
-        WHERE checkId IS NOT NULL";
-
-        $contractsparentListQuery = DB::select($getParentContracts);
-
-        $parentContractArr = [];
-
-        foreach ($contractsparentListQuery as $conpar) {
-            $parentContractArr[] = $conpar->parentcontract;
-        }
-
-
-        $contractsparentList = Contract::select('*')->whereIn('id', $parentContractArr)->get();
-
-        $contractsparentList = $this->availableContracts($contractsparentList, true);
-
-
-        $contractParties =  ContractParties::select('*')->get();
-
-        //Get Susequesnt Contracts
-        $childsList = NULL;
-        $finalListChild = [];
-
-
-        if (count($parentContractArr) == 1 && $parentContractArr[0] == 0) {
-            $parentContractArr[] = $id;
-        }
-
-
-
-        foreach ($parentContractArr as $parCon) {
-            if ($parCon > 0) {
-                $getSubSequesntContracts = "SELECT GROUP_CONCAT(lv SEPARATOR ',') as childList FROM (
-                                   SELECT @pv:=(SELECT GROUP_CONCAT(id SEPARATOR ',') FROM contracts 
-                                   WHERE FIND_IN_SET(parentcontract, @pv)) AS lv FROM contracts 
-                                   JOIN
-                                   (SELECT @pv:=" . $parCon . ") tmp
-                                   ) a";
-
-                $contractsSubSeqList = DB::select($getSubSequesntContracts);
-
-                foreach ($contractsSubSeqList as $conSubSeq) {
-
-                    if ($conSubSeq->childList != "" && $conSubSeq->childList !== NULL) {
-                        $childsList .= $conSubSeq->childList;
-                    }
-                }
-
-                $finalListChild = explode(",", $childsList);
-            }
-        }
+        $contractsoldothers = $relatedContracts['contractsoldothers'];
+        $contractsparentList = $relatedContracts['contractsparentList'];
+        $contractsSubseqList = $relatedContracts['contractsSubseqList'];
+        $contractspartsList = $relatedContracts['contractspartsList'];
 
 
         // Required fields with labels
@@ -943,9 +995,6 @@ class ContractController extends Controller
             }
         }
 
-        $contractsSubseqList = Contract::select('*')->whereIn('id', $finalListChild)->where('id', '<>', $id)->where('status', 1)->get();
-
-        $contractsSubseqList = $this->availableContracts($contractsSubseqList, true);
 
         $ContractObligations = ContractObligations::where('contract_id', $id)->where('flag', 1)
             ->get();
