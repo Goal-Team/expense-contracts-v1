@@ -39,3 +39,25 @@ file. Production stays the dev's to run.
 - A report row per index, or one row for the set: query count and TTFB after.
 - **Say if an index did nothing.** An index that does not move the number is still worth reporting,
   because the next person will otherwise add it again.
+
+## Note from ticket 02, 2026-08-21
+
+Make the `contracts.parentcontract` index a **covering** one on `(parentcontract, id)`. It then
+serves a second reader as well as the `contractParent` lazy load: the child-contract
+`GROUP_CONCAT` query at
+[ContractController.php:780](../../../Modules/Contract/app/Http/Controllers/ContractController.php:780),
+which scans the whole table once per row and needs only those two columns.
+
+Measured 2026-08-21 on the re-seeded set, same 3,018 `(id, parentcontract)` pairs, same SQL:
+
+| source | time |
+|---|---|
+| two-column temporary table | 3 s |
+| the real `contracts` table | over 120 s, then the IIS FastCGI timeout |
+
+`contracts` now reports 110 MB of `DATA_LENGTH` for 27 MB of content, because `ROW_FORMAT=Dynamic`
+pushes the long encrypted text columns off-page and each off-page value costs a whole 16 KB page.
+Local `innodb_buffer_pool_size` is 16 MB, so every scan reads from disk.
+
+Migration drafted for review, **not run**:
+[proposed-migration-parentcontract-index.php](../proposed-migration-parentcontract-index.php).
