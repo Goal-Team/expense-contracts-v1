@@ -30,6 +30,10 @@ $contentLayout = (isset($container) ? (($container === 'container-xxl') ? "layou
   <!-- Include Scripts for customizer, helper, analytics, config -->
   <!-- $isFront is used to append the front layout scriptsIncludes only on the front layout otherwise the variable will be blank -->
   @include('layouts/sections/scriptsIncludes' . $isFront)
+
+  <!-- Per-page scripts that must start before the body renders - today only the
+       dashboard's option-list prefetch. Empty on every other page. -->
+  @yield('head-prefetch')
 </head>
 <style>
 #load{

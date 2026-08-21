@@ -546,15 +546,15 @@ wrong thing.
 | # | step | depends on | can ship alone |
 |---|---|---|---|
 | 0 | ~~**Agree the names**~~ — **done 2026-08-20, see [names.md](names.md)** | nothing | — |
-| 1 | **Change E, part 1** — delete `public/hot` + RTL off, together | nothing | **yes** |
-| 2 | **Change A** — `dashboardSummary()` beside `dashDetails()`, minus the actionable-items counter | 0 | **yes** |
-| 3 | **Measure.** Confirm the query-count ceiling in §2. Row into [report.md](measurements/report.md) | 2 | — |
-| 4 | **Change B** — actionable-items counter, PHP decrypt over the narrowed row set | 2 | no |
-| 5 | **Measure again** with the counter on and off, same session | 4 | — |
-| 6 | Migration 1 — index `approval_contracts.contract_id` | 4 | no |
-| 7 | **Change F** — AJAX dropdown endpoints | 0 | **yes** |
-| 8 | **Change E, part 2** — committed root `vite.config` | nothing | **yes** |
-| 9 | Migration 2 — convert `contract_party_data` | nothing | **yes**, needs a window |
+| 1 | ~~**Change E, part 1**~~ **done** — `hot` already gone, `myRTLSupport => false` | nothing | **yes** |
+| 2 | ~~**Change A**~~ **done** — `dashboardSummary()` + `ContractVisibilityQuery` + `viewDashboardSummary` | 0 | **yes** |
+| 3 | ~~**Measure**~~ **done** — 4,827-4,974 ms controller -> **36 ms**, 5,654 -> **127** queries | 2 | — |
+| 4 | ~~**Change B**~~ **done** — `actionableApprovalRows()` + `actionableItemCounts()` | 2 | no |
+| 5 | ~~**Measure again**~~ **done** — counter costs **~336 ms** and 7 queries | 4 | — |
+| 6 | Migration 1 — index `approval_contracts.contract_id` — **file written, awaiting the dev's approval to run** | 4 | no |
+| 7 | ~~**Change F**~~ **done** — `contracts/option-lists`, HTML 71,294 -> 61,064 bytes | 0 | **yes** |
+| 8 | ~~**Change E, part 2**~~ **done** — `vite.config.mjs`, build verified to a throwaway outDir | nothing | **yes** |
+| 9 | Migration 2 — convert `contract_party_data` — **file written, awaiting the dev's approval to run** | nothing | **yes**, needs a window |
 | 10 | Consolidate the duplicated asset trees | 8 | yes |
 | 11 | Delete each old function, once its new one is proven (§15) | 3, 5 | yes |
 | 12 | **[Ticket 17](issues/17-plain-columns-experiment.md)** — plain columns instead of encrypted | 5 | **yes**, runs last |

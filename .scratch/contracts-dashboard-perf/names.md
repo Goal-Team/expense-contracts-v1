@@ -73,6 +73,10 @@ Shared, not dashboard-private, so it does not live on the dashboard controller.
 | `ContractOptionListController` | class | `Modules/Contract/app/Http/Controllers/`. One combined endpoint serving option lists to any page — dashboard now, `contractList` later. |
 | `ContractOptionListController::optionLists(Request $request)` | method | Returns the requested lists in one JSON object. Plural because one call returns several lists; that is the whole point of the design. |
 | `ContractOptionListController::optionListsVersion()` | private method | The `COUNT(*)`/`MAX(updated_at)` cache stamp, copying the pattern at [ContractController.php:6879](../../Modules/Contract/app/Http/Controllers/ContractController.php:6879). |
+| `ConvertPartyDataCollation`, command `contract:convert-party-data` | console command | Says what it converts, not how. Named for the table and the thing that varies (the collation), because the collation is the whole reason it is a command and not a migration — [ticket 20](issues/20-migration-portability.md). Not `Migrate...`: calling it that would invite someone to move it back into `database/migrations`. |
+| `dashboard/partials/option-lists-head.blade.php` | blade partial | Starts the option-list fetch from `<head>`, before jQuery loads. No jQuery, no DOM work. Leaves the **promise** on `window.contractOptionListsPromise`. Named `-head` beside `-js` because the pair is one change split by where it runs, not two features. |
+| `window.contractOptionListsPromise` | browser global | A promise, deliberately, not a result. `.then()` on a finished promise fires at once, so the DOM-ready code can never miss a response that landed early. Added 2026-08-20 on the dev's condition that there be no race. |
+| `@yield('head-prefetch')` in `commonMaster.blade.php` | blade section | The one hook in the shared layout, added rather than reworked. Empty on all 440 other blades, so no other page changes. |
 | `GET 'contracts/option-lists'`, name **`contractOptionLists`** | route | `GET`, not `POST`: it reads, it is cacheable, and it needs no CSRF token from a `select2` fetch. Under `contracts/`, not under a dashboard prefix, because a dashboard-prefixed path would guarantee a duplicate later. |
 
 ## 6. The old-vs-new comparison command
@@ -95,3 +99,31 @@ Step 11 in [spec.md](spec.md) §10. The trigger is both of these, not either:
    is the "My Actionable Items" numbers, which are wrong today because of the 1,000-id bug.
 
 Until both hold, the old function stays exactly as it is.
+
+## 8. Added while building (2026-08-20), same rules
+
+These were not on the list when it was agreed. They are recorded here because they exist in the
+code now, and because a name is only cheap to change while nothing calls it.
+
+| new | kind | why |
+|---|---|---|
+| `ContractVisibilityQuery::reachableDepartments()` | method | Sibling of `reachableBranches()`. The department list is the other half of the visibility rule and comes from `EntityBusiness` so `DepartmentScope` applies. |
+| `ContractVisibilityQuery::applyPartyLocationFilter()` | method | The dashboard's own location filter (`$request->contractlocs`). Split out of `applyTo()` on purpose: it is a filter the user picked, not part of who may see what, and the two must not be confused. |
+| `ContractVisibilityQuery::whereHasInternalPartyIn()` | private method | The one `EXISTS` on `contract_party_data`, used by both the visibility rule and the location filter. Pulled out rather than written twice. |
+| `ContractVisibilityQuery::applyRoleRule()` | private method | The conditions `ContractRoledBasedScope` adds through Eloquent. The query builder does not carry a model's global scopes, so they are repeated here — the one place a copy was unavoidable. |
+| `ContractDashboardController::myTaskCounts()` | private method | The four task numbers, as conditional counts. Old code had no name for it; it was a loop over every task row inside `dashDetails()`. |
+| `ContractDashboardController::emptyActionableItemCounts()` | private method | The six numbers at zero. Used both as the starting value and as the answer when the counter is skipped for a measurement. |
+| `viewDashboardSummary.blade.php` | view | New view beside `viewDashboard1.blade.php`. Needed because `$approvalsArr`, `$contracts` and `$contractStatus` are no longer passed and `$stusMy` now arrives ready made. The old view is untouched. |
+| `?withoutActionableItems=1` | request flag | Local-only measurement switch on the new route only, so the same page can be measured with the decrypt counter on and off in one session (spec §10 steps 3 and 5). It cannot reach the live URL, which never enters this method. |
+| `ContractOptionListController::contractTypeOptions()`, `branchOptions()`, `requestedLists()` | private methods | One list each, plus the parser for the `lists` parameter. One function, one concern. |
+
+Two implementation choices worth knowing, since they are not obvious from the names:
+
+- **The counters group on `HEX(contract_status)`, not on the column.** The table collation is
+  case-insensitive, so a plain `GROUP BY` would merge `Terminated` and `terminated` before PHP saw
+  them, and the PHP fold is case-sensitive on `Terminated`. `COLLATE utf8mb4_bin` was tried first and
+  the server rejected it — `ONLY_FULL_GROUP_BY` does not accept a `COLLATE` expression in the select
+  as matching the same expression in the `GROUP BY`. `HEX()` satisfies both.
+- **`vite.config.mjs`, not `.js`.** `laravel-vite-plugin@1.0.1` is ESM-only and `package.json` has no
+  `"type": "module"`, so Vite loads a `.js` config as CommonJS and the build dies. `.gitignore`'s
+  blanket `*.mjs` was narrowed to `/vite.config.*.timestamp-*.mjs` so the config can be committed.

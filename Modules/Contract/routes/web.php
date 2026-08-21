@@ -5,6 +5,7 @@ use Modules\Contract\Http\Controllers\ContractController;
 use Modules\Contract\Http\Controllers\ContractCustomController;
 use Modules\Contract\Http\Controllers\ContractImportController;
 use Modules\Contract\Http\Controllers\ContractDashboardController;
+use Modules\Contract\Http\Controllers\ContractOptionListController;
 use Modules\Contract\Http\Controllers\ContractExportController;
 use Modules\Contract\Http\Controllers\ContractReportsController;
 use Modules\Contract\Http\Controllers\AdminConfigSettingsController;
@@ -166,6 +167,16 @@ Route::post('getSignatory', [ContractController::class, 'getSignatoryApprovalRul
 Route::get('', [ContractDashboardController::class, 'dashDetails'])->name('contractDashboard');
 
 Route::post('filterDash', [ContractDashboardController::class, 'dashDetails'])->name('contractDashboard');
+
+// New dashboard summary path, beside the old one (spec.md section 10 step 2, names.md section 1).
+// The old two routes above are untouched on purpose, duplicate route name included, so the live
+// URL keeps serving the old code until the new numbers are proven.
+Route::get('dashboard-summary', [ContractDashboardController::class, 'dashboardSummary'])->name('contractDashboardSummary');
+Route::post('dashboard-summary/filter', [ContractDashboardController::class, 'dashboardSummary'])->name('contractDashboardSummary.filter');
+
+// Shared dropdown option lists, consumed by the dashboard now and the contract list later
+// (spec.md section 8, names.md section 5). GET because it only reads and is cacheable.
+Route::get('contracts/option-lists', [ContractOptionListController::class, 'optionLists'])->name('contractOptionLists');
 
 // Location-wise contract status report (Active / Expired / Going-to-Expire)
 Route::get('/contracts/dashboard/location-status', [ContractDashboardController::class, 'locationStatusReport'])->name('dashboard.locationStatus');

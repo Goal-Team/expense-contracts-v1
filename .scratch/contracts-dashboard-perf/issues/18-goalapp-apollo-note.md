@@ -1,6 +1,6 @@
 # What changes in `goalapp_apollo` would help performance? (note only, change nothing)
 
-Type: `wayfinder:research` · Status: **open** · Blocked by: nothing
+Type: `wayfinder:research` · Status: **closed 2026-08-21** · Blocked by: nothing
 
 ## Question
 
@@ -45,4 +45,23 @@ list. Nothing is applied. Nothing is prescribed for this spec.
 
 ## Answer
 
-<!-- filled on resolution -->
+**The dashboard never touches `goalapp_apollo`. Not one query.** There is only one database connection
+in [config/database.php](../../../config/database.php), no model has a `$connection` property, there is
+no `DB::connection()` call in application code, and no raw query names a database. `.env` points at
+`apollo_contracts_expense` and everything goes there.
+
+So the two worries in this ticket are both unfounded. `menu_configs` and `admin_settings` are in **our**
+database, so the menu composer fix is ordinary in-scope work. The user, role and branch tables are ours
+too. Nothing cheap is stuck behind the "do not touch" rule.
+
+The note is still worth keeping, for a different reason: `goalapp_apollo` shows what real client data
+looks like, and our local numbers flatter us. Its `contract_party_data` is MyISAM with no indexes at all
+(indexing it is **7×** on the visibility query, and it stops the contracts table being scanned). Its
+`contracts` table is **71.6 MB for 2,783 rows** against our 6.5 MB for 3,018 — **9× slower to scan**,
+cause not yet explained. And its `approval_contracts` has **21 rows**, so the 5× approvals index we
+measured is worth nothing to a client. The 1,000-parameter bug applies there too — it is a server
+setting, and that database has 2,783 visible contracts.
+
+Deliverable: [research/goalapp-apollo-note.md](../research/goalapp-apollo-note.md).
+
+Status: **resolved**. Read-only throughout; nothing was changed in any database.

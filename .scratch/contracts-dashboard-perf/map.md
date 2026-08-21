@@ -2,12 +2,34 @@
 
 ## Destination
 
-**Reached 2026-08-20 — the spec is [spec.md](spec.md).** Then **reopened the same day** by the dev
-with eight changes to the plan. Two tickets are still open:
-[ticket 17](issues/17-plain-columns-experiment.md) and
-[ticket 18](issues/18-goalapp-apollo-note.md).
+**Reached 2026-08-20 — the spec is [spec.md](spec.md).** Then **reopened twice the same day** by the
+dev, and **a third time 2026-08-21** to bring page size in scope. **One ticket is still open:**
+[ticket 17](issues/17-plain-columns-experiment.md) — deliberately last, waiting on the spec having
+shipped and been measured.
+
+[Ticket 22](issues/22-reduce-page-size.md) closed 2026-08-21 — six cuts decided, ~1.9 MB of the 2.9 MB
+needs no rebuild at all, and the biggest single one is an IIS attribute.
+
+[Ticket 18](issues/18-goalapp-apollo-note.md) closed 2026-08-21 — the dashboard never touches
+`goalapp_apollo`, so nothing cheap is stuck behind the "do not touch" rule.
+[Ticket 21](issues/21-page-weight-measurement.md) closed 2026-08-21 — page weight measured and attributed;
+the whole page is 2.9 MB of stock template assets and Change F never moved it.
+
+[Ticket 20](issues/20-migration-portability.md) closed 2026-08-20 — the table conversion is no longer
+a migration at all.
 [Ticket 19](issues/19-new-function-names.md) closed 2026-08-20 — names in [names.md](names.md). The spec has been amended in place; the rule changes
 are recorded in Notes below and in [CLAUDE.md](../../CLAUDE.md).
+
+**Scope widened 2026-08-21, by the dev: the ~5 MB page is now this map's to shrink.** It was ruled
+past the destination — ticket 21 step 4 and [report.md](measurements/report.md) both said so, the
+report in the words "no change on this map was ever going to move the 5 MB, and none should be added
+to try." The dev has overridden that. So the destination now also covers **response size**, not only
+response time. The old ruling stays written down as history in both files.
+
+**Ordering, set by the dev 2026-08-21: [ticket 22](issues/22-reduce-page-size.md) before
+[ticket 17](issues/17-plain-columns-experiment.md).** Ticket 22 had been written up as running *after* 17.
+The dev reversed it, and 22 was resolved the same day, so the ordering is already spent —
+**ticket 17 is now the last item on the map.**
 
 An agreed, measurement-backed optimisation spec for the contracts dashboard — the page served at
 `http://apollo.contracts.legality:8888/contracts/`, which is Laravel path `/` →
@@ -25,7 +47,8 @@ before implementation begins.
 ([names.md](names.md), from [ticket 19](issues/19-new-function-names.md)); the `goalapp_apollo` note must be written
 ([ticket 18](issues/18-goalapp-apollo-note.md)); and the plain-column experiment
 ([ticket 17](issues/17-plain-columns-experiment.md)) runs **after** the spec has shipped and been
-measured, so it is the last thing on this map.
+measured. Ticket 17 was the last thing on this map until 2026-08-21; the last thing is now
+[ticket 22](issues/22-reduce-page-size.md), which runs after it.
 
 ## Notes
 
@@ -70,6 +93,21 @@ app, and `contracts/` is the Laravel app flattened so `index.php` sits at the ap
   old name -> suggest a better one and get it approved. One function, one concern, no copied blocks. In
   doubt, ask. **All names are now decided and live in [names.md](names.md)** — the one file to edit if a
   name changes; every session writing code reads it first. Rule in [CLAUDE.md](../../CLAUDE.md).
+- **Page weight is measured too, set by the dev 2026-08-20 (second pass).** Every row also records the
+  size of the page, not only the time. Three numbers, because they answer different questions: **document
+  bytes**, **total transfer bytes**, and **request count**. Reason it was added: the dev sees ~5 MB on both
+  old and new and the report only ever showed a byte figure for one row. Both are true — report row 5's
+  71 KB → 61 KB is the **HTML document**, the 5 MB is document plus 53 assets, so a 10 KB saving is 0.2 %
+  of it and cannot show. [Ticket 21](issues/21-page-weight-measurement.md) adds the column, backfills the
+  rows already taken, and attributes the 5 MB.
+- **Page size is in scope, set by the dev 2026-08-21.** The ~5 MB is this map's to shrink, not a
+  follow-on effort. Reverses ticket 21 step 4 and the report's own ruling.
+  [Ticket 22](issues/22-reduce-page-size.md) decides which cuts get made and in what order; it runs
+  last, after [ticket 17](issues/17-plain-columns-experiment.md). Three findings already measured and
+  written into that ticket: IIS gzip only engages from the **second** request for a file, so a cold
+  cache serves full uncompressed bytes (apexcharts 486 KB -> 126 KB); the HTML document is not
+  compressed at all; and content-hashed build assets carry no `Cache-Control`, so a returning user
+  pays a 304 round-trip per file.
 - **One measurement report, set by the dev 2026-08-20.** Every change writes a row into
   [measurements/report.md](measurements/report.md) — old number, new number, how measured, and a remark
   for any side effect. Old and new measured in the same session on the same data, because absolute
@@ -81,7 +119,37 @@ app, and `contracts/` is the Laravel app flattened so `index.php` sits at the ap
 - **Caveman English for questions, set by the dev 2026-08-20.** Questions are short and blunt, filler
   cut. Explanations and specs stay in normal plain words. **No summary unless asked.** See
   [CLAUDE.md](../../CLAUDE.md).
-- **Character set and collation, decided 2026-08-20.** Everything this effort creates or changes uses
+- **Character set and collation — SETTLED 2026-08-20 by
+  [ticket 20](issues/20-migration-portability.md): a migration never names one.** The dev's call: the
+  collation name depends on the client's database type and version, so a migration cannot know it. The
+  `contract_party_data` conversion is therefore **not a migration** — it is
+  [database/manual/001-contract-party-data-innodb-utf8mb4.sql](../../database/manual/001-contract-party-data-innodb-utf8mb4.sql),
+  run by hand at deployment by someone who can see that database. It carries `utf8mb4_unicode_ci` plus a
+  check at the top telling the runner to compare against `contracts` and change it if it differs — which
+  it will on 7 of the 8 known client databases. This **crosses the [CLAUDE.md](../../CLAUDE.md) "every
+  schema change is a migration" rule**, knowingly, because the alternative was a migration that guesses.
+  Only [migration 1](../../database/migrations/2026_08_20_000001_add_index_to_approval_contracts_contract_id.php)
+  stays a migration: it adds one index and names no charset or collation.
+  **Both applied to the dev database 2026-08-21**, by the dev's go-ahead, through
+  [`php artisan contract:convert-party-data`](../../app/Console/Commands/ConvertPartyDataCollation.php)
+  — the script the dev asked for, collation passed in, `utf8mb4_unicode_ci` by default, checks-only
+  unless `--apply`. 6,940 rows in and out; approvals join 114 ms -> 23 ms, party join 42 ms -> 32 ms
+  ([report.md](measurements/report.md) rows 4 and 7). Production is the dev's to do at deployment with
+  that server's collation. Whatever collation a client
+  uses, it must be case-**insensitive** — two queries compare `contract_party_type` against lowercase
+  `'internal'` and only work because case is ignored.
+  **Column widths: `varchar(32)`**, on exactly two columns (`contract_party_type`,
+  `contract_party_location_id`). `party_address` stays `TEXT`. 32 rather than 20 so a fourth party type
+  needs no second maintenance window. The reasoning below was the earlier version, kept for the history.
+- ~~**Character set and collation — superseded 2026-08-20.**~~ The rule below said name `utf8mb4_unicode_ci`
+  explicitly in every migration. The dev rejected that on review: this app is installed for different
+  clients on different database servers, and a named collation may not exist there. Checking proved him
+  right on stronger grounds than version support — of the **8 client databases on this machine**,
+  `approval_contracts` is `utf8mb4_unicode_ci` in **one** (`apollo_contracts_expense`) and
+  `utf8mb4_general_ci` in the other **seven**, which is also both databases' own default. So the named
+  value would have *created* the mixed-collation problem it was meant to prevent. Ticket 20 sets the
+  replacement rule and rewrites both migration files. The original text follows for the history.
+- ~~**Character set and collation, decided 2026-08-20.**~~ Everything this effort creates or changes uses
   character set **`utf8mb4`** and collation **`utf8mb4_unicode_ci`** — named explicitly in the migrations.
   It works on both MySQL 8 and MariaDB 10.4, is case-insensitive, and is **already** the collation of
   `contracts` and `approval_contracts`, so no mixed-collation comparison appears in the tables this work
@@ -163,6 +231,34 @@ app, and `contracts/` is the Laravel app flattened so `index.php` sits at the ap
 ## Decisions so far
 
 <!-- one line per closed ticket: gist + link -->
+- [Make the page smaller — what do we cut, and in what order?](issues/22-reduce-page-size.md) — six cuts,
+  ordered, nothing applied. **~1.4 MB is config, not code**: `frequentHitThreshold="1"` (static gzip never
+  helps a first visit — 1.25 MB raw on request 1, 343 KB gzipped from request 2), dynamic compression for
+  the uncompressed 63 KB document, and `Cache-Control: immutable` on content-hashed assets. Both files
+  written for review in [config-proposals/](config-proposals/), each rule labelled folder-level or
+  parent-level, because `contracts/` sits under the GOAL app. Then: customizer **off** (37 KB, users lose
+  dark mode), ApexCharts **lazy-loaded** not swapped (486 KB off first paint, no rebuild), **fa-brands +
+  fa-regular dropped** (118 KB; only real casualty is `fab fa-google` at verticalMenu.blade.php:138 — the
+  rest is a stock demo page), **language switcher removed** (33 KB), Tabler font subset **deferred**. Items
+  4-6 are gated on [ticket 07](issues/07-asset-pipeline-decision.md)'s missing root `vite.config`.
+- [Should migrations name a collation and a column width at all?](issues/20-migration-portability.md) —
+  **No, and the conversion stops being a migration.** The dev rejected the hardcoded
+  `utf8mb4_unicode_ci` on review, and checking proved him right harder than expected: of the **8 client
+  databases on this machine**, `approval_contracts` is `utf8mb4_unicode_ci` in **one** and
+  `utf8mb4_general_ci` in **seven** — which is also both databases' own default — so the named value
+  would have *created* the mixed-collation problem it was written to prevent. Client widths already
+  differ too (`approval_status` is `varchar(1000)`, `varchar(250)` and `varchar(100)` across clients).
+  **Dev's call: `contract_party_data`'s conversion is a hand-run deployment script**, not a migration —
+  [database/manual/001-...sql](../../database/manual/001-contract-party-data-innodb-utf8mb4.sql), with a
+  pre-flight check against `contracts`. Knowingly crosses the CLAUDE.md migration rule. **Migration 1
+  survives** as a migration (one index, no collation named), still not applied. **Widths: `varchar(32)`
+  on exactly two columns**; `party_address` stays `TEXT`. **And there was no status column to size** —
+  `approval_status_plain varchar(20)` died with the shadow columns; the live `approval_status` is already
+  `varchar(1000)`, so ticket 17 never has to widen anything either. New fact: `contract_party_type` is
+  compared against lowercase `'internal'` at
+  [ContractController.php:725](../../Modules/Contract/app/Http/Controllers/ContractController.php:725)
+  and [:4358](../../Modules/Contract/app/Http/Controllers/ContractController.php:4358), so the collation
+  must stay case-insensitive or those two queries break silently.
 - [Assemble and agree the spec](issues/10-assemble-spec.md) — **Done: [spec.md](spec.md)**, the
   destination of this map. 14 sections covering the measured baseline at both scales, the four
   independent problems plus the 1000-id correctness bug, targets and **query-count ceilings** (10 queries
@@ -337,6 +433,37 @@ app, and `contracts/` is the Laravel app flattened so `index.php` sits at the ap
   means an Eloquent global scope here. The duplicate `contractDashboard` route name is left alone as
   pre-existing. Deleting an old function needs a report.md row **and** `dashboard:compare-counters`
   showing no unexpected difference.
+
+- [What changes in `goalapp_apollo` would help performance?](issues/18-goalapp-apollo-note.md) —
+  **The dashboard never touches `goalapp_apollo`. Not one query.** One connection in `config/database.php`,
+  no `$connection` on any model, no `DB::connection()` in app code, no database name in any raw SQL. So
+  both worries in the ticket are unfounded: `menu_configs` and `admin_settings` are in **our** database,
+  which makes the 92-query menu composer fix ordinary in-scope work, and the user/role/branch tables are
+  ours too. Nothing cheap is stuck behind the "do not touch" rule. The note still earns its keep because
+  that database shows how much our local numbers flatter us: its `contract_party_data` is MyISAM with no
+  indexes (**7x** on the visibility query), its `contracts` is **71.6 MB for 2,783 rows** against our
+  6.5 MB for 3,018 (**9x slower to scan**, cause unexplained), and its `approval_contracts` holds only
+  **21 rows** — so the 5x approvals index we measured is worth nothing to a client. Read-only throughout.
+  Note in [research/goalapp-apollo-note.md](research/goalapp-apollo-note.md).
+- [Measure the page weight, old against new](issues/21-page-weight-measurement.md) — **The dev was right
+  and the report was misleading.** One session, both pages alive, cold and warm: the whole page moved
+  **754 bytes out of 2.9 MB — 0.03 %**. The document did shrink 71,644 -> 63,274, but the options came
+  back as a 7,616-byte `option-lists` request, so **Change F is not a weight change at all** — it moves
+  bytes off the critical path, and that is its whole value. Page weight is now a standing part of
+  [report.md](measurements/report.md) (rows 21a-21d); rows 0 and 2b could only be backfilled for document
+  bytes, their transfer totals being the weight of 404s from the `public/hot` era. The page is **2.9 MB,
+  not 5 MB**, and it is **all stock Vuexy template and chart JS** — CSS 33 %, JS 32 %, fonts 28 %, five
+  files making 73 % of it, none of it contracts code. A returning user pays **71 KB**, not 2.9 MB.
+  **Biggest finding, not asked for: compression barely works.** Static gzip is configured but only engages
+  from the **second** request for a file (1,252,656 -> 343,147 bytes, 3.65x), so a cold visit that asks
+  once per asset gets none of it; the **HTML document is never compressed on any request** (dynamic
+  compression is a separate setting and it is off); and build assets carry an `ETag` but **no
+  `Cache-Control`**, so a returning user pays 54 conditional round-trips on filenames that are already
+  content-hashed. This confirms ticket 22's three findings independently. **Step 4 of this ticket answered
+  "shrinking the page is past the destination" and the dev overrode it the same day** — page size is now in
+  scope, and the cuts belong to [ticket 22](issues/22-reduce-page-size.md). One correction recorded in
+  both files: an earlier pass called the single gzipped reading a measurement artifact and concluded
+  "compression is off"; it was real gzip, and the wrong conclusion is left visible rather than removed.
 
 ## Not yet specified
 

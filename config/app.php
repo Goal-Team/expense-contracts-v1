@@ -176,7 +176,8 @@ return [
     App\Providers\RouteServiceProvider::class,
     App\Providers\MenuServiceProvider::class,
     App\Http\Customviewer\LaravelFileViewerServiceProvider::class,
-    App\Providers\PerfTimingServiceProvider::class // local-only perf timing; remove with app/Perf + PerfTimingMiddleware
+    App\Providers\PerfTimingServiceProvider::class, // local-only perf timing; remove with app/Perf + PerfTimingMiddleware
+    App\Providers\LocalDebugbarServiceProvider::class // local-only Debugbar; gated on APP_DEBUG && APP_ENV=local (ticket 16)
 
   ])->toArray(),
 

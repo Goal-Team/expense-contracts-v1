@@ -167,3 +167,109 @@ small change — lock repair, then Debugbar behind the local-only provider — a
 that the lock file must be valid before any deployment step that runs composer. Not spun out as a
 separate effort; it is one change, not a body of work.
 
+
+---
+
+## Implementation note, 2026-08-21 — the plan was carried out, and it found two landmines
+
+The dev asked for the debug bar to be made to work, authorising the `.env` change and the install.
+**Debugbar v3.16.5 is now live** and confirmed in the browser on `/dashboard-summary`: the element is
+present and visible, tabs populated, assets served from `/contracts/_debugbar/assets/`.
+
+### The plan's stop-gate earned its place twice
+
+**Stop 1 — version.** `composer require barryvdh/laravel-debugbar` resolves to **^4.4**, which requires
+`illuminate/routing ^11|^12|^13`. This app is Laravel **10.48.29**, and the dev's standing instruction is
+that nothing already installed gets upgraded. Pinned to **^3.9** instead, which resolved to v3.16.5.
+
+**Stop 2 — 33 packages would have been deleted.** The first dry run at ^3.9 reported
+`2 installs, 5 updates, 33 removals` — dompdf, PhpWord, tcpdf, microsoft-graph, spatie/pdf-to-text and
+their dependencies. Cause: **those packages have no declared requirer anywhere.** All five
+`Modules/*/composer.json` have `"require": {}`, and the root `composer.json` never listed them, so on
+re-resolution nothing kept them alive. Two are provably in use — dompdf in 5 files, TCPDF in 2.
+
+Fixed by declaring the **7 root orphans** in `composer.json` at their exact installed versions
+(`barryvdh/laravel-dompdf v3.1.1`, `microsoft/microsoft-graph v2.43.0`, `phpoffice/phpword 1.3.0`,
+`setasign/fpdi v2.6.3`, `spatie/pdf-to-text 1.54.0`, `symfony/polyfill-iconv v1.32.0`,
+`tecnickcom/tcpdf 6.3.1`). The other 26 are transitive and follow on their own. Same "record reality"
+principle as the `nwidart/laravel-modules` correction.
+
+**Stop 3 — five symfony patch bumps.** With the removals gone, the dry run still wanted to upgrade
+`symfony/finder`, `var-dumper`, `deprecation-contracts` and two polyfills. Dropping
+`--with-dependencies` removed all five: **`2 installs, 0 updates, 0 removals`**, only Debugbar and
+`php-debugbar/php-debugbar v2.2.6`. That is what was run.
+
+### Landmine 1: `wikimedia/composer-merge-plugin` is declared but was never installed
+
+It is named in `extra.merge-plugin` and in `config.allow-plugins`, but it is **absent from `vendor/` and
+absent from the lock**. The per-module psr-4 entries in `vendor/composer/autoload_psr4.php` were
+generated back when it existed and had simply survived in the generated files ever since.
+
+So regenerating the autoloader dropped them, and the app died with
+`Class "Modules\ApprovalRules\Providers\ApprovalRulesServiceProvider" not found`. **This was not caused by
+Debugbar — any `composer dump-autoload` by anyone would have done it at any time.** A live trap that was
+one command away from being sprung.
+
+Fixed without adding a package: the **15 module psr-4 prefixes are now declared directly in the root
+`composer.json`**, copied from each module's own `composer.json` and each verified to point at a directory
+that exists. `vendor/composer/autoload_psr4.php` now carries 17 `Modules\` entries and the app boots.
+
+### Landmine 2: the lock file rebuild worked, and is worth knowing how
+
+`composer.lock` had 15 conflict markers and failed `json_decode`, so **no composer command could run at
+all**. Rebuilt from `vendor/composer/installed.json` — the only truthful record of the install — by
+stripping `install-path` / `installation-source` / `version_normalized` and splitting on
+`dev-package-names`. That gave 123 + 38 packages. `composer update --lock` then filled in the real
+`content-hash` and moved **zero** packages, verified by diffing versions before and after.
+
+`composer install --dry-run` now reports **"Nothing to install, update or remove"**, clean, with no
+out-of-date warning. Backups kept: `composer.lock.broken.bak` (the conflicted original) and
+`composer.lock.rebuilt.bak` (pre-hash-fix).
+
+### The three locks from the decision are all in place
+
+1. **`LocalDebugbarServiceProvider`** — [app/Providers/LocalDebugbarServiceProvider.php](../../../app/Providers/LocalDebugbarServiceProvider.php),
+   registered in [config/app.php](../../../config/app.php). Demands `APP_DEBUG` **and**
+   `trim(APP_ENV) === 'local'`, the same pair as `PerfTimingServiceProvider`. Debugbar is in
+   `extra.laravel.dont-discover`, so this file is the only thing that can register it.
+2. **`DEBUGBAR_ENABLED`** documented in both `.env` and the production block of `.env.example`.
+3. **`DEBUGBAR_STORAGE_ENABLED=false`** added to `.env` — nothing is written to `storage/debugbar/`.
+
+### One measurement consequence, and it matters
+
+**The debug bar inflates the document from 63,274 bytes to 359,490** — 5.7x — because it injects its own
+markup, plus two extra asset requests. **Every page-weight and timing row from now on must be taken with
+the bar off** (`DEBUGBAR_ENABLED=false`), or the numbers are meaningless. Noted in
+[report.md](../measurements/report.md).
+
+Status: **resolved** (decision 2026-08-20), **implemented 2026-08-21.**
+
+### Verified 2026-08-21: `DEBUGBAR_ENABLED=false` is enough to measure
+
+The dev asked whether flipping the `.env` variable is sufficient to get real numbers back. It is.
+Measured in the browser, same session, immediately after flipping it:
+
+| | bar on | bar off |
+|---|---|---|
+| bar rendered | yes | **no** |
+| `_debugbar` asset requests | 2 | **0** |
+| document bytes | 359,490 | **63,274** |
+| whole page, cold | — | **2,908,591** |
+
+**Both the document and the whole page come back byte-identical to the pre-install rows 21b/21d.** So the
+install leaves no measurable footprint while the variable is false, and no code change is needed to
+measure — flip it, reload, measure, flip it back.
+
+**No cache clear needed.** There is no `bootstrap/cache/config.php` on this install, so `.env` is read per
+request and the change lands on the next reload. If someone ever runs `php artisan config:cache`, that
+stops being true and the flip needs a `config:clear` after it.
+
+**One honest caveat.** With `APP_DEBUG=true` and `APP_ENV=local`, `LocalDebugbarServiceProvider` still
+registers Debugbar's own provider; Debugbar's internal gate is what switches the collectors and the
+injection off. So a small class-loading cost remains at boot even when the bar is invisible. It does not
+touch the response body and it is far below the ~3x between-session drift, so it does not affect any row
+in report.md. To remove even that, comment the `LocalDebugbarServiceProvider` line out of
+[config/app.php](../../../config/app.php).
+
+`.env` now ships with `DEBUGBAR_ENABLED=false` as the default, with the reason written above it, so the
+measuring state is the resting state and someone has to opt in to break it.

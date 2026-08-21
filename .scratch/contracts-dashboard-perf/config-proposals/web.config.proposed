@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  PROPOSED web.config for the contracts/ folder. NOT APPLIED.
+  From ticket 22 (.scratch/contracts-dashboard-perf/issues/22-reduce-page-size.md).
+
+  This is the CURRENT web.config plus one new <staticContent> block and one
+  <httpCompression> block. Everything that was already here is unchanged.
+
+  Copy over contracts/web.config only after reading the two notes below.
+
+  WHAT A FOLDER-LEVEL web.config CAN SET  (this is the only thing this file adds)
+    - <staticContent><clientCache>  -> Cache-Control on static files.  WORKS.
+
+  DELIBERATELY NOT SET
+    - <urlCompression doDynamicCompression>  -> dev ruled dynamic compression out on
+      2026-08-21, and DynamicCompressionModule is not installed here anyway.
+
+  WHAT IT CANNOT SET  (needs the parent GOAL app or applicationHost.config)
+    - httpCompression/frequentHitThreshold  -> the "gzip only from the 2nd request" fix.
+      This attribute is only readable at applicationHost.config level. Putting it in a
+      folder web.config is either ignored or throws HTTP 500.19 depending on how
+      overrideModeDefault is set for the httpCompression section.
+      -> see applicationHost.config.notes.md in this folder.
+
+  IF THIS FILE CAUSES HTTP 500.19
+    The GOAL parent app has locked the section. Only one block was added, so delete
+    <staticContent> and the file is back to what it was.
+
+  EVERY ATTRIBUTE HERE WAS CHECKED against
+  %windir%\System32\inetsrv\config\schema\IIS_schema.xml on 2026-08-21:
+    clientCache/cacheControlMode   enum, "UseMaxAge" is valid   (schema line 1430)
+    clientCache/cacheControlMaxAge timeSpan, "365.00:00:00" ok  (schema line 1436)
+    clientCache/cacheControlCustom string, "immutable" ok       (schema line 1438)
+  This check exists because the applicationHost proposal shipped an attribute name that was
+  not in the schema and took the whole site down with HTTP 500.19.
+-->
+<configuration>
+    <system.web>
+        <httpRuntime maxRequestLength="2147483647" requestLengthDiskThreshold="2147483647" executionTimeout="24000" />
+    </system.web>
+    <system.webServer>
+            <security>
+                <requestFiltering>
+                    <requestLimits maxAllowedContentLength="4294967295" />
+                </requestFiltering>
+        </security>
+        <defaultDocument>
+            <files>
+            <clear />
+                <add value="index.php" />
+                <add value="index.html" />
+                <add value="index.htm" />
+                <add value="Default.htm" />
+                <add value="Default.asp" />
+                <add value="iisstart.htm" />
+            </files>
+        </defaultDocument>
+
+        <!--
+          NEW #1. Cache-Control on static files.
+          Safe because every file under build/ is content-hashed (core-7_a25xA8.css), so the
+          name changes when the bytes change and a stale cache is impossible.
+          Today these files send only an ETag, so a returning user pays a 304 round-trip on
+          each of 54 assets. This removes all 54.
+          Does NOT touch the HTML document - PHP responses set their own no-store headers
+          and are not <staticContent>.
+        -->
+        <staticContent>
+            <clientCache cacheControlMode="UseMaxAge"
+                         cacheControlMaxAge="365.00:00:00"
+                         cacheControlCustom="immutable" />
+        </staticContent>
+
+        <!--
+          NEW #2 REMOVED, dev's call 2026-08-21: NO DYNAMIC COMPRESSION.
+          A <urlCompression doDynamicCompression="true"> block used to sit here. It is gone,
+          for two independent reasons:
+
+            1. The dev ruled it out. Dynamic compression is a pain to maintain and they have
+               chosen to bear the cost of the uncompressed document instead.
+            2. It would not have worked anyway. DynamicCompressionModule is NOT INSTALLED on
+               this server - it is absent from globalModules and there is no <dynamicTypes>
+               list. The attribute is valid per the IIS schema, so it would not error; it
+               would simply do nothing. Turning it on needs a Windows role feature installed,
+               not a config line.
+
+          So the ~53 KB per request on the HTML document is knowingly NOT recovered.
+          Static compression is unaffected - it is a separate module and it IS installed.
+        -->
+
+        <rewrite>
+            <rules>
+                <rule name="imported rule 3" stopProcessing="true">
+                    <match url="^(.*)$" ignoreCase="false" />
+                    <conditions logicalGrouping="MatchAll">
+                        <add input="{REQUEST_FILENAME}" matchType="IsDirectory" negate="true" />
+                        <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="true" />
+                    </conditions>
+                    <action type="Rewrite" url="index.php/{R:1}" />
+                </rule>
+            </rules>
+        </rewrite>
+    </system.webServer>
+</configuration>
