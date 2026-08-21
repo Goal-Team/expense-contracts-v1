@@ -379,6 +379,24 @@ cost is shared too. The edit tab is what we measure and verify on.
   six identical lines each, and `authorizedClient()` is public so each is a one-line change. All ten sit
   on POST paths, so the scope rule leaves them here. Commit `5396884`.
 
+- [17 - gzip the HTML document](issues/17-gzip-the-html-document.md) - **the document is compressed, and
+  it took PHP, not config.** `100479?tab=edit` goes **326,254 bytes to 35,432**, 9.2x, for **6-9 ms of
+  CPU**. Cold whole page 2,979,504 to **2,688,682** (9.8% off); warm whole page 326,854 to **35,732**
+  (89% off), because on a repeat visit every asset comes from cache and the document is the page. Proved
+  both ways at once: `content-encoding: gzip` with `content-length: 35432` and `vary: Accept-Encoding`,
+  and `encodedBodySize` 35,432 against `decodedBodySize` 326,254. All 13 tab values on `100479` and `1`
+  return 200 and compress, 4.8x to 11.9x. Report row 15. Commit `00d6219`.
+  **Three things to remember:** **IIS dynamic compression is not installed here** - `compdyn.dll` is
+  absent from `C:\WINDOWS\System32\inetsrv`, `applicationHost.config` holds no `<dynamicTypes>` and no
+  `dynamicCompressionLevel`, so `urlCompression doDynamicCompression="true"` would have been inert and no
+  `web.config` line could ever have worked; `applicationHost.config` is **readable without elevation** on
+  this machine, so its facts can be checked rather than guessed, and `Test-Path` on `compdyn.dll` answers
+  the whole question in one line; and **`frequentHitThreshold` never delayed the document** - it is
+  applied and live at 1, but PHP has no hit counter, so the first request already comes back gzipped.
+  **The dev may want to revert this.** They ruled out dynamic compression 2026-08-21 on maintenance
+  grounds. That ruling was about the IIS feature, which needs an admin and a machine-wide file; this is
+  one middleware in the repo. `git revert 00d6219` undoes it whole and touches nothing else.
+
 ## Order of work
 
 This tracker is markdown, so there is no query to find the frontier. The order is written down instead.
@@ -406,7 +424,7 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | [13 visibleTo scope](issues/13-visible-to-scope.md) | after 21 | **Now the whole remaining problem on Details, and it is a scaling one.** The query count grows with the family tree: 369 on 100479, 426 on contract 1, **619 on 101101** with its 20-child fan-out. |
 | [05 split viewContract](issues/05-query-layer-decision.md) | after 09, 12, 13 | Moving code last, so it is not moved twice. |
 | [10 eSign off the page load](issues/10-esign-check-after-page-render.md) | after 04 | Independent of the query work. **Unmeasured** — the block only fires on a Signing contract and the test set has none, so it needs a copy of one set to Signing first. |
-| [17 gzip the HTML](issues/17-gzip-the-html-document.md) | **NOW** | **The biggest win left.** 326 KB of HTML sent uncompressed while 39 assets are compressed. Config, not page code, so it touches no PHP. |
+| ~~[17 gzip the HTML](issues/17-gzip-the-html-document.md)~~ | **CLOSED** | **Document 326,254 bytes to 35,432, 9.2x, for 6-9 ms of CPU.** Not config after all: IIS dynamic compression is **not installed** on this server, so it is one PHP middleware. |
 | [06 dropdowns on demand](issues/06-dropdown-decision.md) | after 12, 13 | **Demoted by the baseline: the dropdown data costs about 60 ms, 1.4%.** This is a page-weight change, not a speed change. Still worth doing, no longer urgent. |
 | [07 tabs on demand](issues/07-page-size-decision.md) | last | Still last — it is the one change that can silently wipe a column on save. **Ticket 18 takes most of what ticket 16 credited to this one, at a fraction of the risk.** Weigh whether the rest is worth it once 18 lands. |
 
