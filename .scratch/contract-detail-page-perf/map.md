@@ -226,6 +226,22 @@ cost is shared too. The edit tab is what we measure and verify on.
   renders **0** rows in that table while contract 1 renders 11, so the control contract is the one that
   proves it. Commits `5ffd9c1`, `8ae50df`.
 
+- [15 - the recursive child walk](issues/15-recursive-child-walk.md) - **one `WITH RECURSIVE` query
+  in place of the `@pv` / `FIND_IN_SET` walk.** Step 0 came first: the seeder now links **684 of the
+  3,000 seeded rows** to a parent - 300 pairs, 100 chains three deep, 50 chains four deep, two wide
+  fan-outs of 12 and 20, and one branch two rows deeper. No cycle: every parent id sits below its
+  child id, and a walk from the 2,334 roots reaches all 3,018 rows once, max depth 3. Report row 9
+  re-measures the page on that data first - **3,235-7,109 ms and 369 queries**, the walk holding
+  1,996-5,365 ms. Then the rewrite: `100479?tab=details` goes to **1,198-2,207 ms**, same 369
+  queries, and the walk leaves the ten-slowest list. Rows 9 and 10. Commits `a4aa1bc`, `05831d1`.
+  **Three things to remember:** the old code glued ids together with no comma when a contract had
+  two or more ancestors, so **202 of 3,018 contracts got one bogus id and lost one real one** (the
+  page looked the same only because the lost id was always an ancestor the Parent Contracts table
+  had already printed, and the blade shares one `$prevContracts` list); `GROUP_CONCAT` also
+  truncated the old result at 1,024 bytes with no error; and **the parent walk is now the slowest
+  query on the page** at 222-255 ms, same session-variable shape, and the same `ancestry` CTE fixes
+  it.
+
 ## Order of work
 
 This tracker is markdown, so there is no query to find the frontier. The order is written down instead.
@@ -243,7 +259,7 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | ~~[18 guard the scans by tab](issues/18-guard-the-scans-by-tab.md)~~ | **CLOSED** | **Edit tab 4,208-4,589 ms to 455 ms, 258 queries to 86.** The biggest win on this map. |
 | ~~[20 `$contractsoldothers` scan](issues/20-contractsoldothers-scan.md)~~ | **CLOSED** | Details tab **4,088-5,233 ms to 2,997-3,576 ms**. The query itself 928-1,823 ms to under 5 ms. |
 | [19 attachment tab, 2.2 s outside the database](issues/19-attachment-tab-slow-outside-db.md) | now, runs beside anything | The only tab whose cost is not queries: 91 queries, 2,638 ms. No other ticket on this map will touch it. |
-| [15 recursive child walk](issues/15-recursive-child-walk.md) | **NOW, top of the map** | **1,977-3,377 ms of the Details tab's remaining 3 s.** The last big item on the page. Seed parent-child chains first - step 0 of the ticket - or it measures a walk that finds nothing. |
+| ~~[15 recursive child walk](issues/15-recursive-child-walk.md)~~ | **CLOSED** | **Details tab 3,235-7,109 ms to 1,198-2,207 ms.** `WITH RECURSIVE` in place of the session-variable walk. The seed got parent-child chains first, so the number is real. |
 | [11 indexes](issues/11-missing-indexes.md) | four left | Ticket 20 took one and **found a better column order than this ticket guessed** - order by selectivity, not by the order they appear in the `where`. Read its Resolution before adding the rest. |
 | [12 delete the waste](issues/12-delete-waste.md) | now, but re-scope it first | **Ticket 18 already collected most of this on every tab but Details.** The six unread results and the duplicate pairs still stand; the 158 repeated lookups mostly do not. Re-read before starting. |
 | [09 stop binding ids](issues/09-replace-wherein-with-joins.md) | after 04 | Four query shapes, nothing else. |
@@ -267,10 +283,15 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 
 ## Not yet specified
 
-- **The Details tab is now the whole problem.** 2,972-3,567 ms and 359 queries, against 455 ms and 86 on
-  every other tab. Two things hold it now that ticket 20 has closed: the child walk (1,977-3,377 ms,
-  [ticket 15](issues/15-recursive-child-walk.md)) and the `availableContracts()` loops (about 274
-  queries, [ticket 13](issues/13-visible-to-scope.md)). Nothing else on the map moves it.
+- **The Details tab is still the slowest tab, but the seconds are gone.** 1,198-2,207 ms and 369
+  queries on `100479`, against 306-514 ms and 83-98 on every tab but `attachment`. Ticket 15 closed the
+  child walk. What is left: the **parent walk** at 222-255 ms, the same session-variable shape the
+  child walk had, which the same `ancestry` CTE can replace; and the `availableContracts()` loops,
+  about 280 of the 369 queries ([ticket 13](issues/13-visible-to-scope.md)).
+- **The query count on the Details tab now grows with the family tree.** 369 on `100479` (one child),
+  426 on contract `1`, **619 on `101101`** (a 12-child fan-out). The blade lazy-loads
+  `select * from contracts where parentcontract = ? limit 1` for every related contract, and the four
+  `availableContracts()` loops walk every row. Ticket 13's, and the seeded chains make it visible.
 - Why `SHOW TABLES` runs twice on every page view. Something asks the schema on a page load. Noticed by
   the baseline, cheap, unexplained.
 
