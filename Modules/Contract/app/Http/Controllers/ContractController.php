@@ -671,10 +671,28 @@ class ContractController extends Controller
         }
 
 
-        if (isset($_GET['history']) && $_GET['history'] != "") {
-            $contracts = ContractHistory::where('history_id', $_GET['history'])->first();
-            $contractParty = ContractPartyDataHistory::where('history_id', $_GET['history'])->get();
-        } else {
+        // ?history=<id> asks for a past version of this contract, and the Historical tab shows
+        // it. The row can be gone - the id comes from a link the user kept, or from the
+        // 60-minute cookie the blade writes - and then the page read contract_status off null and
+        // threw. It falls back to the live contract, the same as a load with no ?history=.
+        $contracts = null;
+        $historyId = $_GET['history'] ?? '';
+
+        if ($historyId !== '') {
+            $contracts = ContractHistory::where('history_id', $historyId)->first();
+            $contractParty = ContractPartyDataHistory::where('history_id', $historyId)->get();
+
+            if ($contracts === null) {
+                Log::warning('Contract detail page found no history snapshot', [
+                    'contract_id' => $id,
+                    'history_id' => $historyId,
+                ]);
+            }
+        }
+
+        if ($contracts === null) {
+            // The snapshot is gone, so every later read shows the live contract too.
+            $historyId = '';
             $contracts = Contract::select('*')->where('id', $id)->first();
             $contractParty = ContractPartyData::where('custom_field_group_id', $id)->get();
         }
@@ -965,8 +983,8 @@ class ContractController extends Controller
         $ent = EntityBusiness::select('*')->get();
 
 
-        if (isset($_GET['history'])) {
-            $ContractPartyData = ContractPartyDataHistory::where('history_id', $_GET['history'])->get();
+        if ($historyId !== '') {
+            $ContractPartyData = ContractPartyDataHistory::where('history_id', $historyId)->get();
         } else {
             $ContractPartyData = ContractPartyData::where('custom_field_group_id', $id)->get();
         }
