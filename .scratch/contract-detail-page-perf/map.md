@@ -139,6 +139,14 @@ cost is shared too. The edit tab is what we measure and verify on.
 
 <!-- one line per closed ticket, newest last -->
 
+- **Ticket 02, 2026-08-21.** The seed now fills all 60 `contracts` columns the detail page reads, not
+  40, and corrects 7 values the page could never match. Row counts unchanged: 3,018 / 6,940 / 13,867.
+  **The page stopped rendering as a result**: realistic rows are 6x wider, `contracts` grew to 110 MB
+  against a 16 MB buffer pool, and the child-contract `GROUP_CONCAT` query at
+  [ContractController.php:780](../../Modules/Contract/app/Http/Controllers/ContractController.php:780)
+  now takes over 120 s, so IIS returns HTTP 500 on a FastCGI timeout. Same 3,018 rows in a
+  two-column temp table: 3 s. That query is the next thing to fix.
+
 - [01 — Fix the crash on the edit tab when a reminder column is NULL](issues/01-fix-null-reminder-crash.md)
   — one helper `reminder_alert_parts()` replaces four unguarded `explode()` calls; the page renders on a
   NULL reminder and still shows stored values unchanged. Fixed a precedence bug in the same blocks that
