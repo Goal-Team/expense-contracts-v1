@@ -347,6 +347,22 @@ cost is shared too. The edit tab is what we measure and verify on.
   `permissions->create` even with `$onlyView = true`, so it is what grants the logged-in user access to
   the file. Removing it shows Google's 403 to anyone not already granted. Commit `1d5a5a1`.
 
+- [22 - cache the Drive access token](issues/22-cache-the-drive-token.md) - **the refresh is the proof,
+  not the time.** `changePermission()` built a fresh `Google_Client` and never set a token, so every
+  call paid an OAuth refresh. `authorizedClient()` now holds the token in the `file` cache, keyed by a
+  `sha1` of the client id, the client secret, the token endpoint and the refresh token, and the entry
+  lives **3,479 s** - 120 short of the token's own 3,599. Twelve Drive calls logged **one** real refresh
+  and **10** cache hits. `100479?tab=attachment` goes **1,327-1,384 ms to 1,066-1,212 ms**, contract `4`
+  1,365 ms to **1,194-1,256 ms**, same query counts and byte-identical documents. The condition to stop
+  on did not fire: callers still get `null` on success and the same error string on failure, so the
+  method changed in place. Report row 14. Commit `5396884`.
+  **Three things to remember:** the refresh cost **230 ms today against ticket 19's 494-582 ms**, so
+  the round trip to Google varies by the day and the count is the honest number; a **404 for a missing
+  file must not drop the cached token**, and `isDriveAuthFailure()` only accepts 401 or 403 with an
+  authentication message, so the seeded made-up Drive ids are safe; and **ten more methods in
+  `GoogleDriveController` still refresh their own token**, one line each to move over, all on POST paths
+  and so out of this page's scope.
+
 ## Order of work
 
 This tracker is markdown, so there is no query to find the frontier. The order is written down instead.
@@ -365,6 +381,7 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | ~~[20 `$contractsoldothers` scan](issues/20-contractsoldothers-scan.md)~~ | **CLOSED** | Details tab **4,088-5,233 ms to 2,997-3,576 ms**. The query itself 928-1,823 ms to under 5 ms. |
 | ~~[19 attachment tab, 2.1-2.2 s outside the database](issues/19-attachment-tab-slow-outside-db.md)~~ | **CLOSED** | **2,171-2,428 ms to 1,327-1,384 ms.** The time was in the blade, not the database: two identical Google Drive calls. |
 | [22 cache the Drive token](issues/22-cache-the-drive-token.md) | **NOW** | **The biggest single cost left on the page.** 494-582 ms of every Drive call is an OAuth refresh that depends on neither the file nor the user. |
+| ~~[22 cache the Drive access token](issues/22-cache-the-drive-token.md)~~ | **CLOSED** | **One refresh, then none.** `100479?tab=attachment` 1,327-1,384 ms to **1,066-1,212 ms**; contract `4` to 1,194-1,256 ms. The refresh cost 230 ms today, not the 494-582 ms ticket 19 saw. |
 | ~~[15 recursive child walk](issues/15-recursive-child-walk.md)~~ | **CLOSED** | Details tab **3,235-7,109 ms to 1,198-2,207 ms**. The old query was also **wrong**, on 202 of 3,018 contracts. |
 | ~~[21 parent walk](issues/21-parent-walk.md)~~ | **CLOSED** | Details tab **1,198-2,207 ms to 686-785 ms**. The slowest query on that tab is now **7-11 ms**. |
 | [11 indexes](issues/11-missing-indexes.md) | four left | Ticket 20 took one and **found a better column order than this ticket guessed** - order by selectivity, not by the order they appear in the `where`. Read its Resolution before adding the rest. |
