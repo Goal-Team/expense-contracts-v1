@@ -1,8 +1,8 @@
 <?php
 
-// PROPOSED - NOT RUN, NOT IN database/migrations YET.
-// Shown for review per CLAUDE.md ("Write the migration file, show it for review, and only run
-// it after the dev approves"). Move it to database/migrations/2026_08_21_000002_... to run it.
+// Applied on the local dev database 2026-08-22 under the dev's standing approval of the same day:
+// migrations get applied locally and reported after, so index work does not wait. Production is
+// still the dev's to run.
 //
 // Why: viewContract runs this on every detail page view (ContractController.php:780):
 //
