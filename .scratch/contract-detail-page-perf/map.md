@@ -242,6 +242,21 @@ cost is shared too. The edit tab is what we measure and verify on.
   query on the page** at 222-255 ms, same session-variable shape, and the same `ancestry` CTE fixes
   it.
 
+- [15 — Replace the quadratic child-contract walk](issues/15-recursive-child-walk.md) — **Details tab
+  3,235-7,109 ms to 1,198-2,207 ms; TTFB 3,436 ms to 1,237 ms.** One recursive CTE in place of a
+  session-variable walk that read the whole table once per row. The query count does not move: it was one
+  query and it is one query.
+  **The old query was also wrong, and nobody could have seen it from the page.** With two or more
+  ancestors it joined the walks with `.=` and **no comma**, gluing the last id of one to the first id of
+  the next — so `100904` got `100904100902`, a number matching nothing, and lost a real id.
+  **202 of 3,018 contracts hit it.** The page never showed it because the blade shares one
+  `$prevContracts` list across all four family tables, and the lost id was always an ancestor the Parent
+  table had already printed. `GROUP_CONCAT` also capped the old result at `group_concat_max_len`, 1,024
+  bytes, so a tree over about 145 members lost its tail with no error.
+  Step 0 seeded the chains this needed: **684 of 3,000 rows now have a parent** — 300 pairs, 100 chains
+  three deep, 50 four deep, fan-outs of 12 and 20 — with the cycle check run twice. Row 0 of the report
+  is untouched; row 9 is the honest starting number on the new data. Four commits.
+
 ## Order of work
 
 This tracker is markdown, so there is no query to find the frontier. The order is written down instead.
@@ -259,11 +274,12 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | ~~[18 guard the scans by tab](issues/18-guard-the-scans-by-tab.md)~~ | **CLOSED** | **Edit tab 4,208-4,589 ms to 455 ms, 258 queries to 86.** The biggest win on this map. |
 | ~~[20 `$contractsoldothers` scan](issues/20-contractsoldothers-scan.md)~~ | **CLOSED** | Details tab **4,088-5,233 ms to 2,997-3,576 ms**. The query itself 928-1,823 ms to under 5 ms. |
 | [19 attachment tab, 2.2 s outside the database](issues/19-attachment-tab-slow-outside-db.md) | now, runs beside anything | The only tab whose cost is not queries: 91 queries, 2,638 ms. No other ticket on this map will touch it. |
-| ~~[15 recursive child walk](issues/15-recursive-child-walk.md)~~ | **CLOSED** | **Details tab 3,235-7,109 ms to 1,198-2,207 ms.** `WITH RECURSIVE` in place of the session-variable walk. The seed got parent-child chains first, so the number is real. |
+| ~~[15 recursive child walk](issues/15-recursive-child-walk.md)~~ | **CLOSED** | Details tab **3,235-7,109 ms to 1,198-2,207 ms**. The old query was also **wrong**, on 202 of 3,018 contracts. |
+| [21 parent walk](issues/21-parent-walk.md) | **NOW** | Same session-variable shape, and now the slowest single query on the page at 222-255 ms. Ticket 15 already wrote the CTE; reuse it. |
 | [11 indexes](issues/11-missing-indexes.md) | four left | Ticket 20 took one and **found a better column order than this ticket guessed** - order by selectivity, not by the order they appear in the `where`. Read its Resolution before adding the rest. |
 | [12 delete the waste](issues/12-delete-waste.md) | now, but re-scope it first | **Ticket 18 already collected most of this on every tab but Details.** The six unread results and the duplicate pairs still stand; the 158 repeated lookups mostly do not. Re-read before starting. |
 | [09 stop binding ids](issues/09-replace-wherein-with-joins.md) | after 04 | Four query shapes, nothing else. |
-| [13 visibleTo scope](issues/13-visible-to-scope.md) | after 12 | **Now a Details-tab-only ticket.** Ticket 18 removed its callers everywhere else. On Details it is still about 274 of the 360 queries, so it is the count win there and nowhere else. |
+| [13 visibleTo scope](issues/13-visible-to-scope.md) | after 21 | **Now the whole remaining problem on Details, and it is a scaling one.** The query count grows with the family tree: 369 on 100479, 426 on contract 1, **619 on 101101** with its 20-child fan-out. |
 | [05 split viewContract](issues/05-query-layer-decision.md) | after 09, 12, 13 | Moving code last, so it is not moved twice. |
 | [10 eSign off the page load](issues/10-esign-check-after-page-render.md) | after 04 | Independent of the query work. **Unmeasured** — the block only fires on a Signing contract and the test set has none, so it needs a copy of one set to Signing first. |
 | [17 gzip the HTML](issues/17-gzip-the-html-document.md) | now, runs beside anything | 326 KB sent uncompressed while 39 assets are compressed. A config line for the biggest byte win on the page. |
