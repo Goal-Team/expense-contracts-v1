@@ -55,6 +55,16 @@ cost is shared too. The edit tab is what we measure and verify on.
   [CLAUDE.md](../../CLAUDE.md) under "Query rules". A `pluck()` feeding a `whereIn()` is two queries
   doing one join's work, and at 1,000 or more bound values it silently returns zero rows on this
   stack. [Ticket 09](issues/09-replace-wherein-with-joins.md) applies it to this page.
+- **Scope is this page's own code. Set by the dev 2026-08-21.** The contract detail page, its tabs and
+  its own blade files. **Do not change other pages or unrelated blades.** If a blade or a helper is
+  shared with another page, leave it and write it down instead. Repo-wide rules in
+  [CLAUDE.md](../../CLAUDE.md) are the exception - a rule is allowed to be recorded there.
+- **Dead code inside this page's scope can be deleted without asking**, once `grep` across the repo
+  including blade files proves nothing else reads it. The commit message says what went. Anything
+  shared with another page gets listed, not deleted.
+- **Migrations: apply on the local dev database, then report.** The dev's call 2026-08-21, so index
+  work does not stall while they are away. Every migration still needs a working `down()`, and it is
+  still committed as a file. Production stays the dev's to run.
 - **Bytes are measured too**, same as the dashboard: document bytes, total transfer bytes, request
   count. Time and query count alone hide a 3 MB page.
 - **Measure with the debug bar OFF.** `DEBUGBAR_ENABLED=false` in [.env](../../.env) before any number
@@ -103,8 +113,6 @@ cost is shared too. The edit tab is what we measure and verify on.
 - What `viewContract` should become. It is ~820 lines doing contract load, eSign polling and status
   update, history, parties, approvals, obligations and four `availableContracts()` passes. Splitting
   it is clearly coming, but the seams only become visible once the baseline says where the time goes.
-- Whether the eSign compose/poll block — an outbound HTTP call and a `Contract::update` — belongs in a
-  GET request at all. It is a correctness and a latency question at once, and it needs the dev.
 - Whether the `availableContracts()` extraction the dashboard effort sized (55 call sites) has to
   happen for this page, or whether this page's four passes can be folded without touching it.
 - Whether any index or column change is needed here. Cannot be phrased until the baseline names the
