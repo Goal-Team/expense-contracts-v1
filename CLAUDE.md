@@ -178,6 +178,11 @@ Then, for a function you change, pick by what is wrong with it:
 - **Function does too much** — pull the extra concerns out into new functions beside it. The old
   function stays only while something still calls it. **Delete it once nothing depends on it**, and
   check with `grep` before you delete, including blade files.
+- **Many callers, and the name is bad** — do not change it in place. **Write the new function beside
+  it, move the callers over one at a time, and delete the old one when nothing depends on it.** The
+  dev's call 2026-08-21. This is the one case where two functions live side by side, and the reason is
+  not comparison — it is that changing a function 55 pages rely on, in one commit, cannot be reviewed.
+  A single-caller function is still changed in place.
 - **If in doubt, ask.**
 
 One function, one concern. But do not copy blocks of code to get there — pull the shared part out

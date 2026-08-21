@@ -10,9 +10,10 @@ The contract detail page — `contracts/{id}`, every tab, one controller method
 — **loads with no error and is fast on the seeded 3,018-contract dataset**, and the work is
 **done, committed and measured on this branch**, not only specified.
 
-Fast means the same targets the dashboard effort used: under 2 s is good, around 2 s is
-tolerable, over 10 s is unacceptable. A query-count ceiling matters more than the millisecond
-figure, because it is what stops the regression coming back.
+**Fast has no fixed number here** — the dev's call 2026-08-21, "just make it much better". Take every
+safe win and report what it came to. The **query count** is the number that must not regress, because
+it does not drift between sessions the way milliseconds do. The starting point is 375 queries per
+request (ticket 08).
 
 The effort is finished when the page is correct, the numbers are in
 [measurements/report.md](measurements/report.md), and no ticket is open.
@@ -65,6 +66,28 @@ cost is shared too. The edit tab is what we measure and verify on.
 - **Migrations: apply on the local dev database, then report.** The dev's call 2026-08-21, so index
   work does not stall while they are away. Every migration still needs a working `down()`, and it is
   still committed as a file. Production stays the dev's to run.
+- **`availableContracts()` becomes an Eloquent scope. The dev's call 2026-08-21.** The dev does not
+  like the name and it does two jobs at once. The replacement is `Contract::visibleTo($user)` - a real
+  Eloquent scope for picking the contracts a user may see - plus `->with(...)` eager loading for the
+  category and type names, instead of the per-row loop. **Avoid the N+1**; that is the point of it.
+  55 call sites, so the new one is written beside the old and callers move over a few at a time
+  ([CLAUDE.md](../../CLAUDE.md), "many callers, and the name is bad").
+- **Correctness bugs found while optimising: fix the safe ones, list the rest.** The dev's call
+  2026-08-21. A bug with one right answer gets fixed here. A bug where the fix needs the dev's intent
+  gets written down, not guessed. [Ticket 14](issues/14-correctness-bugs.md).
+- **Dropdowns: one reusable pattern, not one endpoint each. The dev's call 2026-08-21.** Every dropdown
+  on the page shows the first 20 alphabetically and then searches on demand. Built as an **abstract
+  base class over Eloquent models**, so a new dropdown is a subclass and a config line, never a new
+  hand-written endpoint. [Ticket 06](issues/06-dropdown-decision.md).
+- **Save testing: copy a real contract and save on the copy.** The dev's call 2026-08-21. Real field
+  shapes, no real row touched. Copy, save, compare the row, delete the copy.
+- **`viewContract` gets split, one concern each.** The dev's call 2026-08-21, knowing the diff is
+  large. Contract load, parties, approvals, history and obligations become separate methods.
+- **No fixed millisecond target. The dev's call 2026-08-21.** "Just make it much better." Take every
+  safe win, report what it came to, and the dev judges. The **query count is still the number that
+  must not regress**, because it is the one that does not drift between sessions.
+- **Report only when the dev is needed.** Also 2026-08-21. Work the whole map. Come back for the dev's
+  intent, or for a bug big enough that they should know now. Otherwise they read the branch.
 - **Bytes are measured too**, same as the dashboard: document bytes, total transfer bytes, request
   count. Time and query count alone hide a 3 MB page.
 - **Measure with the debug bar OFF.** `DEBUGBAR_ENABLED=false` in [.env](../../.env) before any number
@@ -91,12 +114,25 @@ cost is shared too. The edit tab is what we measure and verify on.
 - `viewContract` runs at least **60 separate queries** by eye, including
   `ContractParties::select('*')->get()` twice (every party row in the database) and four separate
   `availableContracts()` decoration loops.
-- Four `whereIn` calls take a plucked list whose size grows with the dataset —
+- **The `whereIn` lists are safe today and dangerous in production.** Ticket 08 measured them: at
+  3,018 local contracts `$FinalContractList` holds **58** and `$finalListChild` holds **0**, because
+  the seeder made only one `contract_parties` row. The two `ContractPartyData` calls bind **one** value
+  each and grow with parties per contract, not with the dataset — the charting note below was wrong
+  about those two. But `$FinalContractList` is bounded by contracts per branch, the busiest seeded
+  branch already holds 72, and one busy production branch can hold 1,000 or more. Then the Related
+  Contracts panel goes empty with no error. So the rewrite still happens; it is just not reproducible
+  locally yet.
+- **A GET request writes to the database in two places, not one.** The eSign block
+  ([:281-384](../../Modules/Contract/app/Http/Controllers/ContractController.php:281)) and a
+  `user_action_log` insert at
+  [:535](../../Modules/Contract/app/Http/Controllers/ContractController.php:535) on every load of a
+  Signing or Approved contract. A refresh, a browser prefetch or a crawler changes contract status.
+- ~~Four `whereIn` calls take a plucked list whose size grows with the dataset —
   `ContractPartyData::whereIn('contract_party_location_id', ...)`,
   `whereIn('contract_party_exe_id', ...)`, `Contract::whereIn('id', $FinalContractList)`,
   `Contract::whereIn('id', $finalListChild)`. This stack silently returns **zero rows** at 1,000 or
   more bound values ([mariadb whereIn bug](../wherein-1000-bug/spec.md)), so these are suspect at
-  N=3,018. **The dev ruled on this 2026-08-21: they all become joins.**
+  N=3,018.~~ Corrected by ticket 08, above. **The dev ruled 2026-08-21: they all stop binding ids.**
   [Ticket 09](issues/09-replace-wherein-with-joins.md).
 
 ## Decisions so far
@@ -108,15 +144,28 @@ cost is shared too. The edit tab is what we measure and verify on.
   NULL reminder and still shows stored values unchanged. Fixed a precedence bug in the same blocks that
   made every unit dropdown show Years. Commit `37ddd2e`.
 
+- [08 — Inventory every query the page runs](issues/08-query-inventory.md) — **375 queries per
+  request**, 72 query sites. 234 of them come from two loops over 58 related contracts. Three hidden
+  sources inflate every count: `ContractRoledBasedScope` calls `admin_setting()` once per `Contract`
+  query, `Contract::$with` eager-loads party rows, and `BranchScope` adds two queries of which one
+  decrypts in the `WHERE` and scans all 1,605 users. Nine exact duplicate query pairs. Seven results
+  no blade on this page reads. Six missing indexes. Seven correctness bugs. Commit `1f5ec54`.
+
 ## Not yet specified
 
 - What `viewContract` should become. It is ~820 lines doing contract load, eSign polling and status
   update, history, parties, approvals, obligations and four `availableContracts()` passes. Splitting
   it is clearly coming, but the seams only become visible once the baseline says where the time goes.
-- Whether the `availableContracts()` extraction the dashboard effort sized (55 call sites) has to
-  happen for this page, or whether this page's four passes can be folded without touching it.
-- Whether any index or column change is needed here. Cannot be phrased until the baseline names the
-  slow queries.
+<!-- The index question GRADUATED 2026-08-21: ticket 08 named the six missing indexes, so it is now
+     [ticket 11](issues/11-missing-indexes.md). -->
+<!-- The availableContracts question GRADUATED 2026-08-21: the dev chose the Eloquent scope, so it is
+     now [ticket 13](issues/13-visible-to-scope.md). -->
+
+- Whether the `user_action_log` write on every page load belongs in ticket 10 with the eSign write, or
+  stays. Written up in [ticket 14](issues/14-correctness-bugs.md) item 7 for the dev.
+- What Chart View is meant to show, and what the correct party-to-signature mapping is. Both are real
+  bugs and both need the dev's intent, so both are listed in
+  [ticket 14](issues/14-correctness-bugs.md) rather than guessed.
 
 ## Out of scope
 
