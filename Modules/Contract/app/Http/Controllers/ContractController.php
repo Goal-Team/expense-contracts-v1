@@ -976,26 +976,11 @@ class ContractController extends Controller
                 return $task;
             });
 
-        // Chart View shows the FULL flow including the pre-approval stages
-        // (review/negotiation/finalization) — unlike the detail timeline it does not
-        // exclude pre-approval rows. Superseded rows are still hidden.
-        $chartApprovals = ApprovalContracts::select('*')->where('contract_id', $id)->orderBy('id', 'DESC')
-            ->where('flag', '<>', -1)
-            ->where('superseded', 0)
-            ->get()
-            ->map(function ($task) {
-                $task->username = decryptString($task->username, 'username');
-                $task->status = decryptString($task->status, 'status');
-                $task->previous_status = decryptString($task->previous_status, 'previous_status');
-                $task->next_action_item = decryptString($task->next_action_item, 'next_action_item');
-                $task->next_action_description = decryptString($task->next_action_description, 'next_action_description');
-                $task->approval_status = decryptString($task->approval_status, 'approval_status');
-                $task->next_status = decryptString($task->next_status, 'next_status');
-                $userData = json_decode($task->username, true);
-                $task->approver_email = $userData['email'] ?? '';
-                $task->approver_name = $userData['name'] ?? '';
-                return $task;
-            });
+        // Chart View reads the same rows as the timeline above. The query and the
+        // decrypt loop were written out a second time here, word for word, so the
+        // page paid for both twice. Reuse the result. The two lists hold the same
+        // rows either way, and contractFlow.blade.php only reads them.
+        $chartApprovals = $approvals;
 
         // Determine current approval for the user
         $currentApproval = null;
