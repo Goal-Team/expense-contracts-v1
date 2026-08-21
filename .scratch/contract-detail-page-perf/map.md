@@ -173,6 +173,14 @@ cost is shared too. The edit tab is what we measure and verify on.
   covering index took the page from **HTTP 500 to 4,422 ms**. It took **474 s to build** on 3,018 rows,
   so production needs a window. Five indexes left. Commit `378ba21`.
 
+- [04 — Baseline the page and say where the time goes](issues/04-baseline-attribution.md) — **4,208-4,589
+  ms TTFB, 253 queries, 326 KB document, 2.98 MB cold transfer.** **89-90% of the request is spent
+  waiting on the database**; blade rendering 326 KB across 21 views costs under 110 ms. **Three
+  whole-table scans hold 3,840 ms** — the child walk at `:784` (2,616 ms), `$contractsoldothers` at
+  `:723` (1,045 ms), the parent walk at `:748` (179 ms). Separately, **158 repeated small lookups cost
+  only 218 ms but are 62% of the query count**. So the seconds and the count need different fixes.
+  Commit `ff88b2a`.
+
 ## Order of work
 
 This tracker is markdown, so there is no query to find the frontier. The order is written down instead.
@@ -186,15 +194,16 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | [14 breakage and one duplicate](issues/14-correctness-bugs.md) | now | Narrowed 2026-08-21 to what throws or costs time. The rest is out of scope. |
 | [03 find remaining breaks](issues/03-find-remaining-breaks.md) | after 02 | Fix what is broken before measuring how slow it is. |
 | [04 baseline](issues/04-baseline-attribution.md) | after 03 | Every row in the report sits under this one. |
-| [16 is Related Contracts dead?](issues/16-unreachable-blade-region.md) | after 04 | **Do this before any clever work.** If that region never renders, most of the page's queries are waste and a deletion beats an optimisation. |
-| [15 recursive child walk](issues/15-recursive-child-walk.md) | after 11, 16 | The index only hides it. Skip if 16 deletes the caller. |
+| [16 is Related Contracts dead?](issues/16-unreachable-blade-region.md) | **NOW, first of the code work** | The baseline puts **3,840 ms of the 4,400 ms** in three scans that all feed this region, and "Related Contracts" appeared in none of four rendered pages. If it is dead, the page goes to about 600 ms by deletion. |
+| [15 recursive child walk](issues/15-recursive-child-walk.md) | after 16 | **2,616 ms on its own — the single most expensive thing on the page.** The index did not fix it: user variables and `FIND_IN_SET` make the optimiser walk every row anyway. Skip only if 16 deletes the caller. |
 | [11 indexes](issues/11-missing-indexes.md) | part done, five left | An index added before the baseline hides itself. The `parentcontract` one was applied early because the page was returning 500. |
-| [12 delete the waste](issues/12-delete-waste.md) | after 04 | Cheapest and safest win. Goes first of the code changes. |
+| [12 delete the waste](issues/12-delete-waste.md) | after 16 | Cheap and safe, but the baseline says it buys **little time** - the 158 repeated lookups are 218 ms. It buys the **query count**, which is the number that must not regress. |
 | [09 stop binding ids](issues/09-replace-wherein-with-joins.md) | after 04 | Four query shapes, nothing else. |
-| [13 visibleTo scope](issues/13-visible-to-scope.md) | after 04, 12 | 138 of the 375 queries. The biggest single win. |
+| [13 visibleTo scope](issues/13-visible-to-scope.md) | after 16, 12 | **158 of the 253 queries, but only ~200 ms.** Biggest win by count, not by time. Skip or shrink it if ticket 16 deletes its callers. |
 | [05 split viewContract](issues/05-query-layer-decision.md) | after 09, 12, 13 | Moving code last, so it is not moved twice. |
-| [10 eSign off the page load](issues/10-esign-check-after-page-render.md) | after 04 | Independent of the query work. |
-| [06 dropdowns on demand](issues/06-dropdown-decision.md) | after 12, 13 | New base class plus front-end work. Bigger than it looks. |
+| [10 eSign off the page load](issues/10-esign-check-after-page-render.md) | after 04 | Independent of the query work. **Unmeasured** — the block only fires on a Signing contract and the test set has none, so it needs a copy of one set to Signing first. |
+| [17 gzip the HTML](issues/17-gzip-the-html-document.md) | now, runs beside anything | 326 KB sent uncompressed while 39 assets are compressed. A config line for the biggest byte win on the page. |
+| [06 dropdowns on demand](issues/06-dropdown-decision.md) | after 12, 13 | **Demoted by the baseline: the dropdown data costs about 60 ms, 1.4%.** This is a page-weight change, not a speed change. Still worth doing, no longer urgent. |
 | [07 tabs on demand](issues/07-page-size-decision.md) | last | The one change that can silently wipe a column on save. Do it when everything else is proved. |
 
 - [14 - Correctness bugs found while reading](issues/14-correctness-bugs.md) - **the dev narrowed
