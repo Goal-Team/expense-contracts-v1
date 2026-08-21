@@ -3,9 +3,18 @@
 ## Destination
 
 **Reached 2026-08-20 — the spec is [spec.md](spec.md).** Then **reopened twice the same day** by the
-dev, and **a third time 2026-08-21** to bring page size in scope. **One ticket is still open:**
-[ticket 17](issues/17-plain-columns-experiment.md) — deliberately last, waiting on the spec having
-shipped and been measured.
+dev, and **a third time 2026-08-21** to bring page size in scope, and **a fourth time 2026-08-21** over the
+query count. **No ticket is open. Every ticket on this map is closed.**
+
+[Ticket 25](issues/25-memo-per-request-lookups.md) closed 2026-08-21 — **out of scope**, on the dev's
+call. The 19 once-per-request lookups are the login and access code, not the dashboard, and they run on
+every page. The work moves to its own effort, seeded with all the findings:
+[.scratch/session-optimisation/spec.md](../session-optimisation/spec.md). No map for it yet; charting one
+is a later session.
+
+[Ticket 17](issues/17-plain-columns-experiment.md) closed 2026-08-21 — `approval_status` is plain text
+and indexed, the counter is about 12x cheaper, and `username` stays encrypted. It was the last item of
+the 2026-08-20 reopening.
 
 [Ticket 22](issues/22-reduce-page-size.md) closed 2026-08-21 — six cuts decided, ~1.9 MB of the 2.9 MB
 needs no rebuild at all, and the biggest single one is an IIS attribute.
@@ -20,6 +29,25 @@ a migration at all.
 [Ticket 19](issues/19-new-function-names.md) closed 2026-08-20 — names in [names.md](names.md). The spec has been amended in place; the rule changes
 are recorded in Notes below and in [CLAUDE.md](../../CLAUDE.md).
 
+**Reopened again 2026-08-21** by the dev asking why the page runs ~147 queries. Measured: **141**, and
+**108 of them are the menu composer** recomputing one answer for each of 15 views. The fog patch about the
+per-request overhead has graduated into **two new tickets**:
+[ticket 24](issues/24-attribute-remaining-overhead.md) (attribute the 19 auth-shaped leftovers, unblocked)
+blocking [ticket 23](issues/23-per-request-query-decision.md) (what gets cut, and is it this map's job).
+
+[Ticket 24](issues/24-attribute-remaining-overhead.md) closed 2026-08-21 — all 19 attributed, all 19
+once-per-request, none scale with view count.
+
+[Ticket 23](issues/23-per-request-query-decision.md) closed 2026-08-21 after four rounds of grilling —
+the menu composer's **108 queries become 0 on a cache hit**, and **nothing is deleted**. It is
+**Change G** in [spec.md](spec.md) section 8b, and it is **built, applied and verified in the browser the
+same day** — 141 queries -> **33** on a cache hit, **40** on a miss, sidebar and counters unchanged
+([report.md](measurements/report.md) row 8). **Then the dev asked why the composer runs once per view at all, and it does not need to** — it is now registered on the two menu views instead of `'*'`, **16 runs a request became 1** (row 9). The dev's challenge is what made it happen: this map had
+already built Changes A, D, E, F and ticket 17, so stopping at a spec for G was not consistent with any of
+it. Round 1 also settled two standing rules: **no query-count
+ceiling** (milliseconds decide; a count is only worth cutting when the query is not real work, and the menu
+logic is not rewritten), and the 19 once-per-request lookups get **their own ticket 25**.
+
 **Scope widened 2026-08-21, by the dev: the ~5 MB page is now this map's to shrink.** It was ruled
 past the destination — ticket 21 step 4 and [report.md](measurements/report.md) both said so, the
 report in the words "no change on this map was ever going to move the 5 MB, and none should be added
@@ -28,8 +56,7 @@ response time. The old ruling stays written down as history in both files.
 
 **Ordering, set by the dev 2026-08-21: [ticket 22](issues/22-reduce-page-size.md) before
 [ticket 17](issues/17-plain-columns-experiment.md).** Ticket 22 had been written up as running *after* 17.
-The dev reversed it, and 22 was resolved the same day, so the ordering is already spent —
-**ticket 17 is now the last item on the map.**
+The dev reversed it, and both were resolved the same day, so the ordering is spent.
 
 An agreed, measurement-backed optimisation spec for the contracts dashboard — the page served at
 `http://apollo.contracts.legality:8888/contracts/`, which is Laravel path `/` →
@@ -80,12 +107,15 @@ app, and `contracts/` is the Laravel app flattened so `index.php` sits at the ap
 - **Migrations are allowed** but the files are shown for review before being applied. Never apply
   directly.
 - **No shadow columns. Reversed by the dev 2026-08-20.** Adding plaintext copies of encrypted columns
-  is off the table. "My Actionable Items" instead decrypts in PHP over a narrowed row set and pays
-  ~0.5 s locally / ~2 s expected at 60,000 rows on every load ([spec.md](spec.md) §4). The real fix —
-  those two columns not being encrypted at all — is
-  [ticket 17](issues/17-plain-columns-experiment.md), scoped to
-  `apollo_contracts_expense.approval_contracts.approval_status` and `.username` **only**, and it runs
-  last so its win can be measured on its own.
+  is off the table. **Settled 2026-08-21 by [ticket 17](issues/17-plain-columns-experiment.md), which
+  took the real fix instead: `approval_status` is no longer encrypted at all.** It is plain
+  `varchar(20)` with an index, so the pending filter runs in SQL and the counter went from ~4.4-4.8 s
+  to ~380 ms. **`username` stays encrypted** — it holds JSON `{email,name}` whose name is printed in
+  13 blade files, and it was never the expensive half. The `~0.5 s local / ~2 s at 60,000 rows` figure
+  in [spec.md](spec.md) §4 was **wrong by about double**: it costed both columns for every row, but
+  `username` is only decrypted for rows already found pending. The measured figure was 15,988 values /
+  320-334 ms, now 2,127 / 45-58 ms. Which columns are plain is now data, not code:
+  `config('app.PLAINTEXT_COLUMNS')`, read by `encryptStringx()`, keyed `table.column`.
 - **Nothing is rewritten in place. Set by the dev 2026-08-20.** Every improvement is a new function
   beside the old one so both can run on the same page and be compared; the old one is deleted later,
   once the new one is proven. Names are PSR-1 / PSR-12 — classes `StudlyCaps`, **methods `camelCase`**,
@@ -231,6 +261,87 @@ app, and `contracts/` is the Laravel app flattened so `index.php` sits at the ap
 ## Decisions so far
 
 <!-- one line per closed ticket: gist + link -->
+- **Step 11 and two page-size cuts, applied 2026-08-21 on the dev's instruction** (not a ticket - direct
+  work, recorded here so the map stays the index). `dashboardSummary()` is on the live URLs `GET ''` and
+  `POST 'filterDash'`; `dashDetails()`, `viewDashboard1.blade.php`, the compare command, the old
+  actionable-items pair and the `?oldApprovalStatus=1` flag are **deleted**, and the `x` suffixes are gone.
+  Controller **948 -> 639 lines**. The sidebar highlight works again as a side effect. `encryptStringx()`
+  **keeps its `x`** - 525 call sites on `encryptString()` against 58, with a different meaning for the
+  second argument. Then ticket 22 cuts 2 and 3: **customizer off** (users lose dark mode, accepted) and
+  **ApexCharts lazy-loaded** - **548 KB off the critical path, 56 requests -> 36**, neither needing a
+  rebuild. Rows 10-13 of [report.md](measurements/report.md); spec sections **8c** and **8d**.
+  **Three things fell out of this that nobody had written down:** `web.config` was **git-ignored**, so every
+  IIS change was invisible to git - now tracked, with a warning about the production server's own copy;
+  **the built assets are untracked**, so a checkout gives a server no CSS or JS at all; and **`public/build`
+  and `build/` were two separate 33 MB copies** whose manifests had **already drifted** - Laravel read one,
+  IIS served the other, so a rebuild would have 404'd four files and broken the datatable on 56 pages.
+  **That last one is now fixed** (rows 16-17): one rewrite rule in `web.config` points
+  `/contracts/build/*` at `public/build`, the root copy is **deleted**, 78 MB freed, and `npm run build`
+  is finally sufficient on its own. The `<location>` cache rule had to move to `public/build/assets` with
+  it - `<location>` matches the path *after* a rewrite, which cost the `Cache-Control` header until it was
+  measured and fixed. All of it is in [DEPLOYMENT.md](../../DEPLOYMENT.md), the new production checklist.
+  **One retraction on the record:** an earlier note in this effort reported every counter on the contracts
+  list page reading 0 and raised it as a suspected `whereIn` 1000-parameter bug. It was a page read
+  mid-load. Fully loaded the numbers match the dashboard exactly, the task was withdrawn, and the lesson
+  is written into [report.md](measurements/report.md) row 17: never read a page's numbers straight after
+  navigating.
+- [141 queries a request — what gets cut, and does it belong to this map?](issues/23-per-request-query-decision.md) —
+  **cache the menu composer, change nothing else.** In scope, both halves, in this map: the app cache is
+  already on (`CACHE_DRIVER=file`) and the only existing precedent is
+  [ContractOptionListController.php:78](../../Modules/Contract/app/Http/Controllers/ContractOptionListController.php:78).
+  **108 queries and 391 ms become 7 on a cache miss and 0 on a hit**; the whole request goes 141 -> 33. Key
+  on **role only**; `Schema::hasTable()` **inside** the cache, because it is 226 ms of the 391; **cleared on
+  write** from the five write points in `MenuConfigController` rather than paying a version-stamp query. New
+  class `App\Menu\MenuDataResolver` ([names.md](names.md) §7), and the old closure body becomes the
+  cache closure's body so there is no second copy to keep in step. Written up as **Change G in
+  [spec.md](spec.md) §8b**.
+  **The reversal worth remembering:** round 2 ruled the top-menu lookup dead code and proposed deleting 45
+  queries a request. The dev challenged it and **round 4 reversed it** — the three-step fallback finds no
+  row for a Super Admin because nobody made one, and none for the top menu for the same reason. That is the
+  fallback working, not dead code, and after caching it costs 3 queries per miss. Both rulings stay written
+  down. **One thing applied**, separately and not for performance: the missing
+  `@if($menuData[1]->menu ?? false)` guard at
+  [horizontalMenu.blade.php:8](../../resources/views/layouts/sections/menu/horizontalMenu.blade.php:8), which
+  would have failed every page if anyone had ever switched the layout to horizontal. Compile-checked.
+  **Not done, deliberately:** removing the horizontal layout altogether — 9 items including 6 stock
+  template files, a `menu_type` enum change and the menu admin screen. Not performance work, not this map's.
+- [What do we gain if `approval_status` and `username` are just plain columns?](issues/17-plain-columns-experiment.md) —
+  **`approval_status` only. `username` stays encrypted.** The ticket's own premise was wrong: it costed
+  both columns for every row, but the code only decrypts `username` for rows already found pending, so
+  the real figure was **15,988 values / 320-334 ms, not 27,734 / 0.49 s** — one column, and it was
+  `approval_status`. Converting that one and indexing it lets SQL cut 13,861 rows to 2,127 before PHP
+  sees them, which removes the cost without touching `username` at all. Measured **~4.4-4.8 s -> ~380 ms**
+  for the counter, six numbers identical, [report.md](measurements/report.md) rows 8-8c. Encryption there
+  was habit, not a rule (dev, 2026-08-21) — the same approver emails already sit in plaintext in
+  `approval_group_approvers` and `financial_limit`. **Reads needed no change**: `decryptString()` returns
+  anything not starting with `ey` untouched, so all 63 read sites cope with plain values and with a
+  half-converted table, which is also why mixed data needs no handling. **56 of the 61 write sites**
+  now call `encryptStringx()` — the other 5 write `approval_parties`, a different table, and stay
+  encrypted. Four tables here have an `approval_status` column, so the config key is written
+  `table.column`; 8 sites had also been passing an email where the column name belongs.
+  **`username` is left encrypted deliberately** — it holds JSON `{email,name}` whose name is printed in
+  13 blade files, so 2,127 decryptions a load remain as the floor. **Found a seeder bug, not an app bug**:
+  `PerfDatasetSeeder` wrote `Pending` and bare emails where the app writes `pending` and JSON, so
+  report row 3's decrypt figures were measured against impossible data. Fixed and re-seeded.
+  **Swapped in as the default the same day** — `?oldApprovalStatus=1` selects the old counter and is the
+  way back if a deployment runs code before conversion; [spec.md](spec.md) §10 step 11 now lists what is
+  swapped against what is still to delete.
+- [Who issues the 19 auth-shaped queries left over per request?](issues/24-attribute-remaining-overhead.md) —
+  **all 19 attributed, and every one is once-per-request.** None scale with the 15 views, so per-view
+  caching buys nothing here — this group is a different problem from the menu composer's 108.
+  `Helpers::userInfo()` ([Helpers.php:254](../../app/Helpers/Helpers.php:254)) is 9 of them, called from 9
+  hand-written sites with no memo; `getEntityBranches()` adds 2 more `ContractUsers` reads via
+  `BranchScope` and `DepartmentScope`, and those two scopes also repeat the `UserCredential` token lookup
+  once each just to get a username back — so **auth is only 1 of the 3** `UserCredential` reads. The 5
+  `file_storage` reads are **not avatars**: they are `fileStorageType()`
+  ([helpers.php:112](../../app/helpers.php:112)), which hits the database on every call; the value is
+  `Google` here, which is why it is 5 and not 4. The 2 `SHOW TABLES` are a **second introspection caller**,
+  `Controller::checkTablesConfiguration()` ([Controller.php:381](../../app/Http/Controllers/Controller.php:381)),
+  called twice from `ContractSessionMiddleware` — **and its required-tables list is empty, so both runs
+  prove nothing.** A request-scoped memo on those three helpers plus dropping the duplicate
+  `checkTablesConfiguration()` call takes 19 down to about 4. Nothing applied; the decision is
+  [ticket 23](issues/23-per-request-query-decision.md). Caveat: measured on a Super Admin session, which
+  takes an early return in `getEntityBranches()` — a normal user would issue more.
 - [Make the page smaller — what do we cut, and in what order?](issues/22-reduce-page-size.md) — six cuts,
   ordered, nothing applied. **~1.4 MB is config, not code**: `frequentHitThreshold="1"` (static gzip never
   helps a first visit — 1.25 MB raw on request 1, 343 KB gzipped from request 2), dynamic compression for
@@ -478,17 +589,24 @@ app, and `contracts/` is the Laravel app flattened so `index.php` sits at the ap
   for this page's performance, or are merely adjacent debt.
 - How to confirm the production symptom is the same one reproduced locally, given production data is
   off-limits for this effort.
-- What to **do** about the per-request overhead once
-  [Attribute the ~1.1s of per-request overhead](issues/11-per-request-overhead.md) reports. Several of the
-  candidate fixes (config caching, provider trimming, killing the schema introspection, caching
-  `menu_configs`) have whole-application blast radius rather than dashboard-only, so the scope question —
-  fix here, or hand off as its own effort — cannot be phrased sharply until we know what the 1.1 s
-  actually is.
+<!-- The per-request overhead patch GRADUATED 2026-08-21: ticket 11 has reported, so the scope question
+     can now be phrased. It is [ticket 23](issues/23-per-request-query-decision.md), blocked by
+     [ticket 24](issues/24-attribute-remaining-overhead.md). -->
 - Whether the AJAX dropdown conversion extends to `contractList` and the other pages, now that the
   dashboard-first decision is made and the endpoints are specified as shared. Depends on the dashboard
   conversion proving out.
 
 ## Out of scope
+
+- **The session and access queries that run on every page** — the 19 once-per-request lookups.
+  `Helpers::userInfo()` read 9 times, `fileStorageType()` 5 times, the login token 3 times, and
+  `SHOW TABLES` twice. Ruled out of scope 2026-08-21 by the dev after four rounds of grilling on
+  [ticket 25](issues/25-memo-per-request-lookups.md), now closed. **Why:** this is the login and access
+  code, not the dashboard's, and it runs on every page in the app. Ticket 23 kept the menu composer for
+  the same reason it could have been ruled out, because that one was 391 ms and the cache pattern already
+  existed. This one is 45 ms on the only session anybody measured. The six decisions already taken and
+  every fact found are in [.scratch/session-optimisation/spec.md](../session-optimisation/spec.md), so
+  the later effort starts from those.
 
 - **Changing** the `goalapp_apollo` database and all other tenant databases on the local MySQL
   instance — ruled out by the dev; realistic-N measurement uses seeded synthetic data instead.
@@ -518,6 +636,8 @@ app, and `contracts/` is the Laravel app flattened so `index.php` sits at the ap
   `whereIn('custom_field_group_id', $contractIds)`, and "insert all" feeds it every missing contract id
   - so at 1,000 or more it silently returns nothing and every contract gets location `-`. Same bug as
   [ticket 12](issues/12-approvals-empty.md), different feature. Found while reading the backfill
-  precedent; it is not the dashboard, so it is not this effort's to fix. Worth its own ticket elsewhere.
+  precedent; it is not the dashboard, so it is not this effort's to fix. **It now has its own effort,
+  2026-08-21, on the dev's call:** [.scratch/wherein-1000-bug/spec.md](../wherein-1000-bug/spec.md).
+  That spec covers all four places the bug lives, not only the backfill.
 - Local MySQL `root` having an empty password with ~40 databases present, several appearing to hold
   real client data. Noted once; a security matter for a separate effort, not a performance decision.

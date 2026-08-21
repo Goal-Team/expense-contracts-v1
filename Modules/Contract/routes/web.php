@@ -164,15 +164,16 @@ Route::get('contracts/list', [ContractController::class, 'listContract'])->name(
 
 Route::post('getSignatory', [ContractController::class, 'getSignatoryApprovalRules'])->name('getSignatoryApprovalRules');
 
-Route::get('', [ContractDashboardController::class, 'dashDetails'])->name('contractDashboard');
-
-Route::post('filterDash', [ContractDashboardController::class, 'dashDetails'])->name('contractDashboard');
-
-// New dashboard summary path, beside the old one (spec.md section 10 step 2, names.md section 1).
-// The old two routes above are untouched on purpose, duplicate route name included, so the live
-// URL keeps serving the old code until the new numbers are proven.
-Route::get('dashboard-summary', [ContractDashboardController::class, 'dashboardSummary'])->name('contractDashboardSummary');
-Route::post('dashboard-summary/filter', [ContractDashboardController::class, 'dashboardSummary'])->name('contractDashboardSummary.filter');
+// The dashboard. dashboardSummary() took over these two URLs on 2026-08-21, spec.md section 10
+// step 11: dashDetails() is deleted, and the temporary 'dashboard-summary' pair is gone with it.
+// The URLs are the original ones, so bookmarks, the menu_configs "url": "" entry and its
+// "slug": "contractDashboard" all keep working unchanged.
+//
+// The POST now has its own name. The two routes shared the name 'contractDashboard' before, so
+// route('contractDashboard') resolved to whichever Laravel registered last - a latent bug noted in
+// names.md section 1, fixed here because the rename had to happen anyway.
+Route::get('', [ContractDashboardController::class, 'dashboardSummary'])->name('contractDashboard');
+Route::post('filterDash', [ContractDashboardController::class, 'dashboardSummary'])->name('contractDashboard.filter');
 
 // Shared dropdown option lists, consumed by the dashboard now and the contract list later
 // (spec.md section 8, names.md section 5). GET because it only reads and is cacheable.

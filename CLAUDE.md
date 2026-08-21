@@ -61,6 +61,15 @@ and enough to find the row, not the contents.
 
 **Use plain, simple words.** Short sentences. Say the thing directly.
 
+**Write in Simplified Technical English (ASD-STE100).** This is the rule for every reply, not
+only for questions. Keep to it:
+
+- One idea per sentence. 20 words or less.
+- Active voice. Say who does the thing. "The scope reads the user table", not "the user table is read".
+- Present tense. Use the same word for the same thing every time.
+- No long noun strings. "The count of queries for each request" beats "per-request query count".
+- Cut every word that carries no meaning.
+
 Skip jargon. If a plain word works, use the plain word. Do not say "blast radius", "O(n)",
 "structurally impossible", "non-deterministic" when "how much else breaks", "gets slower with
 more rows", "cannot happen", "different every time" say the same thing.

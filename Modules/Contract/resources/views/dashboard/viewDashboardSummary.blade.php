@@ -14,8 +14,11 @@
 @endsection
 
 @section('vendor-script')
+{{-- apexcharts.js is NOT here on purpose. It is 486 KB uncompressed - the third heaviest file on
+     the page - and it is fetched only when a chart scrolls into view. See the loader at the top of
+     the page-script block below. Ticket 22 cut 3, dev's call 2026-08-21. The .scss stays eager: it
+     is small and it styles the chart container before the chart arrives. --}}
 @vite([
-'resources/assets/vendor/libs/apex-charts/apexcharts.js',
 'resources/assets/vendor/libs/select2/select2.js',
 ])
 @endsection
@@ -33,7 +36,39 @@
     }
 </style>
 <script type="module">
-$(document).ready(function() {
+// ---------------------------------------------------------------------------
+// ApexCharts, loaded on demand.
+//
+// The library used to be in the eager vendor-script bundle above and cost 486 KB of the page's
+// 2.9 MB, blocking first paint. IIS static gzip does not help a first visit at all (it only
+// compresses a file from the second hit), so that was 486 KB of real bytes, not 126 KB gzipped.
+//
+// Nothing else on this page needs the global: cards-statistics.js is loaded here too, but all 12
+// of its chart elements are absent from this view and every one of its calls is null-guarded.
+//
+// Ticket 22 cut 3. Chart output is identical - this only changes when the library arrives.
+// ---------------------------------------------------------------------------
+const APEX_SRC = @json(Vite::asset('resources/assets/vendor/libs/apex-charts/apexcharts.js'));
+
+let apexLoading = null;
+
+function loadApexCharts() {
+  if (window.ApexCharts) return Promise.resolve();
+  if (apexLoading) return apexLoading;
+
+  apexLoading = new Promise(function (resolve, reject) {
+    const tag = document.createElement('script');
+    tag.type = 'module';
+    tag.src = APEX_SRC;
+    tag.onload = resolve;
+    tag.onerror = reject;
+    document.head.appendChild(tag);
+  });
+
+  return apexLoading;
+}
+
+function drawDashboardCharts() {
   const donutChartEl = document.querySelector('#milestonesChart'),
     donutChartConfig = {
       chart: {
@@ -285,6 +320,36 @@ $(document).ready(function() {
     const radialChart = new ApexCharts(radialBarChartEl, radialBarChartConfig);
     radialChart.render();
   }  
+}
+
+$(document).ready(function () {
+  const chartEls = ['#milestonesChart', '#actionableChart']
+    .map(function (sel) { return document.querySelector(sel); })
+    .filter(Boolean);
+
+  if (!chartEls.length) {
+    return;
+  }
+
+  // No IntersectionObserver: load it now rather than never.
+  if (!('IntersectionObserver' in window)) {
+    loadApexCharts().then(drawDashboardCharts);
+    return;
+  }
+
+  // 200px of lead time, so the library is usually there before the chart is actually visible.
+  const watcher = new IntersectionObserver(function (entries) {
+    if (!entries.some(function (e) { return e.isIntersecting; })) {
+      return;
+    }
+
+    watcher.disconnect();
+    loadApexCharts().then(drawDashboardCharts).catch(function (err) {
+      console.error('ApexCharts failed to load', err);
+    });
+  }, { rootMargin: '200px' });
+
+  chartEls.forEach(function (el) { watcher.observe(el); });
 });
 </script>
 @endsection
@@ -305,7 +370,7 @@ if (class_exists(\App\Perf\PerfRecorder::class)) {
     \App\Perf\PerfRecorder::probe('actionable_all', $stusMy['all'] ?? -1);
 }
 @endphp
-<form action="{{ route('contractDashboardSummary.filter') }}" method="POST" enctype="multipart/form-data">
+<form action="{{ route('contractDashboard.filter') }}" method="POST" enctype="multipart/form-data">
     @csrf
     <div class="row">
         <h4>Filters</h4>

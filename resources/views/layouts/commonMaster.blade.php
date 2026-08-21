@@ -21,7 +21,19 @@ $contentLayout = (isset($container) ? (($container === 'container-xxl') ? "layou
   <!-- Favicon -->
   <link rel="icon" type="image/x-icon" href="{{ asset('assets/img/favicon/favicon.ico') }}" />
 
-  
+  <!-- Fonts the template always uses, started here so they download alongside the stylesheets
+       instead of being discovered inside one. See the partial for the measurements. -->
+  @include('layouts/sections/fontPreloads')
+
+  <!-- Per-page scripts that must start before anything else. Today only the dashboard's
+       option-list prefetch; empty on every other page.
+
+       This sits ABOVE the stylesheets on purpose, and moving it back down undoes the fix.
+       Chrome will not run an inline <script> in <head> until every stylesheet already seen has
+       finished loading, because the script might ask for a computed style. With this block at
+       the end of <head> the dashboard's fetch left at 2,336 ms against a first resource at
+       1,934 ms - it was waiting for six stylesheets it does not use. -->
+  @yield('head-prefetch')
 
   <!-- Include Styles -->
   <!-- $isFront is used to append the front layout styles only on the front layout otherwise the variable will be blank -->
@@ -31,9 +43,6 @@ $contentLayout = (isset($container) ? (($container === 'container-xxl') ? "layou
   <!-- $isFront is used to append the front layout scriptsIncludes only on the front layout otherwise the variable will be blank -->
   @include('layouts/sections/scriptsIncludes' . $isFront)
 
-  <!-- Per-page scripts that must start before the body renders - today only the
-       dashboard's option-list prefetch. Empty on every other page. -->
-  @yield('head-prefetch')
 </head>
 <style>
 #load{

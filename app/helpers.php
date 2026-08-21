@@ -150,6 +150,40 @@ if (!function_exists('encryptString')) {
 }
 
 
+if (!function_exists('encryptStringx')) {
+    /**
+     * encryptString() with one exception: a column named in config('app.PLAINTEXT_COLUMNS') is
+     * stored as readable text.
+     *
+     * Added beside encryptString() rather than changing it, so the two can be compared and the
+     * old one is only removed once this is proven (CLAUDE.md).
+     *
+     * $key is 'table.column', not a bare column name. Four tables in this database have an
+     * approval_status column - approval_contracts, approval_parties, financial_limit and
+     * party_approval_rules - and only the first is meant to be plain, so a bare name would
+     * convert the other three by accident. It was always ignored by encryptString(), which is
+     * why eight call sites had drifted into passing an email there instead. They pass the
+     * qualified column name now, because here it decides something.
+     *
+     * There is no matching decryptStringx(). decryptString() only decrypts a value starting
+     * with 'ey' and returns anything else untouched, so every existing read site already copes
+     * with a plain value and with a table that is half converted.
+     *
+     * See .scratch/contracts-dashboard-perf/issues/17-plain-columns-experiment.md
+     */
+    function encryptStringx($string, $key)
+    {
+        $plaintextColumns = (array) Config::get('app.PLAINTEXT_COLUMNS', []);
+
+        if (in_array($key, $plaintextColumns, true)) {
+            return $string;
+        }
+
+        return encryptString($string, $key);
+    }
+}
+
+
 if (!function_exists('decryptString')) {
     function decryptString($string, $key)
     {

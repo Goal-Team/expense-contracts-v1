@@ -59,7 +59,25 @@ It is correct today and the fold stays in PHP because of it.
 | `ContractDashboardController::actionableItemCounts()` | private method | The PHP half: decrypts `username` and `approval_status` per row and folds the six integers. Named after the panel heading the dev sees, "My Actionable Items". |
 
 Split in two because the decrypt cost is the thing being measured ([spec.md](spec.md) §4) and
-[ticket 17](issues/17-plain-columns-experiment.md) replaces exactly one of these halves later. The old
+[ticket 17](issues/17-plain-columns-experiment.md) replaces exactly one of these halves later.
+
+**Ticket 17 landed 2026-08-21. Three names, and one plain function:**
+
+| new | kind | why |
+|---|---|---|
+| `ContractDashboardController::actionableApprovalRowsx()` | private method | Old name is good, so it takes an `x`. Same query as `actionableApprovalRows()` plus `where('approval_status', 'pending')`, and it stops selecting `approval_status` - there is nothing left to test in PHP. |
+| `ContractDashboardController::actionableItemCountsx()` | private method | Same, with an `x`. Decrypts `username` for pending rows only. |
+| `ContractDashboardController::leadingStatusByGroup()` | private method | **New concern, so a new name rather than an `x`.** The old walk got the group leader for free by reading every row id DESC; once the query returns only pending rows, the leader has to be asked for separately. Named after what it returns - the leading row's status, per `unique_id` group. Not `getLeaders()`: it returns statuses, not rows. |
+| `encryptStringx()` | plain function | Beside `encryptString()` in [app/helpers.php](../../app/helpers.php). Writes plain text for any `table.column` named in `config('app.PLAINTEXT_COLUMNS')`, otherwise defers to `encryptString()`. `x` because the old name is good. Plain procedural functions are `snake_case` in this codebase by rule, but `encryptString` is not, and matching its neighbour beats matching the rule here. **Its second argument stopped being decorative**: `encryptString()` ignores it, which is how 8 sites had drifted into passing an email there, and how a bare `'approval_status'` label would have converted three unrelated tables. |
+| `?oldApprovalStatus=1` | request flag | Local-only switch on the new route only, beside `?withoutActionableItems=1`. **Was `?plainApprovalStatus=1` for one day.** It opted *in* to `actionableItemCountsx()` while that was being proved; the new counter became the default on 2026-08-21, so the flag inverted and renamed to opt back *out* to `actionableItemCounts()`. Named for what it selects, not for what it is not. It is also the way back if a deployment runs the code before the conversion — `actionableItemCountsx()` returns zeros against ciphertext. Deleted at spec §10 step 11 along with the old functions. |
+| `config('app.PLAINTEXT_COLUMNS')` | config key | `UPPER_SNAKE_CASE`, matching `APP_ENCRYPTION_KEY` and `APPROVAL_TYPES` beside it in [config/app.php](../../config/app.php). Says what the list is, not what it is for. **Entries are `table.column`** - `'approval_contracts.approval_status'` - because four tables here have an `approval_status` column and only one is meant to be plain. |
+| `ConvertApprovalStatusPlain` / `contract:convert-approval-status` | command | `StudlyCaps` class, kebab-case signature under the `contract:` namespace, matching `ConvertPartyDataCollation` / `contract:convert-party-data`. |
+| `idx_approval_contracts_status_lookup` | index | Matches `idx_approval_contracts_contract_id`. Named for the lookup it serves rather than listing four columns. |
+
+**There is deliberately no `decryptStringx()`.** `decryptString()` only decrypts a value starting
+with `ey` and returns anything else untouched, so all 63 read sites already handle a plain value and
+a half-converted table. That is also the answer to the ticket's "how is mixed data handled" question:
+it needs no handling. The old
 version of this counter is the loop in
 [viewDashboard1.blade.php:305-321](../../Modules/Contract/resources/views/dashboard/viewDashboard1.blade.php:305)
 — inline blade, no name, so nothing sits beside it. The blade loop stays until step 11.
@@ -127,3 +145,15 @@ Two implementation choices worth knowing, since they are not obvious from the na
 - **`vite.config.mjs`, not `.js`.** `laravel-vite-plugin@1.0.1` is ESM-only and `package.json` has no
   `"type": "module"`, so Vite loads a `.js` config as CommonJS and the build dies. `.gitignore`'s
   blanket `*.mjs` was narrowed to `/vite.config.*.timestamp-*.mjs` so the config can be committed.
+
+## 7. The menu composer
+
+Decided 2026-08-21, dev approved. [Ticket 23](issues/23-per-request-query-decision.md).
+
+| new | kind | why |
+|---|---|---|
+| `App\Menu\MenuDataResolver` | class | The current code is an anonymous closure inside `MenuServiceProvider::boot()`, so there is no old name to add `x` to. Named for what it does: it resolves the menu data for the current role. Sits in `app/Menu/`, not in `app/Providers/`, because it is no longer a provider concern once it is a class. |
+| `MenuDataResolver::resolveForRole(?string $role): array` | method | Takes the session role, hands back the two menu structures. `?string` because the session role can be absent, which is exactly the case that falls through to the `Default` row. **The old closure body becomes the body of the cache closure inside this method** — so there is no second, dead copy of it and nothing extra to maintain. Dev's call, round 3: no scaffolding just to reach the old path, because the old numbers are already recorded.
+| `MenuDataResolver::CACHE_MINUTES` | class constant | Safety-net time limit behind the clear-on-write. Copies the constant name already used in `ContractOptionListController`. |
+| `MenuDataResolver::flush(): void` | method | **Replaced the approved `forgetForRole()` while building, 2026-08-21.** Per-role forgetting is wrong: a role with no row of its own falls back to the `Default` row, so editing `Default` changes the answer for roles that appear nowhere in the write. `flush()` bumps one generation number and retires every role's entry at once - cheaper than working out which roles were affected, and it cannot miss one. Called from a `saved`/`deleted` hook on the `MenuConfig` model, **not** from `MenuConfigController` (which has four write methods, not the five the spec said): the hook catches tinker, seeders and any screen added later, and it is one place to read instead of four. |
+| `MenuDataResolver::VERSION_KEY`, `cacheKey()`, `version()`, `lookUp()` | private | The generation number and the key it builds (`menu_data:v{n}:role:{role}`), plus the moved closure body. Private because nothing outside the class has any business with them. |

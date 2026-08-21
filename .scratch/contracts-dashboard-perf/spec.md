@@ -205,19 +205,32 @@ Then PHP decrypts `username` and `approval_status` per surviving row and folds t
 
 ### The honest cost
 
+**Superseded 2026-08-21 by [ticket 17](issues/17-plain-columns-experiment.md), which has shipped.
+`approval_status` is no longer encrypted, so this cost is gone. The table below is kept because it was
+wrong in a way worth remembering.**
+
 | rows decrypted | values | measured / expected |
 |---|---|---|
-| 13,867 (local seeded, all of them) | 27,734 | **0.49 s**, measured — 0.018 ms per value |
-| ~60,000 (assumed production scale) | ~120,000 | **~2 s**, extrapolated |
+| ~~13,867 (local seeded, all of them)~~ | ~~27,734~~ | ~~**0.49 s**, measured — 0.018 ms per value~~ |
+| ~~60,000 (assumed production scale)~~ | ~~~120,000~~ | ~~**~2 s**, extrapolated~~ |
 
-**That ~2 s lands on every dashboard load**, and it eats a large part of the §3 win. It is accepted
-knowingly, for two reasons: the narrowing above cuts the row set well below the totals in that table for
-any normal user, and the fix is a single later ticket rather than a redesign.
+**Both figures were about double the truth.** They assumed two values decrypted for every row. The code
+decrypts `approval_status` for every row but `username` only for rows that already came back `pending` -
+it `continue`s otherwise. Measured over the same 13,861-row set: **13,861 + 2,127 = 15,988 values,
+320-334 ms**, not 27,734 / 0.49 s.
 
-**It must be measured, not assumed.** A row goes into
-[measurements/report.md](measurements/report.md) with the counter on and off, on the same seeded set in
-the same session. If the real cost is far above ~2 s,
-[ticket 17](issues/17-plain-columns-experiment.md) stops being last and becomes next.
+That mattered, because it means the expense was **one column, and it was `approval_status`** - not the
+pair. Ticket 17 therefore converted that column alone: plain `varchar(20)` with an index on
+`(approval_status, row_status, superseded, contract_id)`, so the pending filter runs in SQL and PHP
+never sees the other 11,734 rows. `username` **stays encrypted** - it holds JSON `{email,name}` whose
+name is printed in 13 blade files, and at 2,127 decryptions it is not worth converting.
+
+Measured after: the counter went from **~4.4-4.8 s to ~380 ms** of whole-request time at N=3,018, six
+numbers identical. [report.md](measurements/report.md) rows 8 to 8c.
+
+The version of the counter described in this section is still in the code as
+`actionableApprovalRows()` + `actionableItemCounts()`, beside `actionableApprovalRowsx()` +
+`actionableItemCountsx()`, and is deleted at §10 step 11 like every other old half.
 
 **No caching.** Rejected for the same reason as before: caching a number that is wrong for a different
 reason is not a fix. Nothing is cached until the numbers are proven right.
@@ -491,6 +504,176 @@ which keys a 10-minute cache on a `COUNT(*)`/`MAX(updated_at)` version stamp.
 
 ---
 
+## 8b. Change G — cache the menu composer
+
+Added 2026-08-21 from [ticket 23](issues/23-per-request-query-decision.md). Numbered `8b` so Changes A to F
+keep the numbers they already have everywhere else in this file.
+
+**The finding.** `MenuServiceProvider::boot()` registers `View::composer('*')`
+([MenuServiceProvider.php:25](../../app/Providers/MenuServiceProvider.php:25)). Laravel runs it one time for
+each view. The dashboard composes 15 views, and the closure caches nothing, so it recomputes an identical
+answer 15 times. Measured on `/dashboard-summary`: **108 queries, 391 ms** — 77 % of the request's 141
+queries and about 13 % of its database time. It is not dashboard code. It runs on **every page in the
+application**.
+
+Per run it is 7 queries:
+
+| query | n per run | n per request |
+|---|---|---|
+| `Schema::hasTable('menu_configs')` → `information_schema.tables` | 1 | 15, and **226 ms of the 391** |
+| `admin_setting('enable_admin_level_menu_config')` | 1 | 15 of the 18 seen |
+| side menu: by role (finds nothing), then by role `Default` (finds it) | 2 | 30 |
+| top menu: by role, by `Default`, by empty role — all find nothing | 3 | 45 |
+
+**Why two of those lookups find nothing, and why that is correct.** The three-step fallback is the design:
+use a menu made for your role, else the `Default` row, else a row with an empty role. `menu_configs` holds 7
+rows, all of them side-menu rows, for `User`, `Manager`, `Admin`, `Marketing Manager`, `User1`, `Default`
+and `Legal`. There is **no `Super Admin` row** and **no top-menu row at all**. So a Super Admin session
+falls through to `Default`, and the top menu falls through to nothing. Both are the fallback doing its job,
+not dead code. An earlier draft of the ticket called the top-menu lookup dead and proposed deleting it; the
+dev reversed that, and the reversal is recorded in the ticket rather than edited away.
+
+**The change: caching, plus registering the composer on the two views that need it. No deletions and no
+logic change.**
+
+- **`View::composer` names the two menu views instead of `'*'`.** Added 2026-08-21 after the dev asked why
+  the composer runs once per view at all. It does not need to: only
+  [verticalMenu.blade.php:59](../../resources/views/layouts/sections/menu/verticalMenu.blade.php:59) and
+  [horizontalMenu.blade.php:8](../../resources/views/layouts/sections/menu/horizontalMenu.blade.php:8) read
+  `$menuData`, and those are the only two menu view names in the codebase — every layout, root and all
+  five modules, includes the same two
+  ([contentNavbarLayout.blade.php:39](../../resources/views/layouts/contentNavbarLayout.blade.php:39),
+  [horizontalLayout.blade.php:54](../../resources/views/layouts/horizontalLayout.blade.php:54)). Measured
+  with a temporary log line: **16 runs a request became 1.** The horizontal view never renders on a vertical
+  layout, so its composer never fires. **This is not interchangeable with the cache** — narrowing alone
+  leaves 40 queries (1 run x 7), caching alone leaves 33 but keeps 16 runs. Together: 33 queries, 1 run.
+- New class `App\Menu\MenuDataResolver` — names and reasons in [names.md](names.md) section 7. The
+  existing closure body becomes the body of the cache closure inside `resolveForRole(?string $role)`, so
+  there is no second copy of the logic to keep in step.
+- **Cache key is the role only.** The `enable_admin_level_menu_config` flag becomes part of the cached
+  value. Flipping that flag therefore needs a cache clear — accepted, because it is an install-time
+  switch, not a daily toggle.
+- **`Schema::hasTable()` goes inside the cache.** It is more than half the cost, and whether a table exists
+  is deployment state, not request state. The safety-net time limit covers the case where the table is
+  created later.
+- **Cleared on write, not on a version stamp.** An admin edit shows at once and the request pays **no**
+  stamp query. A long time limit sits behind it as a safety net.
+
+  **Two corrections made while building this, 2026-08-21.** First, the clear is **all roles, not one**:
+  `forgetForRole()` cannot work, because a role with no row of its own resolves through the `Default` row,
+  so editing `Default` changes the answer for roles the write never names. `MenuDataResolver::flush()` bumps
+  a generation number in the cache key instead — one write, nothing missed. Second, the flush is a
+  **`saved`/`deleted` hook on the `MenuConfig` model**, not calls inside
+  [MenuConfigController](../../Modules/Contractsetup/app/Http/Controllers/MenuConfigController.php): the
+  hook catches tinker, a seeder, or a screen added later, and it is one place to read instead of four. That
+  controller has **four** write methods, not the five stated in the ticket.
+- Cache mechanics copy the one existing precedent in this codebase,
+  [ContractOptionListController.php:78](../../Modules/Contract/app/Http/Controllers/ContractOptionListController.php:78)
+  — `cache()->remember()`, with `CACHE_MINUTES` as a class constant. The driver is already enabled:
+  `CACHE_DRIVER=file`.
+
+**Result — built and measured 2026-08-21, not an estimate.**
+
+| | before | after |
+|---|---|---|
+| menu composer, cache miss | 108 queries | **7** |
+| menu composer, cache hit | 108 queries | **0** |
+| whole request, cache miss | 141 queries | **40** |
+| whole request, cache hit | 141 queries | **33** |
+
+One cache entry per generation per role, so each role pays its own 7 the first time. Verified in the
+browser: the sidebar renders with 22 links and every counter is unchanged. Invalidation checked end to end
+— flush bumps the version, the model hook fires on a save, the next request misses and the one after
+hits. Row 8 of [report.md](measurements/report.md).
+
+**No `.env` switch, and no fresh "before" measurement.** The dev's call: the old figures are already in
+[report.md](measurements/report.md) and `storage/logs/perf-2026-08-21.log`, so they are copied across rather
+than measured again. Caveat that the report row must carry: absolute milliseconds drift about 3x between
+sessions on this machine, so the ms comparison is indicative and each number names its session. **The query
+count does not drift**, so 108 → 0 stands on its own.
+
+**Applied already, and separately from the caching:**
+[horizontalMenu.blade.php:8](../../resources/views/layouts/sections/menu/horizontalMenu.blade.php:8) read
+`$menuData[1]->menu` with no guard, so switching the layout to horizontal would have failed every page.
+It now has the same `@if($menuData[1]->menu ?? false)` guard that
+[verticalMenu.blade.php:59](../../resources/views/layouts/sections/menu/verticalMenu.blade.php:59) already
+had. One line in, one `@endif` out, compile-checked. Not performance work — a latent break found while
+reading.
+
+**Left for a later effort, deliberately.** Removing the horizontal layout altogether is 9 items — 6
+layout files, the top-menu view and its static JSON, three config settings, the `menu_type` enum, and the
+menu admin screen. None of it is performance work, and the layout files are stock template files a template
+update would restore. Not this map's.
+
+---
+
+## 8c. Step 11 done — the old dashboard is deleted and the new one is on the live URL
+
+Applied 2026-08-21. Report rows 10, 12 and 13.
+
+**Routes.** `GET ''` and `POST 'filterDash'` now reach `dashboardSummary()`. The temporary
+`dashboard-summary` pair is deleted. The URLs are the originals, so bookmarks and the `menu_configs`
+`"url": ""` entry keep working. The POST is renamed `contractDashboard.filter`, which fixes a latent bug:
+both old routes carried the name `contractDashboard`, so `route('contractDashboard')` resolved to whichever
+Laravel registered last. **A cosmetic gap closed for free** — the sidebar highlights by route name and
+the menu JSON's slug is `contractDashboard`, so `Dashboard` is the active item again.
+
+**Deleted.** `dashDetails()` (210 lines), `viewDashboard1.blade.php`,
+`app/Console/Commands/CompareDashboardCounters.php` and its `dashboard:compare-counters` signature, three
+unused imports, the old `actionableItemCounts()`/`actionableApprovalRows()` pair and the
+`?oldApprovalStatus=1` flag. The `x` suffixes are gone: the plain-text versions now hold the plain names.
+The controller is **639 lines, down from 948**.
+
+**The one judgement call in it.** The plain-text counter returns **zeros** against ciphertext, so
+`?oldApprovalStatus=1` was the only way back if a deployment ran the code before
+`contract:convert-approval-status --apply`. The dev chose to delete it anyway. The protection is now
+procedural: [DEPLOYMENT.md](../../DEPLOYMENT.md) section 1, plus the narrow migration **throwing** rather
+than letting the order slip quietly.
+
+**`encryptStringx()` keeps its `x`**, the dev's call. `encryptString()` has 525 call sites and ignores its
+second argument; `encryptStringx()` has 58 and the second argument names the `table.column`. Merging them
+would silently convert three unrelated tables.
+
+**`?withoutActionableItems=1` stays.** It is the only way to reproduce report row 3, and it costs nothing.
+
+---
+
+## 8d. Change H — the two page-size cuts taken from ticket 22
+
+Applied 2026-08-21, dev's call: **customizer off and ApexCharts lazy-loaded**. The other three cuts in
+[ticket 22](issues/22-reduce-page-size.md) — fa-brands/fa-regular, the language switcher, the Tabler
+font subset — were not chosen and are not done. **Neither of these needed a rebuild.**
+
+| | before | after |
+|---|---|---|
+| requests before the load event | 56 | **36** |
+| bytes before the load event | 2,908,591 | **2,360,704** |
+| bytes after the load event | 0 | 491,404 |
+
+**548 KB off the critical path**, 20 fewer requests.
+
+**Customizer off** — `hasCustomizer => false` in [config/custom.php](../../config/custom.php). Zero
+customizer files fetched, and the layout stops resolving 8 stylesheet paths. **Users lose light/dark and
+theme switching**, and a saved `localStorage` choice stops applying. Accepted in ticket 22.
+
+**ApexCharts lazy-loaded** — removed from the eager `vendor-script` bundle in
+`viewDashboardSummary.blade.php` and fetched by an `IntersectionObserver` with 200px of lead time, through
+`Vite::asset()` so it follows the manifest and needs no hardcoded hash. It now starts at **4,825 ms**,
+after the load event at 4,566 ms, and both charts still render identically. The `.scss` stays eager: it is
+small and it styles the container before the chart arrives.
+
+Safe to defer past `cards-statistics.js`, which is also loaded on this page: all 12 of its chart elements
+are absent from this view and every call is null-guarded. **Which also means it parses about 1,300 lines to
+do nothing here** — not fixed, and worth its own look.
+
+**One trap, written down because it cost a broken page.** The first attempt put the text `@vite` inside a
+JavaScript comment in the blade. Blade compiles directives inside `<script>` as well, and a bare `@vite`
+with no parentheses becomes a zero-argument call — the page died with
+`Too few arguments to function Illuminate\Foundation\Vite::__invoke()`. Never write an `@`-directive name
+in a comment in a blade file.
+
+---
+
 ## 9. Behaviour: what is preserved, and the two things that change
 
 ### Preserved exactly
@@ -556,11 +739,33 @@ wrong thing.
 | 8 | ~~**Change E, part 2**~~ **done** — `vite.config.mjs`, build verified to a throwaway outDir | nothing | **yes** |
 | 9 | Migration 2 — convert `contract_party_data` — **file written, awaiting the dev's approval to run** | nothing | **yes**, needs a window |
 | 10 | Consolidate the duplicated asset trees | 8 | yes |
-| 11 | Delete each old function, once its new one is proven (§15) | 3, 5 | yes |
-| 12 | **[Ticket 17](issues/17-plain-columns-experiment.md)** — plain columns instead of encrypted | 5 | **yes**, runs last |
+| 11 | Delete each old function, once its new one is proven (§15) — **see the checklist below the table; ticket 17's pair is already swapped, only the delete is left** | 3, 5 | yes |
+| 12 | ~~**[Ticket 17](issues/17-plain-columns-experiment.md)** — plain columns instead of encrypted~~ **done 2026-08-21** — `approval_status` only; `actionableApprovalRowsx()` + `actionableItemCountsx()` + `leadingStatusByGroup()`, `encryptStringx()`, one command, one migration | 5 | **yes**, ran last |
 
 **Step 0 is not optional.** Nothing is rewritten in place, so every step below it needs its new name
 agreed first — see §15 and [ticket 19](issues/19-new-function-names.md).
+
+### What step 11 still has to delete, and what it must not go looking for
+
+Swapping a new function in as the default and **deleting** the old one are two separate acts. A pair
+that has been swapped is not done — the old half is still in the file. This list says which is which,
+so step 11 does not hunt for something already gone.
+
+| old half | state | what step 11 does |
+|---|---|---|
+| `dashDetails()` + `viewDashboard1.blade.php` | still the live `GET ''` route | move the route across, then delete |
+| the `$approvalsArr` blade loop, [viewDashboard1.blade.php:305](../../Modules/Contract/resources/views/dashboard/viewDashboard1.blade.php:305) | still there, inside the old view | goes when the old view goes |
+| `actionableApprovalRows()` + `actionableItemCounts()` | **swapped 2026-08-21 — no longer the default.** `actionableItemCountsx()` runs unless `?oldApprovalStatus=1` is passed | delete both, and delete the `?oldApprovalStatus=1` branch in `dashboardSummary()` with them |
+
+**`?plainApprovalStatus=1` no longer exists.** It was the flag that opted *in* to the new counter while
+it was being proved. Now that the new one is the default, the flag that remains is
+**`?oldApprovalStatus=1`**, which opts back *out*. Anything referring to `plainApprovalStatus` is
+describing the 2026-08-21 measuring session, not the code.
+
+**Keep `?oldApprovalStatus=1` until the conversion has run in production.** `actionableItemCountsx()`
+returns zeros against a table that still holds ciphertext, so until
+`contract:convert-approval-status --apply` has run on a database, that flag is the way back. Delete it
+in the same step as the functions.
 
 **Every step from 1 to 10 puts a row in [report.md](measurements/report.md)** — old number, new number,
 same session, plus a remark for any side effect. That is what makes the biggest win visible.
@@ -576,7 +781,7 @@ its win cannot be told apart from the rewrite's if it runs earlier.
 |---|---|
 | Delete `public/hot` + RTL off | **~18 s** off wall clock. No effect on TTFB. |
 | Query-layer rewrite | **~11.9 s** of the 12.6 s controller time. Queries 5,654 → single digits. |
-| Actionable-items counter in PHP (§4) | Keeps the six numbers correct. **Costs ~0.5 s local / ~2 s expected at 60,000 rows, every load.** Removed later by [ticket 17](issues/17-plain-columns-experiment.md). |
+| Actionable-items counter in PHP (§4) | Keeps the six numbers correct. ~~**Costs ~0.5 s local / ~2 s expected at 60,000 rows, every load.**~~ **Removed 2026-08-21 by [ticket 17](issues/17-plain-columns-experiment.md)** — `approval_status` is plain and indexed, the counter costs ~380 ms, and the ~0.5 s / ~2 s figures were about double the truth. See §4. |
 | Index on `approval_contracts.contract_id` | Stops the approvals join reading the whole table as rows pile up. |
 | AJAX dropdowns | ~15 % payload cut, two queries off the critical path. **Not seconds.** |
 | `vite.config` | No performance effect. Without it nobody can change a stylesheet. |

@@ -6,10 +6,7 @@ use Illuminate\Http\Request;
 use App\Http\Controllers\Controller;
 use App\Helpers\Helpers;
 use App\Models\Contract;
-use App\Models\ApprovalContracts;
-use App\Models\Tasks;
 use App\Models\BranchUser;
-use App\Models\ContractType;
 use Illuminate\Support\Facades\DB;
 use Carbon\Carbon;
 use Maatwebsite\Excel\Facades\Excel;
@@ -34,230 +31,18 @@ class ContractDashboardController extends Controller
     }
 
 
-    public function dashDetails(Request $request)
-    {
-
-        $branchs_query = BranchUser::select(
-            'id',
-            decrypt_data('BranchName', 'branch'),
-            decrypt_data('branchstatus', 'branch'),
-            decrypt_data('Doorno', 'branch'),
-            decrypt_data('StreetName', 'branch'),
-            decrypt_data('AreaName', 'branch'),
-            decrypt_data('Landmark', 'branch'),
-            decrypt_data('PinCode', 'branch'),
-            decrypt_data('ContactNumber', 'branch'),
-            decrypt_data('branchheadname', 'branch'),
-            decrypt_data('departments', 'branch'),
-            decrypt_data('LegalName', 'branch')
-        );
-        
-        $branchs = $branchs_query->get();
-        
-        $contractTypes = ContractType::get();
-        
-        $contracts_query = Contract::select('contract_name', 'id', 'currency', 'currency_value','end_contract_type', 'contract_status','substatus','fixed_date','onetime_end_date','contract_type')
-        ->orderBy('id', 'desc')
-        ->where('status', 1);
-        
-        if($request->contracttype){
-            $contracts_query->whereIn('contract_type', $request->contracttype);
-        }
-        
-        $contracts = $contracts_query->get();
-
-        $contracts = $this->availableContracts($contracts, true);
-        
-        $contract_all_total                = 0;
-        $contract_draft_total              = 0;
-        $contract_review_total             = 0;
-        $contract_finalization_total       = 0;
-        $contract_negotiation_total        = 0;
-        $contract_approval_total           = 0;
-        $contract_approved_total           = 0;
-        $contract_signing_total            = 0;
-        $contract_executable_total         = 0;
-        $contract_executable_active_total  = 0;
-        $contract_executable_expired_total = 0;
-        $contract_executable_pending_total = 0;
-        $contract_executable_renewed_total = 0;
-        $contract_executable_termina_total = 0;
-        $contract_executable_comp_total    = 0;
-        
-        $contractIds = [];
-        $contractStatus = [];
-        foreach ($contracts as $contract) {
-            
-            $applicable = true;
-            if($request->contractlocs){
-            
-              $applicable = false;
-              $contractParty = $contract->contractParty;
-              foreach ($contractParty as $contractPart) {
-        
-                //Check Branches Accessible for the User
-                if ($contractPart->contract_party_location_id == !null && $contractPart->contract_party_type == 'Internal' && in_array($contractPart->contract_party_location_id,$request->contractlocs)) {                        
-                    $applicable = true;            
-                }
-              }
-            }            
-            
-            if($applicable){
-                $contractIds[] = $contract->id;
-                
-                // User-facing status key ('Pre-Approval' -> 'review').
-                $contractStatus[$contract->id] = contractStatusKey($contract->contract_status);
-
-                switch (contractStatusKey($contract->contract_status)) {
-                    case 'executed':
-                        $contract_executable_total++;
-                        $contract_all_total++;
-                        switch ($contract->substatus) {
-                            case 'active':
-                                $contract_executable_active_total++;
-                                break;
-                            case 'expired':
-                                $contract_executable_expired_total++;
-                                break;
-                            case 'pending':
-                                $contract_executable_pending_total++;
-                                break;
-                            case 'renewed':
-                                $contract_executable_renewed_total++;
-                                break;
-                            case 'Terminated':
-                                $contract_executable_termina_total++;
-                                break;
-                            case 'completed':
-                                $contract_executable_comp_total++;
-                                break;
-                        }
-                        break;
-                        case 'draft':
-                            $contract_draft_total++;
-                            $contract_all_total++;
-                            break;        
-                        // Also covers the internal 'Pre-Approval' status via contractStatusKey().
-                        case 'review':
-                            $contract_review_total++;
-                            $contract_all_total++;
-                            break;
-                        // Pre-approval flow stage (grouped flow): previously uncounted, so
-                        // these contracts were invisible in the dashboard totals.
-                        case 'finalization':
-                            $contract_finalization_total++;
-                            $contract_all_total++;
-                            break;
-                        // Was 'Negotiation' (never matched, since the switch value is
-                        // strtolower'd) and fell through into 'approval', double-counting.
-                        case 'negotiation':
-                            $contract_negotiation_total++;
-                            $contract_all_total++;
-                            break;
-                        case 'approval':
-                            $contract_approval_total++;
-                            $contract_all_total++;
-                            break;
-                        case 'approved':
-                            $contract_approved_total++;
-                            $contract_all_total++;
-                            break;        
-                        case 'signing':
-                            $contract_signing_total++;
-                            $contract_all_total++;
-                            break;
-                }
-            }
-        }
-        
-        $approvalsArr = ApprovalContracts::select('*')
-        ->whereIn('contract_id', $contractIds)
-        ->orderBy('id', 'DESC')
-        ->get()            
-        ->map(function ($task) {
-            $task->username = decryptString($task->username, 'username');
-            $task->status = decryptString($task->status, 'status');
-            $task->previous_status = decryptString($task->previous_status, 'previous_status');
-            $task->next_action_item = decryptString($task->next_action_item, 'next_action_item');
-            $task->next_action_description = decryptString($task->next_action_description, 'next_action_description');
-            $task->approval_status = decryptString($task->approval_status, 'approval_status');
-            return $task;
-        })
-        ->groupBy('unique_id')
-        ->reverse();
-        
-        $tasks = Tasks::select('id', 'task_owner', 'status')
-        ->whereIn('contract_id', $contractIds)
-        ->orderBy('id', 'desc')
-        ->get()->toArray();
-        
-        $stusMyTask = array(
-            'all' => 0,
-            'pending' => 0,
-            'inprogress' => 0,
-            'completed' => 0
-        );
-        
-        $userId = Helpers::userInfo()->id;
-        
-        foreach($tasks as $tk){
-            $stusMyTask['all']++;
-            if($tk['task_owner'] == $userId){
-                //echo $tk['status'];
-                $stusMyTask[$tk['status']]++;
-            }
-        }
-
-        $stus = array(
-            'all' => $contract_all_total,
-            'draft' => $contract_draft_total,
-            'review' => $contract_review_total,
-            'finalization' => $contract_finalization_total,
-            'negotiation' => $contract_negotiation_total,
-            'approval' => $contract_approval_total,
-            'approved' => $contract_approved_total,
-            'signing' => $contract_signing_total,
-            'executed' => $contract_executable_total,
-            'executed_active' => $contract_executable_active_total,
-            'executed_expired' => $contract_executable_expired_total,
-            'executed_pending' => $contract_executable_pending_total,
-            'executed_renewed' => $contract_executable_renewed_total,
-            'executed_terminated' => $contract_executable_termina_total,
-            'executed_completed' => $contract_executable_comp_total
-        );  
-        
-        $stusMy = array(
-            'all' => 0,
-            'draft' => 0,
-            'review' => 0,
-            'negotiation' => 0,
-            'approval' => 0,
-            'approved' => 0,
-            'signing' => 0,
-            'executed' => 0,
-            'finalization' => 0
-        );
-
-        return view('contract::dashboard.viewDashboard1', compact('approvalsArr', 'contractStatus', 'stusMy', 'stusMyTask', 'branchs', 'contractTypes'))
-        ->with('contracts', (count($contracts) == 0) ? [] : $contracts)
-        ->with('sellocal', $request->contractlocs ?? [])
-        ->with('selcontype', $request->contracttype ?? [])
-        ->with('counts', $stus);
-    }
     
 
     // -----------------------------------------------------------------------
-    // Dashboard summary - the new path, beside dashDetails()
+    // The dashboard.
     //
     // Spec: .scratch/contracts-dashboard-perf/spec.md sections 3, 4 and 10.
     // Names: .scratch/contracts-dashboard-perf/names.md.
     //
-    // dashDetails() above is untouched and still serves the live URL. This method is
-    // reachable only at its own routes (contractDashboardSummary /
-    // contractDashboardSummary.filter), so the old page cannot start serving new
-    // behaviour by accident. dashDetails() is deleted only once report.md shows old and
-    // new side by side and `php artisan dashboard:compare-counters` reports no
-    // unexpected difference.
+    // This replaced dashDetails() on 2026-08-21 (spec section 10 step 11) and now serves the
+    // live URLs, GET '' and POST 'filterDash'. dashDetails() is deleted; report.md rows 2, 2a,
+    // 2b, 2c and 3 hold the old numbers, and `dashboard:compare-counters` had already reported
+    // all 15 stage counters and all 4 task counters identical.
     //
     // What changes, on purpose:
     //  - no contract row is ever loaded into PHP; the counters are one GROUP BY
@@ -279,12 +64,24 @@ class ContractDashboardController extends Controller
 
         $stusMyTask = $this->myTaskCounts($request, $visibility);
 
-        // Local-only escape hatch for step 3 vs step 5 of the spec's order of work: the same
-        // page measured with the counter off and on, in one session. It only exists on this
-        // route, and the live URL never reaches this method at all.
-        $stusMy = $request->boolean('withoutActionableItems')
-            ? $this->emptyActionableItemCounts()
-            : $this->actionableItemCounts($request, $visibility);
+        // Reads a plain-text approval_status, so `php artisan contract:convert-approval-status
+        // --apply` must have run on whatever database this points at. Against a table still
+        // holding ciphertext it counts nothing and every number reads zero.
+        //
+        // The old decrypt-everything counter and its ?oldApprovalStatus=1 escape hatch were
+        // deleted 2026-08-21 on the dev's call, so there is no longer a way back in code. If a
+        // deployment runs this before the conversion, run the conversion - see DEPLOYMENT.md
+        // section 1, and note the narrow migration throws rather than letting the order slip
+        // silently.
+        //
+        // One local-only escape hatch remains, the cheapest way to measure what this counter
+        // costs:
+        //   ?withoutActionableItems=1   the counter off, report.md step 3 against step 5
+        if ($request->boolean('withoutActionableItems')) {
+            $stusMy = $this->emptyActionableItemCounts();
+        } else {
+            $stusMy = $this->actionableItemCounts($request, $visibility);
+        }
 
         return view('contract::dashboard.viewDashboardSummary', compact(
             'stusMy',
@@ -459,12 +256,20 @@ class ContractDashboardController extends Controller
     }
 
     /**
-     * The SQL half of "My Actionable Items": the narrowest row set that can still produce the
-     * six numbers. Five columns plus unique_id, read in chunks, nothing decrypted here.
+     * The SQL half of "My Actionable Items" once approval_status is plain text: the pending
+     * filter moves into the query, so PHP never sees a row that is not pending.
      *
-     * unique_id is carried because the count is attributed to the status of the group's
-     * leading row - the highest id sharing that unique_id - exactly as the old blade loop did
-     * with $appr[0].
+     * approval_status is not selected - there is nothing left to test it against in PHP. Needs
+     * `php artisan contract:convert-approval-status --apply` to have run; against a table that
+     * still holds ciphertext this matches nothing and every count reads zero.
+     *
+     * The comparison is a plain one, so the table collation decides case. The deleted PHP
+     * version compared === 'pending' and would not have matched 'Pending'. Every one of the 61
+     * write sites passes a lowercase word and all 127 real rows decrypted to lowercase (checked
+     * 2026-08-21), so the two agreed on this data - but on a client database holding a
+     * capitalised value this one counts it and the old one did not. This one is right.
+     *
+     * See .scratch/contracts-dashboard-perf/issues/17-plain-columns-experiment.md
      */
     private function actionableApprovalRows(Request $request, ContractVisibilityQuery $visibility)
     {
@@ -480,48 +285,91 @@ class ContractDashboardController extends Controller
         return $query
             ->where('approval_contracts.row_status', 1)
             ->where('approval_contracts.superseded', 0)
+            ->where('approval_contracts.approval_status', 'pending')
             ->select(
                 'approval_contracts.id',
-                'approval_contracts.contract_id',
                 'approval_contracts.unique_id',
-                'approval_contracts.username',
-                'approval_contracts.approval_status',
-                'contracts.contract_status'
+                'approval_contracts.username'
             )
             ->orderBy('approval_contracts.id', 'desc');
     }
 
     /**
-     * The PHP half: decrypt username and approval_status per surviving row and fold the six
-     * numbers. This is the ~0.5 s locally / ~2 s expected at 60,000 rows that spec.md
-     * section 4 accepts knowingly; ticket 17 is what removes it.
+     * The leading row's contract_status for each of the given unique_ids - the highest id in
+     * the group, over the same visibility-filtered set actionableApprovalRows() walks.
      *
-     * It cannot be done in SQL: both columns are AES-128-CBC with a random IV, so the same
-     * value encrypts differently every time and is not matchable, filterable or indexable.
+     * This is here because actionableApprovalRows() only returns pending rows, and a group's
+     * leader is often not one of them. 6 unique_ids in this database span more than one
+     * contract, so the leader genuinely decides the answer and cannot be shortcut to "any row
+     * of this group".
+     *
+     * Chunked at 500 ids: a whereIn carrying 1,000 or more bound parameters silently returns
+     * zero rows on this MariaDB build (CONTEXT.md). The list is the unique_ids that survived
+     * the email match, which is a handful, so this normally runs once.
+     */
+    private function leadingStatusByGroup(
+        Request $request,
+        ContractVisibilityQuery $visibility,
+        array $uniqueIds
+    ): array {
+        $leading = [];
+
+        foreach (array_chunk($uniqueIds, 500) as $slice) {
+            $query = DB::table('approval_contracts')
+                ->join('contracts', 'contracts.id', '=', 'approval_contracts.contract_id');
+
+            $visibility->applyTo($query, 'contracts');
+
+            if ($request->contractlocs) {
+                $visibility->applyPartyLocationFilter($query, 'contracts', $request->contractlocs);
+            }
+
+            $rows = $query
+                ->where('approval_contracts.row_status', 1)
+                ->where('approval_contracts.superseded', 0)
+                ->whereIn('approval_contracts.unique_id', $slice)
+                ->select(
+                    'approval_contracts.unique_id',
+                    'contracts.contract_status'
+                )
+                ->orderBy('approval_contracts.id', 'desc')
+                ->get();
+
+            // Same rule as the old walk: id DESC, first row seen for a unique_id is its leader.
+            foreach ($rows as $row) {
+                if (!array_key_exists($row->unique_id, $leading)) {
+                    $leading[$row->unique_id] = contractStatusKey($row->contract_status);
+                }
+            }
+        }
+
+        return $leading;
+    }
+
+    /**
+     * "My Actionable Items" with approval_status plain: the same six numbers, without
+     * decrypting a status column 13,861 times to throw 11,732 of them away.
+     *
+     * What is left to decrypt is username, which stays encrypted by the dev's call on
+     * 2026-08-21 - it holds JSON {email,name} whose name is printed in 13 blade files, so
+     * converting it is a much larger job for a few milliseconds. So this decrypts one value per
+     * pending row instead of one status for every row plus one username per pending row:
+     * 15,988 values became 2,129 on the seeded 3,018-contract set.
+     *
+     * This replaced the decrypt-everything version, which ran beside it while both were measured
+     * on the same page and the same data (CLAUDE.md) and was deleted 2026-08-21 once proven.
+     * report.md rows 3 and 12 hold the two sets of numbers.
      */
     private function actionableItemCounts(Request $request, ContractVisibilityQuery $visibility): array
     {
         $stusMy = $this->emptyActionableItemCounts();
 
-        $groupStatusKey = [];
+        $mine      = [];
         $decrypted = 0;
 
         $this->actionableApprovalRows($request, $visibility)
-            ->chunk(2000, function ($rows) use (&$stusMy, &$groupStatusKey, &$decrypted) {
+            ->chunk(2000, function ($rows) use (&$mine, &$decrypted) {
                 foreach ($rows as $row) {
-                    // Walking id DESC means the first row seen for a unique_id is its leader,
-                    // so its status is the one the whole group counts against.
-                    if (!array_key_exists($row->unique_id, $groupStatusKey)) {
-                        $groupStatusKey[$row->unique_id] = contractStatusKey($row->contract_status);
-                    }
-
-                    $approvalStatus = decryptString($row->approval_status, 'approval_status');
-                    $decrypted++;
-
-                    if ($approvalStatus !== 'pending') {
-                        continue;
-                    }
-
                     $username = decryptString($row->username, 'username');
                     $decrypted++;
 
@@ -531,20 +379,45 @@ class ContractDashboardController extends Controller
                         continue;
                     }
 
-                    $key = $groupStatusKey[$row->unique_id];
-
-                    if (array_key_exists($key, $stusMy)) {
-                        $stusMy[$key]++;
-                    }
-
-                    $stusMy['all']++;
+                    $mine[] = $row->unique_id;
                 }
             });
 
-        Log::debug('dashboardSummary actionable items', [
-            'groups' => count($groupStatusKey),
-            'values_decrypted' => $decrypted,
-            'actionable_total' => $stusMy['all'],
+        if ($mine === []) {
+            Log::debug('dashboardSummary actionable items (plain approval_status)', [
+                'pending_rows_seen' => $decrypted,
+                'values_decrypted'  => $decrypted,
+                'mine'              => 0,
+                'actionable_total'  => 0,
+            ]);
+
+            return $stusMy;
+        }
+
+        $leading = $this->leadingStatusByGroup($request, $visibility, array_values(array_unique($mine)));
+
+        // One increment per surviving row, not per group - the old walk counted a group once for
+        // every pending row in it that belonged to the user, and that is preserved here.
+        foreach ($mine as $uniqueId) {
+            $key = $leading[$uniqueId] ?? null;
+
+            if ($key === null) {
+                continue;
+            }
+
+            if (array_key_exists($key, $stusMy)) {
+                $stusMy[$key]++;
+            }
+
+            $stusMy['all']++;
+        }
+
+        Log::debug('dashboardSummary actionable items (plain approval_status)', [
+            'pending_rows_seen' => $decrypted,
+            'values_decrypted'  => $decrypted,
+            'mine'              => count($mine),
+            'groups'            => count($leading),
+            'actionable_total'  => $stusMy['all'],
         ]);
 
         return $stusMy;

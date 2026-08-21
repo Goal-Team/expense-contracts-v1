@@ -387,21 +387,43 @@ class PerfDatasetSeeder extends Seeder
 
     private function buildApprovals(array $meta): array
     {
+        // email => display name. The app stores username as encrypted JSON {email,name} - see
+        // ContractDashboardController::actionableItemCounts() and the 13 blade sites that print
+        // json_decode($row->username)->name. Seeding a bare email made every one of those read
+        // empty, and made the dashboard counter skip the row entirely (ticket 17, 2026-08-21).
         $users = [
-            'jeevanantham@legalitysimplified.com', 'owner.one@example.com', 'approver.one@example.com',
-            'approver.two@example.com', 'verifier.one@example.com', 'signatory.one@example.com',
+            'jeevanantham@legalitysimplified.com' => 'Jeeva',
+            'owner.one@example.com'               => 'Owner One',
+            'approver.one@example.com'            => 'Approver One',
+            'approver.two@example.com'            => 'Approver Two',
+            'verifier.one@example.com'            => 'Verifier One',
+            'signatory.one@example.com'           => 'Signatory One',
         ];
-        $roles    = ['Owner', 'Approver', 'Approver', 'Verifier', 'Recommender', 'Approver', 'Signatory'];
+        $userEmails = array_keys($users);
+        $roles      = ['Owner', 'Approver', 'Approver', 'Verifier', 'Recommender', 'Approver', 'Signatory'];
+
+        // status / previous_status really are capitalised in this database - measured over the 127
+        // real rows: Approved, Draft, Pending, Rejected, Signing, Negotiation, review.
         $statuses = ['Approved', 'Pending', 'Completed', 'Sent'];
 
+        // approval_status is NOT the same vocabulary. Every write site in the app passes a
+        // lowercase word - 'pending', 'approved', 'rejected' - and the dashboard counter compares
+        // with === 'pending'. Seeding 'Pending' here meant the counter matched nothing on 13,740
+        // rows, so every number measured against the seeded set came from the wrong population.
+        $approvalStatuses = ['approved', 'pending'];
+
         // Encrypt the repeated values once - there are ~14k rows x 4 encrypted columns.
-        $encUser   = [];
-        foreach ($users as $u) {
-            $encUser[$u] = encryptString($u, 'username');
+        $encUser = [];
+        foreach ($users as $email => $name) {
+            $encUser[$email] = encryptString(json_encode(['email' => $email, 'name' => $name]), 'username');
         }
         $encStatus = [];
         foreach ($statuses as $s) {
             $encStatus[$s] = encryptString($s, 'status');
+        }
+        $encApprovalStatus = [];
+        foreach ($approvalStatuses as $s) {
+            $encApprovalStatus[$s] = encryptString($s, 'approval_status');
         }
 
         $rows = [];
@@ -412,8 +434,10 @@ class PerfDatasetSeeder extends Seeder
             $count = self::APPROVAL_ROWS_PER_STAGE[$c['status']];
 
             for ($o = 0; $o < $count; $o++) {
-                $user   = $users[($n + $o) % count($users)];
-                $status = $statuses[($o === $count - 1 && $c['status'] !== 'Executed') ? 1 : 0];
+                $user     = $userEmails[($n + $o) % count($userEmails)];
+                $isLast   = ($o === $count - 1 && $c['status'] !== 'Executed');
+                $status   = $statuses[$isLast ? 1 : 0];
+                $apprStat = $approvalStatuses[$isLast ? 1 : 0];
 
                 $rows[] = [
                     'id'                    => $id++,
@@ -428,7 +452,7 @@ class PerfDatasetSeeder extends Seeder
                     'status'                => $encStatus[$status],
                     'previous_status'       => $encStatus[$statuses[2]],
                     'contract_id'           => $c['id'],
-                    'approval_status'       => $encStatus[$status],
+                    'approval_status'       => $encApprovalStatus[$apprStat],
                     'orderval'              => $o,
                     // Grouped by unique_id in the controller, so it must vary per stage row.
                     'unique_id'             => 'seedperf_' . $c['id'] . '_' . $o,
@@ -438,8 +462,8 @@ class PerfDatasetSeeder extends Seeder
                     'superseded'            => 0,
                     'row_status'            => 1,
                     'fileType'              => 'Local', // NOT NULL enum with no default
-                    'created_by'            => json_encode(['email' => $user, 'name' => 'Seed User']),
-                    'updated_by'            => json_encode(['email' => $user, 'name' => 'Seed User']),
+                    'created_by'            => json_encode(['email' => $user, 'name' => $users[$user]]),
+                    'updated_by'            => json_encode(['email' => $user, 'name' => $users[$user]]),
                     'created_at'            => $c['created_at'],
                     'updated_at'            => $c['created_at'],
                     'updated_on'            => $c['created_at'],

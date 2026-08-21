@@ -5,6 +5,7 @@ $configData = Helper::appClasses();
 <aside id="layout-menu" class="layout-menu-horizontal menu-horizontal  menu bg-menu-theme flex-grow-0">
   <div class="{{$containerNav}} d-flex h-100">
     <ul class="menu-inner">
+      @if($menuData[1]->menu ?? false)
       @foreach ($menuData[1]->menu as $menu)
 
       {{-- active menu method --}}
@@ -47,6 +48,7 @@ $configData = Helper::appClasses();
         @endisset
       </li>
       @endforeach
+      @endif
     </ul>
   </div>
 </aside>

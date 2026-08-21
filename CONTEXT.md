@@ -49,8 +49,17 @@ the list has 3,000 items, that is 3,001 queries. This is the main thing making t
 slow.
 
 **`whereIn` 1000-parameter bug** — on this MariaDB, asking `WHERE id IN (...)` with 1,000 or
-more values gives back **zero rows**, with no error. Under 1,000 works fine. Live bug. See
-[ticket 12](.scratch/contracts-dashboard-perf/issues/12-approvals-empty.md).
+more values gives back **zero rows**, with no error. Under 1,000 works fine. Live bug. Found in
+[ticket 12](.scratch/contracts-dashboard-perf/issues/12-approvals-empty.md). It has its own effort
+now: [.scratch/wherein-1000-bug/spec.md](.scratch/wherein-1000-bug/spec.md). Four known places, and
+110 `whereIn` calls nobody has checked.
+
+**Menu composer** — a piece of code in `app/Providers/MenuServiceProvider.php`. It fills in the
+side menu and the top menu. Laravel runs it one time for each view on the page. The dashboard
+has 15 views, so it runs 15 times, and it reads the same menu rows every time.
+
+**View** — one Blade template file. One page is made of many views: the layout, the menu, the
+footer, and each panel on the page.
 
 **Aggregate query** — one query that asks the database to count things and hand back the
 totals, instead of handing back every row for PHP to count.
@@ -81,6 +90,56 @@ in SQL. Ever. No index helps.
 
 **Shadow column** — a second, plain-text column sitting next to an encrypted one, holding
 just the part we need to search on. Lets SQL do the filtering.
+
+## Built assets
+
+**Vite** — the tool that prepares the CSS and JavaScript for the browser. It reads the source files
+and writes finished files.
+
+**Content hash** — a short code in a built filename, like `core-7_a25xA8.css`. Vite works it out
+from the bytes inside the file. Change one byte and you get a new code, so you get a new filename.
+
+**`manifest.json`** — the index Vite writes. It maps a source name to the built filename with its
+hash. `@vite('.../datatables-bootstrap5.js')` in a Blade file has no hash in it, so Laravel must
+read the manifest to learn which real file to ask for.
+
+**`build/` and `public/build/`** — two separate 33 MB copies of the built files on this project.
+**Laravel reads `manifest.json` from `public/build/`. IIS serves the real files from `build/`.**
+They must agree. Nothing keeps them in step automatically.
+
+## Caching
+
+**App cache** — a store the app writes an answer into, so it does not have to work the answer out
+again. This app uses `CACHE_DRIVER=file`, so the answers are files in `storage/framework/cache/`.
+
+**Cache hit** — the answer was in the store. No database query.
+
+**Cache miss** — the answer was not in the store. The app works it out, runs the queries, and
+saves the answer for next time.
+
+**Cache key** — the name the answer is filed under. Two users who must see different answers need
+different keys. The menu is filed by role.
+
+**Memo** — the app keeps an answer in memory for the rest of one request. It is not the app cache:
+it disappears when the request ends, and it never touches a file or the database. Use it when the
+same answer is asked for many times in one request.
+
+**View composer** — a piece of code Laravel attaches to a view. Laravel runs it each time that view
+is built. `View::composer('*')` attaches it to **every** view, so it runs one time for each view on
+the page.
+
+**Clear the cache** — throw the saved answer away, so the next request works it out again. Needed
+when the data behind the answer changes.
+
+**Memo** — the app keeps an answer in memory for one request only. The second call gets the
+answer from memory. Nothing is written to disk. The memory goes away when the request ends.
+
+**Call site** — one place in the code that calls a function. `userInfo()` has 86 call sites.
+Each one runs its own query today.
+
+**Role** — the user's job type, held in the session as `contractSessionUserRole`. It comes from the
+legacy login app as `$_SESSION['logrole']`. Values seen in the code: `User`, `Manager`, `Admin`,
+`Super Admin`, `Legal`, `Marketing Manager`.
 
 ## Logging
 

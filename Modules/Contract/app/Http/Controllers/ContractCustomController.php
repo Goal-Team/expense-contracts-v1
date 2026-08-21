@@ -1789,7 +1789,7 @@ class ContractCustomController extends Controller
                 $usernameEncrypted = function_exists('encryptString') ? @encryptString($usernameJson, 'username') : $usernameJson;
                 $statusEncrypted = function_exists('encryptString') ? @encryptString('Pending', 'status') : 'Pending';
                 $previousStatusEncrypted = function_exists('encryptString') ? @encryptString($contract->contract_status ?? '', 'previous_status') : ($contract->contract_status ?? '');
-                $approvalStatusEncrypted = function_exists('encryptString') ? @encryptString('pending', 'approval_status') : 'pending';
+                $approvalStatusEncrypted = function_exists('encryptStringx') ? @encryptStringx('pending', 'approval_contracts.approval_status') : 'pending';
                 $nextStatusEncrypted = function_exists('encryptString') ? @encryptString('Review', 'next_status') : 'Review';
                 $randNo = rand(0, 99999);
                 $unique_id_loop = $contract->id . $randNo;
@@ -1943,7 +1943,7 @@ class ContractCustomController extends Controller
         $usernameEncrypted = function_exists('encryptString') ? @encryptString($usernameJson, 'username') : $usernameJson;
         $statusEncrypted = function_exists('encryptString') ? @encryptString('Pending', 'status') : 'Pending';
         $previousStatusEncrypted = function_exists('encryptString') ? @encryptString($contract->contract_status ?? '', 'previous_status') : ($contract->contract_status ?? '');
-        $approvalStatusEncrypted = function_exists('encryptString') ? @encryptString('pending', 'approval_status') : 'pending';
+        $approvalStatusEncrypted = function_exists('encryptStringx') ? @encryptStringx('pending', 'approval_contracts.approval_status') : 'pending';
         $nextStatusEncrypted = function_exists('encryptString') ? @encryptString('Review', 'next_status') : 'Review';
         $randNo = rand(0, 99999);
         $unique_id_loop = $contract->id . $randNo;
@@ -2072,7 +2072,7 @@ class ContractCustomController extends Controller
             $usernameEncrypted = function_exists('encryptString') ? @encryptString($usernameJson, 'username') : $usernameJson;
             $statusEncrypted = function_exists('encryptString') ? @encryptString('Pending', 'status') : 'Pending';
             $previousStatusEncrypted = function_exists('encryptString') ? @encryptString($contract->contract_status ?? '', 'previous_status') : ($contract->contract_status ?? '');
-            $approvalStatusEncrypted = function_exists('encryptString') ? @encryptString('pending', 'approval_status') : 'pending';
+            $approvalStatusEncrypted = function_exists('encryptStringx') ? @encryptStringx('pending', 'approval_contracts.approval_status') : 'pending';
             $nextStatusEncrypted = function_exists('encryptString') ? @encryptString('Review', 'next_status') : 'Review';
             $randNo = rand(0, 99999);
             $unique_id_loop = $contract->id . $randNo;
@@ -2418,7 +2418,7 @@ class ContractCustomController extends Controller
                         $usernameEncrypted = function_exists('encryptString') ? @encryptString($usernameJson, 'username') : $usernameJson;
                         $statusEncrypted = function_exists('encryptString') ? @encryptString('Pending', 'status') : 'Pending';
                         $previousStatusEncrypted = function_exists('encryptString') ? @encryptString($contract->contract_status ?? '', 'previous_status') : ($contract->contract_status ?? '');
-                        $approvalStatusEncrypted = function_exists('encryptString') ? @encryptString('pending', 'approval_status') : 'pending';
+                        $approvalStatusEncrypted = function_exists('encryptStringx') ? @encryptStringx('pending', 'approval_contracts.approval_status') : 'pending';
                         $nextStatusEncrypted = function_exists('encryptString') ? @encryptString('Review', 'next_status') : 'Review';
                         $randNo = rand(0, 99999);
                         $unique_id_loop = $contract->id . $randNo;
@@ -2678,7 +2678,7 @@ class ContractCustomController extends Controller
                 $this->reject($request, $contractId);
                 
                 // set this approver as completed (flag -> 0) and approval_status -> rejected
-                $approval->approval_status = function_exists('encryptString') ? @encryptString('rejected', $usernameKey) : 'rejected';
+                $approval->approval_status = function_exists('encryptStringx') ? @encryptStringx('rejected', 'approval_contracts.approval_status') : 'rejected';
                 $approval->status = function_exists('encryptString') ? @encryptString('Rejected', $usernameKey) : 'Rejected';
                 $approval->next_action_description = $comments;
                 $approval->flag = 0;
@@ -2704,7 +2704,7 @@ class ContractCustomController extends Controller
     
             // APPROVE path
             // mark this approver as completed
-            $approval->approval_status = function_exists('encryptString') ? @encryptString('approved', $usernameKey) : 'approved';
+            $approval->approval_status = function_exists('encryptStringx') ? @encryptStringx('approved', 'approval_contracts.approval_status') : 'approved';
             $approval->status = function_exists('encryptString') ? @encryptString('Approved', $usernameKey) : 'Approved';
             $approval->next_action_description = $comments;
             $approval->flag = 0;

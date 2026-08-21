@@ -3046,7 +3046,7 @@ class ContractController extends Controller
                                 'orderval' => $key,
                                 'unique_id' => $unique_id,
                                 'flag' => 1,
-                                'approval_status' => encryptString('pending', 'approval_status'),
+                                'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                                 'stage_name' => $statusApprvr,
                             ]);
                             if ($approval_type == 'sequential'){
@@ -3104,7 +3104,7 @@ class ContractController extends Controller
                         'orderval' => 0,
                         'unique_id' => $base_unique . '_g0',
                         'flag' => 1,
-                        'approval_status' => encryptString('pending', 'approval_status'),
+                        'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                         'approval_type_main' => $approval_type,
                         'approval_type_row' => 'sequential',
                         'approver_type_row' => 'Owner',
@@ -3186,7 +3186,7 @@ class ContractController extends Controller
                                                 'orderval' => $ord,
                                                 'unique_id' => $unique_id,
                                                 'flag' => ($isFirstGroup ? 1 : 0),
-                                                'approval_status' => encryptString('pending', 'approval_status'),
+                                                'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                                                 'approval_type_main' => $approval_type,
                                                 'approval_type_row' => $groupType,
                                                 'approver_type_row' => $groupRole,
@@ -3213,7 +3213,7 @@ class ContractController extends Controller
                                                 'orderval' => $ord,
                                                 'unique_id' => $unique_id,
                                                 'flag' => ($isFirstGroup && $firstInGroup ? 1 : 0),
-                                                'approval_status' => encryptString('pending', 'approval_status'),
+                                                'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                                                 'approval_type_main' => $approval_type,
                                                 'approval_type_row' => $groupType,
                                                 'approver_type_row' => $groupRole,
@@ -3261,7 +3261,7 @@ class ContractController extends Controller
                                             'orderval' => $ord,
                                             'unique_id' => $unique_id,
                                             'flag' => ($isFirstGroup ? 1 : 0),
-                                            'approval_status' => encryptString('pending', 'approval_status'),
+                                            'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                                             'approval_type_main' => $approval_type,
                                             'approval_type_row' => $groupType,
                                             'approver_type_row' => $groupRole,
@@ -3287,7 +3287,7 @@ class ContractController extends Controller
                                             'orderval' => $ord,
                                             'unique_id' => $unique_id,
                                             'flag' => ($isFirstGroup && $firstInGroup ? 1 : 0),
-                                            'approval_status' => encryptString('pending', 'approval_status'),
+                                            'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                                             'approval_type_main' => $approval_type,
                                             'approval_type_row' => $groupType,
                                             'approver_type_row' => $groupRole,
@@ -3320,7 +3320,7 @@ class ContractController extends Controller
                                 'orderval' => $ord,
                                 'unique_id' => $groupUniqueId,
                                 'flag' => ($first ? 1 : 0),
-                                'approval_status' => encryptString('pending', 'approval_status'),
+                                'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                                 'approval_type_main' => $approval_type,
                                 'approval_type_row' => 'sequential',
                                 'approver_type_row' => 'Approver',
@@ -5030,7 +5030,7 @@ class ContractController extends Controller
                                 'orderval' => $key,
                                 'unique_id' => $unique_id,
                                 'flag' => 1,
-                                'approval_status' => encryptString('pending', 'approval_status'),
+                                'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                             ]);
                             if ($approval_type == 'sequential'){
                                 $nextAprroverEmail = $users[0]->Email;
@@ -5088,7 +5088,7 @@ class ContractController extends Controller
                         'orderval' => 0,
                         'unique_id' => $base_unique . '_g0',
                         'flag' => 1,
-                        'approval_status' => encryptString('pending', 'approval_status'),
+                        'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                         'approval_type_main' => $approval_type,
                         'approval_type_row' => 'sequential',
                         'approver_type_row' => 'Owner',
@@ -5165,7 +5165,7 @@ class ContractController extends Controller
                                                 'orderval' => $ord,
                                                 'unique_id' => $unique_id,
                                                 'flag' => ($isFirstGroup ? 1 : 0),
-                                                'approval_status' => encryptString('pending', 'approval_status'),
+                                                'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                                                 'approval_type_main' => $approval_type,
                                                 'approval_type_row' => $groupType,
                                                 'approver_type_row' => $groupRole,
@@ -5194,7 +5194,7 @@ class ContractController extends Controller
                                                 'orderval' => $ord,
                                                 'unique_id' => $unique_id,
                                                 'flag' => ($isFirstGroup && $firstInGroup ? 1 : 0),
-                                                'approval_status' => encryptString('pending', 'approval_status'),
+                                                'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                                                 'approval_type_main' => $approval_type,
                                                 'approval_type_row' => $groupType,
                                                 'approver_type_row' => $groupRole,
@@ -5241,7 +5241,7 @@ class ContractController extends Controller
                                             'orderval' => $ord,
                                             'unique_id' => $unique_id,
                                             'flag' => ($isFirstGroup ? 1 : 0),
-                                            'approval_status' => encryptString('pending', 'approval_status'),
+                                            'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                                             'approval_type_main' => $approval_type,
                                             'approval_type_row' => $groupType,
                                             'approver_type_row' => $groupRole,
@@ -5268,7 +5268,7 @@ class ContractController extends Controller
                                             'orderval' => $ord,
                                             'unique_id' => $unique_id,
                                             'flag' => ($isFirstGroup && $firstInGroup ? 1 : 0),
-                                            'approval_status' => encryptString('pending', 'approval_status'),
+                                            'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                                             'approval_type_main' => $approval_type,
                                             'approval_type_row' => $groupType,
                                             'approver_type_row' => $groupRole,
@@ -5302,7 +5302,7 @@ class ContractController extends Controller
                                 'orderval' => $ord,
                                 'unique_id' => $groupUniqueId,
                                 'flag' => ($first ? 1 : 0),
-                                'approval_status' => encryptString('pending', 'approval_status'),
+                                'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                                 'approval_type_main' => $approval_type,
                                 'approval_type_row' => 'sequential',
                                 'approver_type_row' => 'Approver',
@@ -5960,7 +5960,7 @@ class ContractController extends Controller
                     'orderval' => 0,
                     'unique_id' => $base_unique . '_g0',
                     'flag' => 1,
-                    'approval_status' => encryptString('pending', 'approval_status'),
+                    'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                 ]);
 
                 $nextAprroverEmail = $users[0]->Email;
@@ -7629,7 +7629,7 @@ class ContractController extends Controller
             'next_action_item' => encryptString($shortDesc, 'next_action_item'),
             'next_action_description' => encryptString($desc, 'next_action_description'),
             'button_text' => ($contracts->signing_date && decryptString($contracts->contract_mode, 'contract_mode') == 'old' && $buttonTxt == "Signed on") ? 'Approved On' : $buttonTxt,
-            'approval_status' => encryptString($appType, 'approval_status'),
+            'approval_status' => encryptStringx($appType, 'approval_contracts.approval_status'),
             'attachments' => $filesData,
             'attachments_filename' => $filesDataName,
             'attachments_support' => $filesSupport,
@@ -7850,7 +7850,7 @@ class ContractController extends Controller
                 'orderval' => $orderval,
                 'next_action_item' => encryptString($shortDesc, 'next_action_item'),
                 'next_action_description' => encryptString($desc, 'next_action_description'),
-                'approval_status' => encryptString($appType, 'approval_status'),
+                'approval_status' => encryptStringx($appType, 'approval_contracts.approval_status'),
                 'button_text' => $buttonTxt,
                 'attachments' => $filesData,
                 'attachments_filename' => $filesDataName,
@@ -7907,7 +7907,7 @@ class ContractController extends Controller
                         'previous_status' => encryptString('Draft', 'previous_status'),
                         'status' => encryptString('Draft', 'status'),
                         'contract_id' => $id,
-                        'approval_status' => encryptString('pending', 'approval_status'),
+                        'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                         'flag' => '1',
                     ]);
                     Contract::where(['id' => $id])->update([
@@ -7948,7 +7948,7 @@ class ContractController extends Controller
                                             'orderval' => $ord,
                                             'unique_id' => $unique_id_new_leg,
                                             'flag' => 1,
-                                            'approval_status' => encryptString('pending', 'approval_status'),
+                                            'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                                             'dynamic_approver_enabled' => $groupDynamicApproverEnabled,
                                         ]);
                                         $nextAprroverEmail[] = $users[0]->Email;
@@ -7972,7 +7972,7 @@ class ContractController extends Controller
                                                     'orderval' => $ord,
                                                     'unique_id' => $unique_id_new_leg,
                                                     'flag' => 1,
-                                                    'approval_status' => encryptString('pending', 'approval_status'),
+                                                    'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                                                     'dynamic_approver_enabled' => $groupDynamicApproverEnabled,
                                                 ]);
                                                 $nextAprroverEmail = $users[0]->Email;
@@ -7995,7 +7995,7 @@ class ContractController extends Controller
                                     'orderval' => $key,
                                     'unique_id' => $unique_id_new_leg,
                                     'flag' => 1,
-                                    'approval_status' => encryptString('pending', 'approval_status'),
+                                    'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                                 ]);
 
                                 $emailTrigger->sendEmail($id, $desc, $shortDesc, $users[0]->Email, $appDataStatus, $senattment['filename'],  $senattment['filurl'], 'notiMail');
@@ -8042,7 +8042,7 @@ class ContractController extends Controller
                         'previous_status' => encryptString('review', 'previous_status'),
                         'status' => encryptString($appStatus, 'status'),
                         'contract_id' => $id,
-                        'approval_status' => encryptString('pending', 'approval_status'),
+                        'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                         'flag' => '1',
                     ]);
 
@@ -8088,7 +8088,7 @@ class ContractController extends Controller
                         'previous_status' => encryptString('Approval', 'previous_status'),
                         'status' => encryptString($appStatus, 'status'),
                         'contract_id' => $id,
-                        'approval_status' => encryptString('pending', 'approval_status'),
+                        'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                         'flag' => !$contracts->signing_date ? '1' : '0',
                         'approval_type_main' => 'sequential',
                         'approval_type_row' => 'sequential',
@@ -8211,7 +8211,7 @@ class ContractController extends Controller
                                 'button_text' => 'external',
                                 'status' => encryptString('Signing', 'status'),
                                 'contract_id' => $id,
-                                'approval_status' => encryptString('pending', 'approval_status'),
+                                'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                                 'flag' => '-1',
                                 'signed_type' => $signType,
                                 'created_by' => json_encode($updatedUser)
@@ -8700,7 +8700,7 @@ class ContractController extends Controller
                             'status' => encryptString($next_status, 'status'),
                             'next_status' => encryptString($next_status, 'next_status'),
                             'contract_id' => $contract_id,
-                            'approval_status' => encryptString('pending', 'approval_status'),
+                            'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                             'flag' => '1',
                             'dynamic_approver_enabled' => $groupDynamicApproverEnabled,
                         ]);
@@ -8733,7 +8733,7 @@ class ContractController extends Controller
                                 'status' => encryptString($next_status, 'status'),
                                 'next_status' => encryptString($next_status, 'next_status'),
                                 'contract_id' => $contract_id,
-                                'approval_status' => encryptString('pending', 'approval_status'),
+                                'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                                 'flag' => '1',
                                 'dynamic_approver_enabled' => $groupDynamicApproverEnabled,
                             ]);
@@ -8785,7 +8785,7 @@ class ContractController extends Controller
                 'status' => encryptString($next_status, 'status'),
                 'next_status' => encryptString($next_status, 'next_status'),
                 'contract_id' => $contract_id,
-                'approval_status' => encryptString('pending', 'approval_status'),
+                'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                 'flag' => '1',
             ]);
 
@@ -8963,7 +8963,7 @@ class ContractController extends Controller
         // die;
         ApprovalContracts::where(['contract_id' => $contract_id])->update([
             'flag' => 0,
-            'approval_status' => encryptString($userInputVal, 'approval_status')
+            'approval_status' => encryptStringx($userInputVal, 'approval_contracts.approval_status')
         ]);
 
         ApprovalContracts::where(['id' => $appRowId])->update([
@@ -8995,7 +8995,7 @@ class ContractController extends Controller
                     'previous_status' => encryptString('Draft', 'previous_status'),
                     'status' => encryptString('Draft', 'status'),
                     'contract_id' => $contract_id,
-                    'approval_status' => encryptString('pending', 'approval_status'),
+                    'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                     'flag' => '1'
                 ]);
 
@@ -9033,7 +9033,7 @@ class ContractController extends Controller
                                 'previous_status' => encryptString('Approved', 'previous_status'),
                                 'status' => encryptString('Signing', 'status'),
                                 'contract_id' => $contract_id,
-                                'approval_status' => encryptString('pending', 'approval_status'),
+                                'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                                 'flag' => '1',
                                 'approval_type_main' => 'sequential',
                                 'approval_type_row' => 'sequential',
@@ -9068,7 +9068,7 @@ class ContractController extends Controller
                                 'previous_status' => encryptString('review', 'previous_status'),
                                 'status' => encryptString('Negotiation', 'status'),
                                 'contract_id' => $contract_id,
-                                'approval_status' => encryptString('pending', 'approval_status'),
+                                'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                                 'flag' => '1'
                             ]);
 
@@ -9177,7 +9177,7 @@ class ContractController extends Controller
                                                 'orderval' => $ord,
                                                 'unique_id' => $unique_id,
                                                 'flag' => 1,
-                                                'approval_status' => encryptString('pending', 'approval_status'),
+                                                'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                                                 'approval_type_main' => $approval_type,
                                                 'approval_type_row' => $groupType,
                                                 'approver_type_row' => $groupRole,
@@ -9204,7 +9204,7 @@ class ContractController extends Controller
                                                         'orderval' => 0,
                                                         'unique_id' => $unique_id,
                                                         'flag' => 1,
-                                                        'approval_status' => encryptString('pending', 'approval_status'),
+                                                        'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                                                         'approval_type_main' => $approval_type,
                                                         'approval_type_row' => $groupType,
                                                         'approver_type_row' => $groupRole,
@@ -9230,7 +9230,7 @@ class ContractController extends Controller
                                     'orderval' => $key,
                                     'unique_id' => $unique_id,
                                     'flag' => 1,
-                                    'approval_status' => encryptString('pending', 'approval_status'),
+                                    'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                                     'approval_type_main' => $approval_type,
                                     'approval_type_row' => $approval_type,
                                     'approver_type_row' => 'Approver',
@@ -10047,7 +10047,7 @@ class ContractController extends Controller
                             'orderval' => 0,
                             'unique_id' => $unique_id,
                             'flag' => $flag,
-                            'approval_status' => encryptString('pending', 'approval_status'),
+                            'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                         ];
 
                         $nextAprroverEmail = $users[0]->Email;
@@ -10084,7 +10084,7 @@ class ContractController extends Controller
                                 'orderval' => 0,
                                 'unique_id' => $unique_id,
                                 'flag' => !$contractData->signing_date ? '1' : '0',
-                                'approval_status' => encryptString('pending', 'approval_status'),
+                                'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                             ];
                         }
                     }
@@ -11111,7 +11111,7 @@ WHERE checkId IS NOT NULL";
             'orderval' => $orderval,
             'next_action_item' => encryptString($shortDesc, 'next_action_item'),
             'next_action_description' => encryptString($desc, 'next_action_description'),
-            'approval_status' => encryptString($appType, 'approval_status'),
+            'approval_status' => encryptStringx($appType, 'approval_contracts.approval_status'),
             'attachments' => $filesData,
             'attachments_filename' => $filesDataName,
             'attachments_support' => $filesSupport,
@@ -12863,7 +12863,7 @@ WHERE checkId IS NOT NULL";
                     'previous_status' => encryptString('Review', 'previous_status'),
                     'status' => encryptString('Pre Approval', 'status'),
                     'contract_id' => $id,
-                    'approval_status' => encryptString('pending', 'approval_status'),
+                    'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                     'approval_type_main' => 'sequential',
                     'approval_type_row' => 'parallel',
                     'approver_type_row' => 'Preapprover',
@@ -13013,7 +13013,7 @@ WHERE checkId IS NOT NULL";
                 'previous_status' => encryptString($prevStatus, 'previous_status'),
                 'status' => encryptString($nextStatus, 'status'),
                 'contract_id' => $id,
-                'approval_status' => encryptString('pending', 'approval_status'),
+                'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                 'flag' => $newFlag,
                 'approval_type_main' => $groupFirst->approval_type_main,
                 'approval_type_row' => $groupFirst->approval_type_row,
@@ -13217,7 +13217,7 @@ WHERE checkId IS NOT NULL";
                             $decArr = json_decode($decUsername, true);
                             $ownerKey = $decArr['email'] ?? $ownerKey;
                         } catch (\Throwable $e) {}
-                        $approval->approval_status = encryptString('approved', $ownerKey);
+                        $approval->approval_status = encryptStringx('approved', 'approval_contracts.approval_status');
                         $approval->status = encryptString('Approved', $ownerKey);
                         $approval->flag = 0;
                         $approval->updated_on = date('Y-m-d H:i:s');
@@ -13264,7 +13264,7 @@ WHERE checkId IS NOT NULL";
 
             if ($action === 'reject') {
                 // Set to rejected and return to draft
-                $approval->approval_status = encryptString('rejected', $usernameKey);
+                $approval->approval_status = encryptStringx('rejected', 'approval_contracts.approval_status');
                 $approval->status = encryptString('Rejected', $usernameKey);
                 $approval->next_action_description = encryptString($comments, $usernameKey);
                 $approval->flag = 0;
@@ -13312,7 +13312,7 @@ WHERE checkId IS NOT NULL";
             }
 
             // Approve
-            $approval->approval_status = encryptString('approved', $usernameKey);
+            $approval->approval_status = encryptStringx('approved', 'approval_contracts.approval_status');
             $approval->status = encryptString('Approved', $usernameKey);
             $approval->next_action_description = encryptString($comments, $usernameKey);
             $approval->flag = 0;
@@ -13641,7 +13641,7 @@ WHERE checkId IS NOT NULL";
                         'button_text' => 'external',
                         'status' => encryptString('Signing', 'status'),
                         'contract_id' => $id,
-                        'approval_status' => encryptString('pending', 'approval_status'),
+                        'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                         'approval_type_main' => 'sequential',
                         'approval_type_row' => 'sequential',
                         'approver_type_row' => 'signatory',                        
@@ -14153,7 +14153,7 @@ $isCreator = false;
             'previous_status' => encryptString('Approval', 'previous_status'),
             'status' => encryptString('Signing', 'status'),
             'contract_id' => $contract->id,
-            'approval_status' => encryptString('pending', 'approval_status'),
+            'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
             'flag' => !$contract->signing_date ? '1' : '0',
             'approval_type_main' => 'sequential',
             'approval_type_row' => 'sequential',
@@ -14454,7 +14454,7 @@ $isCreator = false;
                 if ($adminEmail) $usernameKey = $adminEmail;
             }
             if ($action === 'reject') {
-                $approval->approval_status = encryptString('rejected', $usernameKey);
+                $approval->approval_status = encryptStringx('rejected', 'approval_contracts.approval_status');
                 $approval->status = encryptString('Rejected', $usernameKey);
                 $approval->next_action_description = encryptString($comments, $usernameKey);
                 $approval->flag = 0;
@@ -14467,7 +14467,7 @@ $isCreator = false;
                 DB::commit();
                 return redirect()->route('viewContract', ['id' => $id, 'tab' => 'pre-approval'])->with('success', 'You have rejected the this step.');
             }
-            $approval->approval_status = encryptString('approved', $usernameKey);
+            $approval->approval_status = encryptStringx('approved', 'approval_contracts.approval_status');
             $approval->status = encryptString('Approved', $usernameKey);
             $approval->next_action_description = encryptString($comments, $usernameKey);
             $approval->flag = 0;
@@ -14940,7 +14940,7 @@ $isCreator = false;
                     'username' => encryptString($username, 'username'),
                     'unique_id' => $groupKey,
                     'status' => encryptString('Pending', 'status'),
-                    'approval_status' => encryptString('pending', 'approval_status'),
+                    'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                     'orderval' => $orderVal,
                     'flag' => $flag,
                     'flow_type' => $flowType,
@@ -15130,7 +15130,7 @@ $isCreator = false;
                 }
 
                 // Update approval status
-                $approval->approval_status = encryptString($action === 'accept' ? 'approved' : 'rejected', $usernameKey);
+                $approval->approval_status = encryptStringx($action === 'accept' ? 'approved' : 'rejected', 'approval_contracts.approval_status');
                 $approval->status = encryptString($action === 'accept' ? 'Approved' : 'Rejected', $usernameKey);
                 $approval->next_action_description = encryptString($actionDescription, $usernameKey);
                 $approval->flag = 0;

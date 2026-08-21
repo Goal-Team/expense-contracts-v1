@@ -12,7 +12,10 @@ return [
     'myStyle' => 'light', // Options[String]: light(default), dark & system mode
     'myRTLSupport' => false, // options[Boolean]: true(default), false // To provide RTLSupport or not
     'myRTLMode' => false, // options[Boolean]: false(default), true // To set layout to RTL layout  (myRTLSupport must be true for rtl mode)
-    'hasCustomizer' => true, // options[Boolean]: true(default), false // Display customizer or not THIS WILL REMOVE INCLUDED JS FILE. SO LOCAL STORAGE WON'T WORK
+    'hasCustomizer' => false, // options[Boolean]: true(default), false // Display customizer or not THIS WILL REMOVE INCLUDED JS FILE. SO LOCAL STORAGE WON'T WORK
+    // ^ Turned off 2026-08-21, ticket 22 cut 2. Saves 37 KB of JS+CSS and stops the layout
+    //   resolving 8 stylesheet paths. Users lose light/dark and theme switching, and a saved
+    //   localStorage choice stops applying. The dev accepted that.
     'displayCustomizer' => true, // options[Boolean]: true(default), false // Display customizer UI or not, THIS WON'T REMOVE INCLUDED JS FILE. SO LOCAL STORAGE WILL WORK
     'contentLayout' => 'compact', // options[String]: 'compact', 'wide' (compact=container-xxl, wide=container-fluid)
     'navbarType' => 'sticky', // options[String]: 'sticky', 'static', 'hidden' (Only for vertical Layout)
