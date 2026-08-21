@@ -159,6 +159,20 @@ cost is shared too. The edit tab is what we measure and verify on.
   decrypts in the `WHERE` and scans all 1,605 users. Nine exact duplicate query pairs. Seven results
   no blade on this page reads. Six missing indexes. Seven correctness bugs. Commit `1f5ec54`.
 
+- [02 — Make the seeded rows look like real contracts](issues/02-seed-realistic-contract-rows.md) — the
+  page reads **60 of the 111 `contracts` columns** and the seeder wrote 40. All 20 gaps filled and 7
+  values corrected that the page could never match. Filling them took rows from ~1.5 KB to **9,390
+  bytes**, `contracts` to **110 MB against a 16 MB buffer pool**, and the page to **HTTP 500** — which
+  exposed a quadratic query nobody could see at 18 contracts. Commit `79b7dd8`.
+- [14 — breakage and one duplicate](issues/14-correctness-bugs.md) — three commits, **261 to 258
+  queries**. Guarded `$contractsoldothers` (it throws for a contract the user may not see, because the
+  global scopes make it `null`), deleted a dead query that cost 2, and made Chart View reuse the
+  timeline's approvals instead of repeating the query and its decrypt pass. Commits `63a1db2`,
+  `d1173aa`, `8858fce`.
+- [11 — indexes](issues/11-missing-indexes.md), part done — the `contracts(parentcontract, id)`
+  covering index took the page from **HTTP 500 to 4,422 ms**. It took **474 s to build** on 3,018 rows,
+  so production needs a window. Five indexes left. Commit `378ba21`.
+
 ## Order of work
 
 This tracker is markdown, so there is no query to find the frontier. The order is written down instead.
