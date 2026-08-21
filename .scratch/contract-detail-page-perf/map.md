@@ -191,6 +191,16 @@ cost is shared too. The edit tab is what we measure and verify on.
   walks cost 2,496 ms to build empty tables; and **the three scans run on every tab**, so the edit tab
   pays for a region it never renders. Report row 4. Commit `3409cc4`.
 
+- [18 - only run the Details-tab queries on the Details tab](issues/18-guard-the-scans-by-tab.md) - the
+  three whole-table scans now run only on the tab that renders their results. One rule in two new
+  helpers in [app/helpers.php](../../app/helpers.php), read by the controller and by the blade, so it is
+  not written twice. The data build left `viewContract` and became `relatedContractLists()`. Every tab
+  loads and the Details tab is **byte-identical**. `100479?tab=edit` went **4,208-4,589 ms and 258
+  queries to 455 ms and 86 queries**. The count fell far more than expected: the four
+  `availableContracts()` loops over 58 related contracts sat in the same block, so this guard also took
+  most of what tickets 12 and 13 were aiming at, on every tab but Details. Rows 5 and 6. Commit
+  `47b4932`.
+
 ## Order of work
 
 This tracker is markdown, so there is no query to find the frontier. The order is written down instead.
