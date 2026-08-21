@@ -181,6 +181,17 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | [06 dropdowns on demand](issues/06-dropdown-decision.md) | after 12, 13 | New base class plus front-end work. Bigger than it looks. |
 | [07 tabs on demand](issues/07-page-size-decision.md) | last | The one change that can silently wipe a column on save. Do it when everything else is proved. |
 
+- [14 - Correctness bugs found while reading](issues/14-correctness-bugs.md) - **the dev narrowed
+  it to speed only 2026-08-21**: bad logic that neither breaks the page nor costs time stays. Three
+  commits landed - an empty default for `$contractsoldothers` so a contract the user may not see
+  cannot throw the page (`63a1db2`), the dead `$contractsSubseqList` query gone (`d1173aa`), and one
+  approvals query instead of two (`8858fce`). Queries on `100479?tab=edit` went **261 to 258**.
+  Items 1, 2, 5, 6 and 7 are written up in the ticket as out of scope. Two findings: **nothing in
+  the repo reads `$contract->contractPartyNames`**, so item 1's fix would show nothing and would add
+  one lazy query per external party across 58 call sites; and the **Related Contracts panel did not
+  render on any contract we could load**, so a large block of `viewDetailContract.blade.php` may be
+  dead.
+
 ## Not yet specified
 
 - What `viewContract` should become. It is ~820 lines doing contract load, eSign polling and status
