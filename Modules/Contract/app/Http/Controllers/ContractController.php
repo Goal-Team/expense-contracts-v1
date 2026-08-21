@@ -267,6 +267,66 @@ class ContractController extends Controller
     private const FAMILY_TREE_MAX_DEPTH = 32;
 
     /**
+     * The recursive walk up the parentcontract chain, as one SQL fragment.
+     *
+     * Both family-tree queries need it, so it lives in one place: the Parent Contracts table
+     * reads it on its own, and the Subsequent Contracts walk uses it to find the top of the
+     * tree before it walks down. The two walks differ only in which side of the join carries
+     * parentcontract, so nothing else is shared and nothing is copied.
+     *
+     * The fragment names a common table expression called ancestry with two columns, pid and
+     * depth. Row 1 is the contract's own parent, row 2 its grandparent, and so on. It takes one
+     * binding, the contract id.
+     */
+    private function ancestryCte(): string
+    {
+        return "ancestry (pid, depth) AS (
+                    SELECT c.parentcontract, 1
+                      FROM contracts c
+                     WHERE c.id = ? AND c.parentcontract > 0
+                    UNION ALL
+                    SELECT p.parentcontract, a.depth + 1
+                      FROM contracts p
+                      JOIN ancestry a ON p.id = a.pid
+                     WHERE p.parentcontract > 0 AND a.depth < " . self::FAMILY_TREE_MAX_DEPTH . "
+                )";
+    }
+
+    /**
+     * The ids of this contract's ancestors, nearest parent first - what the Parent Contracts
+     * table on the Details tab lists.
+     *
+     * A root contract returns an empty array. The old query returned one row holding 0 for that
+     * case, and the caller bound that 0 into a whereIn that no id ever matched.
+     */
+    private function ancestorContractIds($id): array
+    {
+        // DB::select, not Eloquent, and this is the documented exception in CLAUDE.md: the
+        // query is a WITH RECURSIVE, and Eloquent has no expression for a common table
+        // expression that refers to itself.
+        //
+        // The old shape walked the table with the session variable @idlist and FIND_IN_SET. It
+        // read every row of the table and sorted them, so it cost 222-255 ms on 3,018 rows, and
+        // no index could help it. It was also wrong: see the ticket.
+        //
+        // The one binding is this contract id, so no list of ids crosses the wire.
+        $rows = DB::select(
+            "WITH RECURSIVE " . $this->ancestryCte() . "
+             SELECT pid FROM ancestry ORDER BY depth",
+            [$id]
+        );
+
+        $ids = array_map(static fn ($row) => (int) $row->pid, $rows);
+
+        Log::debug('Contract detail page walked up the contract family tree', [
+            'contract_id' => $id,
+            'ancestors' => count($ids),
+        ]);
+
+        return $ids;
+    }
+
+    /**
      * The ids of every contract in this contract's family tree below the top of it - what the
      * Subsequent Contracts table on the Details tab lists.
      *
@@ -291,16 +351,7 @@ class ContractController extends Controller
         //
         // Both bindings are this one contract id, so no list of ids crosses the wire.
         $rows = DB::select(
-            "WITH RECURSIVE ancestry (pid, depth) AS (
-                 SELECT c.parentcontract, 1
-                   FROM contracts c
-                  WHERE c.id = ? AND c.parentcontract > 0
-                 UNION ALL
-                 SELECT p.parentcontract, a.depth + 1
-                   FROM contracts p
-                   JOIN ancestry a ON p.id = a.pid
-                  WHERE p.parentcontract > 0 AND a.depth < " . self::FAMILY_TREE_MAX_DEPTH . "
-             ),
+            "WITH RECURSIVE " . $this->ancestryCte() . ",
              descendants (id, depth) AS (
                  SELECT c.id, 1
                    FROM contracts c
@@ -400,23 +451,7 @@ class ContractController extends Controller
 
 
         //Get Parent Contracts
-        $getParentContracts = "SELECT parentcontract FROM
-        (SELECT id,parentcontract,
-               CASE WHEN id in ('" . $id . "') THEN @idlist := CONCAT(IFNULL(@idlist,''),',',parentcontract)
-                    WHEN FIND_IN_SET(id,@idlist) THEN @idlist := CONCAT(@idlist,',',parentcontract)
-                    END as checkId
-        FROM contracts
-        ORDER BY id DESC)T
-        WHERE checkId IS NOT NULL";
-
-        $contractsparentListQuery = DB::select($getParentContracts);
-
-        $parentContractArr = [];
-
-        foreach ($contractsparentListQuery as $conpar) {
-            $parentContractArr[] = $conpar->parentcontract;
-        }
-
+        $parentContractArr = $this->ancestorContractIds($id);
 
         $contractsparentList = Contract::select('*')->whereIn('id', $parentContractArr)->get();
 
