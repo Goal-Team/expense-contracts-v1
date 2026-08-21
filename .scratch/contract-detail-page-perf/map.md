@@ -397,6 +397,23 @@ cost is shared too. The edit tab is what we measure and verify on.
   grounds. That ruling was about the IIS feature, which needs an admin and a machine-wide file; this is
   one middleware in the repo. `git revert 00d6219` undoes it whole and touches nothing else.
 
+- [17 — Compress the HTML document](issues/17-gzip-the-html-document.md) — **326,254 bytes to 35,432,
+  9.2x, for 6-9 ms of CPU.** Cold whole page 2,979,504 to 2,688,682 (9.8%); **warm whole page 326,854 to
+  35,732 (89%)** — warm is the bigger relative win because every asset comes from cache and the document
+  *is* the page.
+  **The ticket's premise was wrong and the agent checked rather than trusting it. This is not a config
+  change.** `compdyn.dll` — the IIS Dynamic Content Compression module — **is not on this server's disk**,
+  `applicationHost.config` holds no `dynamicTypes` list, and the string `DynamicCompression` appears zero
+  times in it. So the `web.config` lines the ticket asked for would have been valid attributes with no
+  module behind them. **No config line could ever have worked.** `web.config` was not touched.
+  The fix is one middleware, `app/Http/Middleware/CompressResponse.php`, registered first in the global
+  stack so it is last to touch the response. `gzencode` level 6, measured as the knee: level 1 gives
+  42,790 bytes in 2 ms, level 9 gives 34,648 in 17 ms. It refuses streamed and binary responses so an
+  attachment download is never pulled into memory, skips already-compressed types, and sets
+  `Vary: Accept-Encoding` so no proxy hands a gzipped body to a client that did not ask.
+  Also answered the `frequentHitThreshold` warning: it cannot delay this, because PHP has no hit counter,
+  so the **first** request comes back gzipped. Commit `00d6219`.
+
 ## Order of work
 
 This tracker is markdown, so there is no query to find the frontier. The order is written down instead.
@@ -424,7 +441,7 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | [13 visibleTo scope](issues/13-visible-to-scope.md) | after 21 | **Now the whole remaining problem on Details, and it is a scaling one.** The query count grows with the family tree: 369 on 100479, 426 on contract 1, **619 on 101101** with its 20-child fan-out. |
 | [05 split viewContract](issues/05-query-layer-decision.md) | after 09, 12, 13 | Moving code last, so it is not moved twice. |
 | [10 eSign off the page load](issues/10-esign-check-after-page-render.md) | after 04 | Independent of the query work. **Unmeasured** — the block only fires on a Signing contract and the test set has none, so it needs a copy of one set to Signing first. |
-| ~~[17 gzip the HTML](issues/17-gzip-the-html-document.md)~~ | **CLOSED** | **Document 326,254 bytes to 35,432, 9.2x, for 6-9 ms of CPU.** Not config after all: IIS dynamic compression is **not installed** on this server, so it is one PHP middleware. |
+| ~~[17 gzip the HTML](issues/17-gzip-the-html-document.md)~~ | **CLOSED** | Document **326,254 to 35,432 bytes**, 9.2x, for 6-9 ms of CPU. Not config — IIS dynamic compression is not installed on this server. |
 | [06 dropdowns on demand](issues/06-dropdown-decision.md) | after 12, 13 | **Demoted by the baseline: the dropdown data costs about 60 ms, 1.4%.** This is a page-weight change, not a speed change. Still worth doing, no longer urgent. |
 | [07 tabs on demand](issues/07-page-size-decision.md) | last | Still last — it is the one change that can silently wipe a column on save. **Ticket 18 takes most of what ticket 16 credited to this one, at a fraction of the risk.** Weigh whether the rest is worth it once 18 lands. |
 
@@ -458,6 +475,10 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
   `ContractController` holds `$reqfieldsText`, a `key => label` map of exactly the right shape, which
   looks like the answer — but it is a guess, so ticket 03 guarded the loop and renders an empty table.
   Needs the dev.
+- **This page reacts to URL shapes nobody has mapped.** `?tab=edit` runs 86 queries;
+  `?tab=edit&_n=<anything>` runs **96**. Same with compression on and off, so it is not that change.
+  Ticket 03 already found `?tab=<unknown>` serves the Details body. Something reads the query string in a
+  way no ticket has accounted for. Cheap to find, nobody has looked.
 - Why `SHOW TABLES` runs twice on every page view. Something asks the schema on a page load. Noticed by
   the baseline, cheap, unexplained.
 
