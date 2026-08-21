@@ -714,6 +714,10 @@ class ContractController extends Controller
 
         $contractsold = Contract::select('*')->where('id', $id)->first();
 
+        // The blade loops $contractsoldothers with no guard, so it always needs a value.
+        // Without this default a missing contract row throws the page.
+        $contractsoldothers = collect();
+
         if ($contractsold) {
             $contractsoldothers = Contract::select('*')->where([
                 ['catgoery_id', $contractsold->catgoery_id],
