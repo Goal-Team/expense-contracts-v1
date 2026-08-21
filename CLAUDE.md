@@ -32,8 +32,20 @@ is a proper migration with a working `down()`, plus a plan for backfilling exist
 
 ## Query rules
 
-**Never pass a list of ids into `whereIn`. Use a join.** Set by the dev 2026-08-21. The pattern to
-delete on sight is a `pluck()` feeding a `whereIn()`:
+**Write Eloquent, not raw SQL.** Set by the dev 2026-08-21. Reach for the tools in this order, and
+only move down the list when the one above genuinely cannot do the job:
+
+1. **Eloquent relationships** — `whereHas`, `withCount`, `with`. Reads like the domain, and it is the
+   first choice. If the relationship does not exist on the model yet, **add it** rather than dropping
+   a level.
+2. **Eloquent on a subquery** — `whereIn('id', Model::select('id')->where(...))`. Still Eloquent, and
+   it keeps the ids inside the database.
+3. **Query builder `join`** — named columns, no SQL string.
+4. **`DB::raw` / `whereRaw` / `selectRaw`** — last resort. If you use one, say in a comment on the line
+   why Eloquent could not express it.
+
+**Never pass a list of ids into `whereIn`.** The pattern to delete on sight is a `pluck()` feeding a
+`whereIn()`:
 
 ```php
 // wrong - two queries, and it breaks silently
@@ -41,22 +53,41 @@ $ids  = ContractPartyData::where('custom_field_group_id', $id)->pluck('contract_
 $rows = ContractPartyData::whereIn('contract_party_location_id', $ids)->pluck('custom_field_group_id');
 ```
 
-Three things are wrong with it. It runs two queries where one join does the work. It carries every id
+Three things are wrong with it. It runs two queries where one does the work. It carries every id
 across the wire as a bound parameter. And **on this stack a `whereIn` with 1,000 or more bound values
 silently returns zero rows** — no error, no warning, just an empty result and a blank section of the
 page. See [.scratch/wherein-1000-bug/spec.md](.scratch/wherein-1000-bug/spec.md).
 
-Write it as one query instead — a `join`, or a `whereExists` / `whereIn` on a **subquery**, which
-keeps the ids inside the database and binds nothing:
+Write it as one query, passing the **query** to `whereIn` instead of the values. Nothing is bound and
+nothing crosses the wire:
 
 ```php
-$rows = ContractPartyData::join('contract_party_data as src', 'src.contract_party_location_id', '=', 'contract_party_data.contract_party_location_id')
-    ->where('src.custom_field_group_id', $id)
-    ->pluck('contract_party_data.custom_field_group_id');
+$rows = ContractPartyData::whereIn(
+        'contract_party_location_id',
+        ContractPartyData::select('contract_party_location_id')->where('custom_field_group_id', $id)
+    )
+    ->distinct()
+    ->pluck('custom_field_group_id');
 ```
 
 `whereIn` with a short, fixed list of literal values — `whereIn('contract_status', ['Draft', 'Review'])`
 — is fine. The rule is about lists of ids that come out of another query and grow with the data.
+
+**Watch the row count when you fold two queries into one.** A join can return duplicates where a
+`pluck()` collapsed them. Add `distinct()` where the old code relied on that, and compare the id sets
+before and after — not the look of the page.
+
+**A `Contract` subquery needs one extra step.** `Contract::boot()`
+([app/Models/Contract.php:114](app/Models/Contract.php:114)) adds a global scope that calls
+`select('*')`, and it runs **after** your own `select()`, so it overwrites it. A one-column subquery
+becomes an all-columns subquery and MySQL answers `Operand should contain 1 column`. Drop that one
+scope by name:
+
+```php
+Contract::withoutGlobalScope('accessLevelSelect')->select('id')->where(...)
+```
+
+Drop only that scope. `ContractRoledBasedScope` is the visibility rule and must stay.
 
 ## Logging and debug output
 

@@ -31,10 +31,26 @@ Four, found while charting. Ticket 08 confirms the list and the line numbers, an
 All four are in
 [`ContractController::viewContract`](../../../Modules/Contract/app/Http/Controllers/ContractController.php:259).
 
+## How to write the replacement
+
+**Eloquent, not raw SQL** — the dev's call 2026-08-21, now in [CLAUDE.md](../../../CLAUDE.md) under
+"Query rules". Relationships first (`whereHas`, and add the relationship to the model if it is
+missing), then `whereIn` on an Eloquent **subquery**, then a query builder `join`, and `DB::raw` only
+if nothing above can express it.
+
+**Two traps on this page:**
+
+- `Contract::select('id')` used as a subquery does **not** return one column. The global scope in
+  `Contract::boot()` calls `select('*')` after your select and overwrites it, and MySQL answers
+  `Operand should contain 1 column`. Use
+  `Contract::withoutGlobalScope('accessLevelSelect')->select('id')`. Leave
+  `ContractRoledBasedScope` alone — that one is the visibility rule.
+- The old code leaned on `pluck()` collapsing duplicates. A join does not. Add `distinct()` where it
+  matters.
+
 ## Done when
 
-- Every one is a single query: a `join`, or a `whereIn` / `whereExists` on a **subquery**, so no id
-  is ever bound.
+- Every one is a single query, written in Eloquent, so no id is ever bound.
 - **The result is identical.** Prove it before and after on the same contract, by comparing the
   returned id sets, not by eye. A join can change the row count where a `whereIn` on a distinct
   plucked list did not — watch for duplicates and add `distinct()` where the old code relied on
