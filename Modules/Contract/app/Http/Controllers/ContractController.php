@@ -257,6 +257,76 @@ class ContractController extends Controller
     }
 
     /**
+     * How deep the contract family tree is allowed to be walked, up or down.
+     *
+     * The seeded set is 3 deep and real renewal chains are short. The cap is here to stop a
+     * cycle: a contract whose parent chain points back at itself makes a recursive query run
+     * until MariaDB's max_recursive_iterations stops it, which on this server is millions of
+     * passes. 32 is far above any real chain and it ends a bad one at once.
+     */
+    private const FAMILY_TREE_MAX_DEPTH = 32;
+
+    /**
+     * The ids of every contract in this contract's family tree below the top of it - what the
+     * Subsequent Contracts table on the Details tab lists.
+     *
+     * The walk goes up the parentcontract chain to the top, then down the whole tree from
+     * there, so a contract sees its siblings and cousins as well as its own renewals. That is
+     * what the old query produced: it ran one downward walk for each ancestor, and the walk
+     * from the highest ancestor already covers every lower one.
+     *
+     * It returns ids. The old code returned one comma-joined string and the caller exploded
+     * it, which gave [''] when the walk found nothing - the bug ticket 01 fixed elsewhere.
+     */
+    private function subsequentContractIds($id): array
+    {
+        // DB::select, not Eloquent, and this is the documented exception in CLAUDE.md: the
+        // query is a WITH RECURSIVE. Eloquent has no expression for a common table expression
+        // that refers to itself, and a tree of unknown depth cannot be read in one query any
+        // other way. MariaDB has WITH RECURSIVE from 10.2; this server is 10.4.24.
+        //
+        // The old shape walked the tree with the session variable @pv and FIND_IN_SET. It read
+        // the whole contracts table once for every row of the table, so it cost 2.0-5.4 s on
+        // 3,018 rows and it gets slower with the square of the contract count.
+        //
+        // Both bindings are this one contract id, so no list of ids crosses the wire.
+        $rows = DB::select(
+            "WITH RECURSIVE ancestry (pid, depth) AS (
+                 SELECT c.parentcontract, 1
+                   FROM contracts c
+                  WHERE c.id = ? AND c.parentcontract > 0
+                 UNION ALL
+                 SELECT p.parentcontract, a.depth + 1
+                   FROM contracts p
+                   JOIN ancestry a ON p.id = a.pid
+                  WHERE p.parentcontract > 0 AND a.depth < " . self::FAMILY_TREE_MAX_DEPTH . "
+             ),
+             descendants (id, depth) AS (
+                 SELECT c.id, 1
+                   FROM contracts c
+                  WHERE c.parentcontract = COALESCE(
+                            (SELECT pid FROM ancestry ORDER BY depth DESC LIMIT 1), ?)
+                 UNION ALL
+                 SELECT c.id, d.depth + 1
+                   FROM contracts c
+                   JOIN descendants d ON c.parentcontract = d.id
+                  WHERE d.depth < " . self::FAMILY_TREE_MAX_DEPTH . "
+             )
+             SELECT DISTINCT id FROM descendants",
+            [$id, $id]
+        );
+
+        $ids = array_map(static fn ($row) => (int) $row->id, $rows);
+
+        Log::debug('Contract detail page walked the contract family tree', [
+            'contract_id' => $id,
+            'descendants' => count($ids),
+        ]);
+
+        return $ids;
+    }
+
+    /**
      * Build the four Related Contracts lists the Details tab shows.
      *
      * This code came out of viewContract(). It is one concern - the contracts that relate to this
@@ -354,37 +424,7 @@ class ContractController extends Controller
 
 
         //Get Susequesnt Contracts
-        $childsList = NULL;
-        $finalListChild = [];
-
-
-        if (count($parentContractArr) == 1 && $parentContractArr[0] == 0) {
-            $parentContractArr[] = $id;
-        }
-
-
-
-        foreach ($parentContractArr as $parCon) {
-            if ($parCon > 0) {
-                $getSubSequesntContracts = "SELECT GROUP_CONCAT(lv SEPARATOR ',') as childList FROM (
-                                   SELECT @pv:=(SELECT GROUP_CONCAT(id SEPARATOR ',') FROM contracts 
-                                   WHERE FIND_IN_SET(parentcontract, @pv)) AS lv FROM contracts 
-                                   JOIN
-                                   (SELECT @pv:=" . $parCon . ") tmp
-                                   ) a";
-
-                $contractsSubSeqList = DB::select($getSubSequesntContracts);
-
-                foreach ($contractsSubSeqList as $conSubSeq) {
-
-                    if ($conSubSeq->childList != "" && $conSubSeq->childList !== NULL) {
-                        $childsList .= $conSubSeq->childList;
-                    }
-                }
-
-                $finalListChild = explode(",", $childsList);
-            }
-        }
+        $finalListChild = $this->subsequentContractIds($id);
 
         $contractsSubseqList = Contract::select('*')->whereIn('id', $finalListChild)->where('id', '<>', $id)->where('status', 1)->get();
 
