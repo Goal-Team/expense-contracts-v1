@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <system.web>
+        <httpRuntime maxRequestLength="2147483647" requestLengthDiskThreshold="2147483647" executionTimeout="24000" />
+    </system.web>
+    <system.webServer>
+            <security>
+                <requestFiltering>
+                    <requestLimits maxAllowedContentLength="4294967295" />
+                </requestFiltering>
+        </security>
+        <defaultDocument>
+            <files>
+            <clear />
+                <add value="index.php" />
+                <add value="index.html" />
+                <add value="index.htm" />
+                <add value="Default.htm" />
+                <add value="Default.asp" />
+                <add value="iisstart.htm" />
+            </files>
+        </defaultDocument>
+    
+        <rewrite>
+            <rules>
+                <rule name="imported rule 3" stopProcessing="true">
+                    <match url="^(.*)$" ignoreCase="false" />
+                    <conditions logicalGrouping="MatchAll">
+                        <add input="{REQUEST_FILENAME}" matchType="IsDirectory" negate="true" />
+                        <add input="{REQUEST_FILENAME}" matchType="IsFile" negate="true" />
+                    </conditions>
+                    <action type="Rewrite" url="index.php/{R:1}" />
+                </rule>     
+            </rules>
+        </rewrite>
+    </system.webServer>
+</configuration>

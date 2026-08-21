@@ -1149,7 +1149,7 @@ class ContractImportController extends Controller
                                             'orderval' => $key,
                                             'unique_id' => $unique_id,
                                             'flag' => 1,
-                                            'approval_status' => encryptString('pending', 'approval_status'),
+                                            'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                                         ]);
                                         if ($approval_type == 'sequential'){
                                             $nextAprroverEmail = $users[0]->Email;
@@ -1171,7 +1171,7 @@ class ContractImportController extends Controller
                                         'orderval' => 0,
                                         'unique_id' => $unique_id,
                                         'flag' => 1,
-                                        'approval_status' => encryptString('pending', 'approval_status'),
+                                        'approval_status' => encryptStringx('pending', 'approval_contracts.approval_status'),
                                     ]);
                                     
                                     $nextAprroverEmail = $users[0]->Email;

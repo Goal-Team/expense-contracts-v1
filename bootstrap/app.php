@@ -11,7 +11,16 @@
 |
 */
 
-$app = new Illuminate\Foundation\Application(
+// Local-only bootstrap-phase instrumentation. Falls back to the stock
+// Application unless storage/perf-boot-timing.enabled exists, so deleting that
+// marker file disables it entirely. See app/Perf/PerfApplication.php.
+$appClass = Illuminate\Foundation\Application::class;
+if (is_file(__DIR__.'/../storage/perf-boot-timing.enabled')
+    && class_exists(App\Perf\PerfApplication::class)) {
+    $appClass = App\Perf\PerfApplication::class;
+}
+
+$app = new $appClass(
     $_ENV['APP_BASE_PATH'] ?? dirname(__DIR__)
 );
 

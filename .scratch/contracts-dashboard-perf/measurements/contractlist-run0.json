@@ -1,0 +1,304 @@
+{
+  "url": "http://apollo.contracts.legality:8888/contracts/contracts/list",
+  "wallClockMs": 24698,
+  "document": {
+    "status": 200,
+    "ttfbMs": 2095,
+    "totalMs": 2110,
+    "encodedBytes": 67014,
+    "rawHtmlBytes": 65335
+  },
+  "optionAccounting": {
+    "totalOptionTags": 163,
+    "totalOptionBytes": 13306,
+    "pctOfHtml": 20.37,
+    "selects": [
+      {
+        "identifier": "class=\"form-select select2 contracttype filterContractList\"",
+        "optionCount": 73,
+        "bytes": 11610
+      },
+      {
+        "identifier": "class=\"form-select select2 filterContractList\"",
+        "optionCount": 63,
+        "bytes": 7123
+      },
+      {
+        "identifier": "class=\"form-select select2 filterContractList\"",
+        "optionCount": 14,
+        "bytes": 1676
+      },
+      {
+        "identifier": "class=\"select2 mt-2\"",
+        "optionCount": 10,
+        "bytes": 674
+      },
+      {
+        "identifier": "class=\"form-select select2 filterContractList\"",
+        "optionCount": 3,
+        "bytes": 447
+      }
+    ]
+  },
+  "inlineScriptBytes": 3605,
+  "headAssetRefs": [
+    "http://apollo.contracts.legality:8888/contracts/assets/fonts/font-main.css",
+    "http://[::1]:5173/@vite/client",
+    "http://[::1]:5173/resources/assets/vendor/fonts/tabler-icons.scss",
+    "http://[::1]:5173/resources/assets/vendor/fonts/fontawesome.scss",
+    "http://[::1]:5173/resources/assets/vendor/fonts/flag-icons.scss",
+    "http://[::1]:5173/@vite/client",
+    "http://[::1]:5173/resources/assets/vendor/scss/rtl/core.scss",
+    "http://[::1]:5173/resources/assets/vendor/scss/rtl/theme-default.scss",
+    "http://[::1]:5173/resources/assets/css/demo.css",
+    "http://[::1]:5173/@vite/client",
+    "http://[::1]:5173/resources/assets/vendor/libs/node-waves/node-waves.scss",
+    "http://[::1]:5173/resources/assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.scss",
+    "http://[::1]:5173/resources/assets/vendor/libs/typeahead-js/typeahead.scss",
+    "http://[::1]:5173/@vite/client",
+    "http://[::1]:5173/resources/assets/vendor/libs/datatables-bs5/datatables.bootstrap5.scss",
+    "http://[::1]:5173/resources/assets/vendor/libs/datatables-responsive-bs5/responsive.bootstrap5.scss",
+    "http://[::1]:5173/resources/assets/vendor/libs/flatpickr/flatpickr.scss",
+    "http://[::1]:5173/resources/assets/vendor/libs/select2/select2.scss",
+    "http://[::1]:5173/resources/assets/vendor/libs/animate-css/animate.scss",
+    "http://[::1]:5173/resources/assets/vendor/libs/sweetalert2/sweetalert2.scss",
+    "http://[::1]:5173/@vite/client",
+    "http://[::1]:5173/resources/assets/vendor/js/helpers.js",
+    "http://[::1]:5173/@vite/client",
+    "http://[::1]:5173/resources/assets/vendor/js/template-customizer.js",
+    "http://[::1]:5173/@vite/client",
+    "http://[::1]:5173/resources/assets/js/config.js"
+  ],
+  "hasDeadViteHost": true,
+  "requestSummary": {
+    "total": 37,
+    "failed": 34,
+    "byType": {
+      "Document": 1,
+      "Stylesheet": 16,
+      "Script": 19,
+      "Image": 1
+    },
+    "totalEncodedBytes": 168775
+  },
+  "failures": [
+    {
+      "url": "http://apollo.contracts.legality:8888/contracts/assets/fonts/font-main.css",
+      "error": "net::ERR_ABORTED",
+      "durMs": 1269
+    },
+    {
+      "url": "http://[::1]:5173/@vite/client",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 2057
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/fonts/tabler-icons.scss",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 2057
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/fonts/fontawesome.scss",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 2292
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/fonts/flag-icons.scss",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 3308
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/scss/rtl/core.scss",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 4077
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/scss/rtl/theme-default.scss",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 4078
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/css/demo.css",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 4321
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/node-waves/node-waves.scss",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 5331
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.scss",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 6111
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/typeahead-js/typeahead.scss",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 6111
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/datatables-bs5/datatables.bootstrap5.scss",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 6345
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/datatables-responsive-bs5/responsive.bootstrap5.scss",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 7346
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/flatpickr/flatpickr.scss",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 8132
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/select2/select2.scss",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 8134
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/animate-css/animate.scss",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 8383
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/sweetalert2/sweetalert2.scss",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 9381
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/js/helpers.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 10166
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/js/template-customizer.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 10416
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/js/config.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 10417
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/jquery/jquery.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 11416
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/popper/popper.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 12284
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/js/bootstrap.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 12448
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/node-waves/node-waves.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 12450
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/perfect-scrollbar/perfect-scrollbar.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 13447
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/hammer/hammer.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 14327
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/typeahead-js/typeahead.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 14477
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/js/menu.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 14477
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/datatables-bs5/datatables-bootstrap5.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 15483
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/moment/moment.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 16367
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/flatpickr/flatpickr.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 16516
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/select2/select2.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 16516
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/vendor/libs/sweetalert2/sweetalert2.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 17520
+    },
+    {
+      "url": "http://[::1]:5173/resources/assets/js/main.js",
+      "error": "net::ERR_CONNECTION_REFUSED",
+      "durMs": 18386
+    }
+  ],
+  "slowestRequests": [
+    {
+      "url": "http://apollo.contracts.legality:8888/contracts/Modules/Contract/resources/assets/js/contractlist.js",
+      "type": "Script",
+      "status": 200,
+      "durMs": 16685,
+      "ttfbMs": 164,
+      "bytes": 54994
+    },
+    {
+      "url": "http://apollo.contracts.legality:8888/contracts/assets/logo/OnTrackLogo.png",
+      "type": "Image",
+      "status": 200,
+      "durMs": 10271,
+      "ttfbMs": 99,
+      "bytes": 46767
+    },
+    {
+      "url": "http://apollo.contracts.legality:8888/contracts/contracts/list",
+      "type": "Document",
+      "status": 200,
+      "durMs": 2110,
+      "ttfbMs": 2095,
+      "bytes": 67014
+    }
+  ],
+  "metrics": [
+    {
+      "name": "LayoutDuration",
+      "value": 0
+    },
+    {
+      "name": "RecalcStyleDuration",
+      "value": 0
+    },
+    {
+      "name": "ScriptDuration",
+      "value": 0
+    },
+    {
+      "name": "TaskDuration",
+      "value": 0.000073
+    },
+    {
+      "name": "DomContentLoaded",
+      "value": 16636.281988
+    }
+  ]
+}

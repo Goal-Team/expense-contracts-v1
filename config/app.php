@@ -175,7 +175,9 @@ return [
     App\Providers\EventServiceProvider::class,
     App\Providers\RouteServiceProvider::class,
     App\Providers\MenuServiceProvider::class,
-    App\Http\Customviewer\LaravelFileViewerServiceProvider::class
+    App\Http\Customviewer\LaravelFileViewerServiceProvider::class,
+    App\Providers\PerfTimingServiceProvider::class, // local-only perf timing; remove with app/Perf + PerfTimingMiddleware
+    App\Providers\LocalDebugbarServiceProvider::class // local-only Debugbar; gated on APP_DEBUG && APP_ENV=local (ticket 16)
 
   ])->toArray(),
 
@@ -200,6 +202,32 @@ return [
   'APP_ENCRYPTION_KEY' => "c0n|r@(t$".$linkarray[0]."4",
 
   'APP_LEGACY_KEY' => "G0@L-Pr0".$linkarray[0].'common',
+
+  /*
+  | Columns that encryptStringx() stores as readable text instead of AES-128-CBC ciphertext.
+  |
+  | The label passed as encryptString()/decryptString()'s second argument is the column name.
+  | Entries here are written `table.column`, never a bare column name: four tables in this database
+  | have an approval_status column - approval_contracts, approval_parties, financial_limit and
+  | party_approval_rules - and only the first one is meant to be plain. A bare 'approval_status'
+  | would have quietly turned the other three plain as well.
+  | A column listed here is written plain, so SQL can filter, group and index it. Reads need no
+  | change at all: decryptString() only decrypts a value that starts with 'ey', and returns
+  | anything else untouched - so a plain column and a ciphertext column read the same way, and
+  | half-converted data is safe for as long as it takes to finish converting.
+  |
+  | approval_contracts.approval_status added 2026-08-21 (ticket 17). It holds one of three
+  | lowercase words - approved, pending, rejected - none of them a secret, and the same approver
+  | emails it guarded by association already sit in plaintext in approval_group_approvers and
+  | financial_limit. Encrypting it with a random IV made it unmatchable, so the dashboard had to
+  | pull 13,861 rows into PHP and decrypt every one to count six numbers.
+  |
+  | Never add a column here whose value is genuinely secret, and never one whose plain values
+  | could start with 'ey' - decryptString() would try to decrypt them and throw.
+  */
+  'PLAINTEXT_COLUMNS' => [
+    'approval_contracts.approval_status',
+  ],
     
   'APPROVAL_TYPES' => ['', 'edit', 'legacy', 'legacy_edit', 'renewed', 'ext2', 'addendum', 'terminate'],
 

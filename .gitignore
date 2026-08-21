@@ -31,11 +31,19 @@ yarn-error.log
 /public/js
 app/Helpers/barryvdh/laravel-dompdf/CHANGELOG.md
 app/Helpers/barryvdh/laravel-dompdf/composer.json
-vite.config.mjs.timestamp-1727949545676-a6c5910f065c.mjs
-vite.config.mjs.timestamp-1727949545676-a6c5910f065c.mjs
-vite.config.mjs.timestamp-1727949545676-a6c5910f065c.mjs
-web.config
-*.mjs
+
+# web.config was ignored until 2026-08-21. It is tracked now, on the dev's call, because this
+# effort puts real changes in it - the "static file 404 without booting PHP" rewrite rule and the
+# <location path="build/assets"> cache rule - and an untracked file means every server has to be
+# edited by hand with nothing to diff against.
+#
+# CARE ON THE FIRST DEPLOY: the production server has its own web.config that has never been in
+# git. Compare the two before you let a deploy overwrite it. See DEPLOYMENT.md section 7.
+# web.config
+# Vite writes a throwaway vite.config.<ext>.timestamp-*.mjs next to the config
+# while loading it. Ignore only those. A blanket `*.mjs` used to sit here and it
+# is what kept the root vite config out of git entirely.
+/vite.config.*.timestamp-*.mjs
 /plans
 database/phase1_migrations.sql
 /bootstrap/cache

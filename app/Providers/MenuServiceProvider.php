@@ -2,9 +2,8 @@
 
 namespace App\Providers;
 
+use App\Menu\MenuDataResolver;
 use Illuminate\Support\ServiceProvider;
-use App\Models\MenuConfig;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Facades\View;
 
 class MenuServiceProvider extends ServiceProvider
@@ -22,73 +21,22 @@ class MenuServiceProvider extends ServiceProvider
    */
   public function boot(): void
   {
-        View::composer('*', function ($view) {
-            // Load defaults from the static JSON files so we always have a fallback
-            $verticalMenuData = null;
-            $horizontalMenuData = null;
-            // Try to override with DB-backed menu for the current user's role (if present)
-            //try {
-              $currentRole = session()->get('contractSessionUserRole') ?? null;
+        // Named views, not '*'. Only these two read $menuData, and they are the only two menu view
+        // names in the codebase - every layout, root and all five modules, includes these same two
+        // (contentNavbarLayout.blade.php:39 and horizontalLayout.blade.php:54). With '*' this closure
+        // ran once for each of the 16 views the dashboard composes, and 14 of those runs handed a
+        // value to a view that never reads it.
+        //
+        // The lookup itself lives in MenuDataResolver and is cached, so only the first run of a cache
+        // generation touches the database. Change G, .scratch/contracts-dashboard-perf/spec.md 8b.
+        View::composer([
+            'layouts.sections.menu.verticalMenu',
+            'layouts.sections.menu.horizontalMenu',
+        ], function ($view) {
+            $currentRole = session()->get('contractSessionUserRole') ?? null;
 
-              if (Schema::hasTable('menu_configs')) {
-                try {
-                  // Check admin flag whether to use admin-level (per role) menu configuration
-                  $useAdminLevel = (bool) admin_setting('enable_admin_level_menu_config', false);
-
-                  // Helper to fetch menu config by type with fallbacks:
-                  // If admin-level enabled: try current role first
-                  // Otherwise: skip role lookup and use 'default' role from table
-                  $getConfig = function($type) use ($currentRole, $useAdminLevel) {
-                    $config = null;
-
-                    if ($useAdminLevel && $currentRole) {
-                      $config = MenuConfig::where('menu_type', $type)
-                        ->where('role', $currentRole)
-                        ->where('active', 1)
-                        ->first();
-                    }
-
-                    // Fallback to explicit default role (case-insensitive)
-                    if (! $config) {
-                      $config = MenuConfig::where('menu_type', $type)
-                        ->whereRaw('LOWER(role) = ?', [strtolower('default')])
-                        ->where('active', 1)
-                        ->first();
-                    }
-
-                    // Last fallback: any active entry with NULL role
-                    if (! $config) {
-                      $config = MenuConfig::where('menu_type', $type)
-                        ->whereNull('role')
-                        ->where('active', 1)
-                        ->first();
-                    }
-
-                    return $config;
-                  };
-
-                  $verticalConfig = $getConfig('Vertical');
-                  $horizontalConfig = $getConfig('Horizontal');
-
-                  if ($verticalConfig && !empty($verticalConfig->menu_json)) {
-                    $verticalMenuData = json_decode($verticalConfig->menu_json);
-                  }
-                  if ($horizontalConfig && !empty($horizontalConfig->menu_json)) {
-                    $horizontalMenuData = json_decode($horizontalConfig->menu_json);
-                  }
-                } catch (\Exception $e) {
-                  // Ignore errors and fall back to static defaults
-                }
-              }
-            //} catch (\Exception $e) {
-              // Ignore errors and fall back to static defaults
-            //}
-    
-            $view->with('menuData', [
-                $verticalMenuData,
-                $horizontalMenuData
-            ]);
-        });    
+            $view->with('menuData', MenuDataResolver::resolveForRole($currentRole));
+        });
   }
-    
+
 }
