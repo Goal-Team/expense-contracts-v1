@@ -300,6 +300,22 @@ cost is shared too. The edit tab is what we measure and verify on.
   tab. Commits `2f20da8`, `9989237`, `bab22dc`, `d3be98d`, `ddfc093`, `63a1c43`, `77e0ecd`,
   `41483c6`, `74776e6`.
 
+- [03 — Walk every tab and collect what else is broken](issues/03-find-remaining-breaks.md) — **nine
+  breaks fixed, one commit each, and every tab now returns 200** across 52 loads on five contracts. Four
+  were known; five were not, and two of those were URLs nobody had tried: `?attachment=` ran a `die()`
+  and returned a 70-character page, and `?tab=timelineedit` looped a variable nothing sets. Also fixed:
+  `?tab=historical` (`$_GET['history']` unguarded — four earlier agents hit this), the four unguarded
+  reminder `explode()` calls on the view side that ticket 01 fixed only on the edit side,
+  `json_decode($contract->rules_id)` twice, `$ContractsFinal[0]` read 122 lines before the empty-list
+  redirect, three id-to-name lookups reading `->first()->name`, and a missing history snapshot leaving
+  `$contracts` null.
+  **Two facts worth keeping.** A PHP *warning* is a 500 on this stack — Laravel turns every error into an
+  `ErrorException`, so `$x[0]` on null throws as hard as a missing key. And **`?tab=<anything unknown>`
+  renders the Details body**, so a URL typo silently serves the most expensive tab.
+  `?tab=historical` went from HTTP 500 to **200 at 760-777 ms and 369 queries** — exactly what the Details
+  tab costs, because it falls into the same branch. The other eight fixes move no number and the agent
+  said so rather than inventing one.
+
 ## Order of work
 
 This tracker is markdown, so there is no query to find the frontier. The order is written down instead.
@@ -311,7 +327,7 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | ~~[08 query inventory](issues/08-query-inventory.md)~~ | **CLOSED** | Read-only. Everything below leans on it. |
 | [02 realistic seeded rows](issues/02-seed-realistic-contract-rows.md) | now | A baseline on rows that are 60 columns of NULL measures the wrong page. |
 | [14 breakage and one duplicate](issues/14-correctness-bugs.md) | now | Narrowed 2026-08-21 to what throws or costs time. The rest is out of scope. |
-| ~~[03 find remaining breaks](issues/03-find-remaining-breaks.md)~~ | **CLOSED** | **Nine breaks, not four.** Every tab value on four contracts returns 200 now, `?tab=historical` included. |
+| ~~[03 find remaining breaks](issues/03-find-remaining-breaks.md)~~ | **CLOSED** | **Nine breaks, not four. Every tab returns 200.** Two of them nobody had tried: `?attachment=` and `?tab=timelineedit`. |
 | [04 baseline](issues/04-baseline-attribution.md) | after 03 | Every row in the report sits under this one. |
 | ~~[16 is Related Contracts dead?](issues/16-unreachable-blade-region.md)~~ | **CLOSED** | It is not dead. `?tab=details` renders it. Nothing deleted. But it found ticket 18. |
 | ~~[18 guard the scans by tab](issues/18-guard-the-scans-by-tab.md)~~ | **CLOSED** | **Edit tab 4,208-4,589 ms to 455 ms, 258 queries to 86.** The biggest win on this map. |
@@ -351,6 +367,14 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
   426 on contract `1`, **619 on `101101`** (a 12-child fan-out). The blade lazy-loads
   `select * from contracts where parentcontract = ? limit 1` for every related contract, and the four
   `availableContracts()` loops walk every row. Ticket 13's, and the seeded chains make it visible.
+- **Should the Historical tab load a snapshot from its cookie?** Today, with the cookie set but no
+  `?history=` in the URL, the tab renders the **live** contract. The controller reads the parameter and
+  never the cookie. Clicking the nav item works, because the link carries the id. Making the cookie load
+  the snapshot is a new feature, so ticket 03 left it. Needs the dev.
+- **What `$reqfields` was renamed to.** `?tab=timelineedit` loops a variable nothing sets.
+  `ContractController` holds `$reqfieldsText`, a `key => label` map of exactly the right shape, which
+  looks like the answer — but it is a guess, so ticket 03 guarded the loop and renders an empty table.
+  Needs the dev.
 - Why `SHOW TABLES` runs twice on every page view. Something asks the schema on a page load. Noticed by
   the baseline, cheap, unexplained.
 
