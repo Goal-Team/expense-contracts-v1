@@ -30,6 +30,34 @@ and only run it after the dev approves.
 Columns may be added to `apollo_contracts_expense` tables when the gain is worth it — the bar
 is a proper migration with a working `down()`, plus a plan for backfilling existing rows.
 
+## Query rules
+
+**Never pass a list of ids into `whereIn`. Use a join.** Set by the dev 2026-08-21. The pattern to
+delete on sight is a `pluck()` feeding a `whereIn()`:
+
+```php
+// wrong - two queries, and it breaks silently
+$ids  = ContractPartyData::where('custom_field_group_id', $id)->pluck('contract_party_location_id');
+$rows = ContractPartyData::whereIn('contract_party_location_id', $ids)->pluck('custom_field_group_id');
+```
+
+Three things are wrong with it. It runs two queries where one join does the work. It carries every id
+across the wire as a bound parameter. And **on this stack a `whereIn` with 1,000 or more bound values
+silently returns zero rows** — no error, no warning, just an empty result and a blank section of the
+page. See [.scratch/wherein-1000-bug/spec.md](.scratch/wherein-1000-bug/spec.md).
+
+Write it as one query instead — a `join`, or a `whereExists` / `whereIn` on a **subquery**, which
+keeps the ids inside the database and binds nothing:
+
+```php
+$rows = ContractPartyData::join('contract_party_data as src', 'src.contract_party_location_id', '=', 'contract_party_data.contract_party_location_id')
+    ->where('src.custom_field_group_id', $id)
+    ->pluck('contract_party_data.custom_field_group_id');
+```
+
+`whereIn` with a short, fixed list of literal values — `whereIn('contract_status', ['Draft', 'Review'])`
+— is fine. The rule is about lists of ids that come out of another query and grow with the data.
+
 ## Logging and debug output
 
 **Never use `dd()`, `dump()`, `var_dump()`, `print_r()`, or `echo` to debug.** They ship to

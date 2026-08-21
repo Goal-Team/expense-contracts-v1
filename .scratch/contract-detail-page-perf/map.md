@@ -51,6 +51,10 @@ cost is shared too. The edit tab is what we measure and verify on.
 - **Use fresh-context subagents wherever a ticket allows it.** The dev's call 2026-08-21. Reading a
   15,203-line controller and a 894-line blade eats a context window; hand that reading to an agent and
   keep the conclusion.
+- **No id-list `whereIn`. Use a join.** The dev's call 2026-08-21, now a repo rule in
+  [CLAUDE.md](../../CLAUDE.md) under "Query rules". A `pluck()` feeding a `whereIn()` is two queries
+  doing one join's work, and at 1,000 or more bound values it silently returns zero rows on this
+  stack. [Ticket 09](issues/09-replace-wherein-with-joins.md) applies it to this page.
 - **Bytes are measured too**, same as the dashboard: document bytes, total transfer bytes, request
   count. Time and query count alone hide a 3 MB page.
 - **Measure with the debug bar OFF.** `DEBUGBAR_ENABLED=false` in [.env](../../.env) before any number
@@ -82,7 +86,8 @@ cost is shared too. The edit tab is what we measure and verify on.
   `whereIn('contract_party_exe_id', ...)`, `Contract::whereIn('id', $FinalContractList)`,
   `Contract::whereIn('id', $finalListChild)`. This stack silently returns **zero rows** at 1,000 or
   more bound values ([mariadb whereIn bug](../wherein-1000-bug/spec.md)), so these are suspect at
-  N=3,018.
+  N=3,018. **The dev ruled on this 2026-08-21: they all become joins.**
+  [Ticket 09](issues/09-replace-wherein-with-joins.md).
 
 ## Decisions so far
 
