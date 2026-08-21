@@ -151,6 +151,28 @@ cost is shared too. The edit tab is what we measure and verify on.
   decrypts in the `WHERE` and scans all 1,605 users. Nine exact duplicate query pairs. Seven results
   no blade on this page reads. Six missing indexes. Seven correctness bugs. Commit `1f5ec54`.
 
+## Order of work
+
+This tracker is markdown, so there is no query to find the frontier. The order is written down instead.
+A ticket is takeable when every ticket in its "Blocked by" line is closed.
+
+| Ticket | Takeable when | Why this order |
+|---|---|---|
+| ~~[01 reminder crash](issues/01-fix-null-reminder-crash.md)~~ | **CLOSED** | The page did not render at all. |
+| ~~[08 query inventory](issues/08-query-inventory.md)~~ | **CLOSED** | Read-only. Everything below leans on it. |
+| [02 realistic seeded rows](issues/02-seed-realistic-contract-rows.md) | now | A baseline on rows that are 60 columns of NULL measures the wrong page. |
+| [14 correctness bugs](issues/14-correctness-bugs.md) | now | Not speed work. Independent of every measurement. |
+| [03 find remaining breaks](issues/03-find-remaining-breaks.md) | after 02 | Fix what is broken before measuring how slow it is. |
+| [04 baseline](issues/04-baseline-attribution.md) | after 03 | Every row in the report sits under this one. |
+| [11 indexes](issues/11-missing-indexes.md) | after 04 | An index added before the baseline hides itself. |
+| [12 delete the waste](issues/12-delete-waste.md) | after 04 | Cheapest and safest win. Goes first of the code changes. |
+| [09 stop binding ids](issues/09-replace-wherein-with-joins.md) | after 04 | Four query shapes, nothing else. |
+| [13 visibleTo scope](issues/13-visible-to-scope.md) | after 04, 12 | 138 of the 375 queries. The biggest single win. |
+| [05 split viewContract](issues/05-query-layer-decision.md) | after 09, 12, 13 | Moving code last, so it is not moved twice. |
+| [10 eSign off the page load](issues/10-esign-check-after-page-render.md) | after 04 | Independent of the query work. |
+| [06 dropdowns on demand](issues/06-dropdown-decision.md) | after 12, 13 | New base class plus front-end work. Bigger than it looks. |
+| [07 tabs on demand](issues/07-page-size-decision.md) | last | The one change that can silently wipe a column on save. Do it when everything else is proved. |
+
 ## Not yet specified
 
 - What `viewContract` should become. It is ~820 lines doing contract load, eSign polling and status
