@@ -11,6 +11,10 @@ Rationale: this repo ships `vendor/`, `node_modules/`, and a `.env` whose
 `APP_ENCRYPTION_KEY` is derived from the serving hostname; a worktree copy is neither cheap
 nor functional here.
 
+**One branch per page for the optimisation work.** Set by the dev 2026-08-21. Each page gets its own
+branch off `main`. Commit as soon as a change works, in small commits — not one big commit at the end.
+Pages are done one at a time, never in parallel.
+
 ## Database rules
 
 **Only touch the `apollo_contracts_expense` database.** It is the contracts database and the
@@ -91,11 +95,12 @@ This is for questions only. Explanations and specs stay in normal plain words (s
 of a reply, no recap of work already shown above. Answer, or report the one thing that changed, and
 stop.
 
-## Adding improved functions
+## Changing functions
 
-**Never rewrite a working function in place. Add a new one beside it.** The old one stays until the
-new one is measured and proven, so old and new can be compared on the same page and the same data.
-Deleting the old one is a separate, later step.
+**Change the function in place. Do not leave a copy of the old one beside it.** Set by the dev
+2026-08-21, reversing the earlier rule. Two near-identical functions make the code harder to read and
+the git diff harder to follow. Git holds the old version, so nothing is lost: if a change makes things
+worse, revert the commit. Every migration has a working `down()` for the same reason.
 
 Naming follows PSR-1 / PSR-12, which is what this codebase already does:
 
@@ -104,12 +109,12 @@ Naming follows PSR-1 / PSR-12, which is what this codebase already does:
 - **Class constants:** `UPPER_SNAKE_CASE`.
 - **Plain procedural functions** (helpers.php and friends): `snake_case`.
 
-Then, for the new function beside the old one:
+Then, for a function you change:
 
-- If the old name is good, the new one is the old name with **`x`** on the end
-  (`buildCounters` -> `buildCountersx`).
+- **Keep the old name** if it says what the function does. No `x` suffix any more — that was for the
+  side-by-side rule and it is gone.
 - If the old name is bad — it does not say what the function does — **suggest a better name** that
-  matches the instruction the function carries out, and get it approved before writing code.
+  matches the instruction the function carries out, and get it approved before you rename it.
 - **If in doubt, ask.**
 
 One function, one concern. But do not copy blocks of code to get there — pull the shared part out
@@ -117,10 +122,13 @@ into its own function and call it from both.
 
 ## Measurement report
 
-**Every performance change gets a row in one file:
-[.scratch/contracts-dashboard-perf/measurements/report.md](.scratch/contracts-dashboard-perf/measurements/report.md).**
-One table, old number and new number side by side, plus a remark for any side effect. One file so the
-biggest wins are obvious at a glance. Never start a second report file.
+**Every performance change gets a row in the report file of the effort it belongs to** — one file per
+effort, named `measurements/report.md` under that effort's `.scratch/` folder. One table, one row per
+change, plus a remark for any side effect. Never start a second report file inside one effort.
+
+**A row records the new numbers only. There is no old-number column.** Set by the dev 2026-08-21. The
+row above already holds the previous number, so writing it twice adds nothing. Row 0 of every table is
+the baseline, so the first row has something to sit under.
 
 ## Verifying UI changes in the browser
 
