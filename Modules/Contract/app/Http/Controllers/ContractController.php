@@ -270,18 +270,47 @@ class ContractController extends Controller
      */
     private function relatedContractLists($id, $contracts): array
     {
-        $contractsold = Contract::select('*')->where('id', $id)->first();
+        // Three columns is all this row is read for, below. It is also the guard the page needs:
+        // the global scopes make it null for a contract the user may not see, and then the block
+        // is skipped.
+        $contractsold = Contract::withoutGlobalScope('accessLevelSelect')
+            ->without('contractPartyList')
+            ->select(['catgoery_id', 'department_id', 'contract_type'])
+            ->where('id', $id)
+            ->first();
 
         // The blade loops $contractsoldothers with no guard, so it always needs a value.
         // Without this default a missing contract row throws the page.
         $contractsoldothers = collect();
 
         if ($contractsold) {
-            $contractsoldothers = Contract::select('*')->where([
-                ['catgoery_id', $contractsold->catgoery_id],
-                ['department_id', $contractsold->department_id],
-                ['contract_type', $contractsold->contract_type],
-            ])->whereNot('id', $id)->get();
+            // Seven columns, and they are every column the Category Previous Contracts table
+            // reads (viewDetailContract.blade.php:2253). A contracts row is 9,390 bytes wide,
+            // so select * read the whole row for five printed cells.
+            //
+            // withoutGlobalScope('accessLevelSelect') is required, not tidiness: Contract::boot()
+            // adds a global scope that calls select('*') and it runs after this select(), so it
+            // overwrites it (app/Models/Contract.php:114). ContractRoledBasedScope stays - that
+            // one is the visibility rule.
+            //
+            // without('contractPartyList') drops the $with eager load. The table shows no party
+            // data, and the eager load is one more query.
+            $contractsoldothers = Contract::withoutGlobalScope('accessLevelSelect')
+                ->without('contractPartyList')
+                ->select([
+                    'id',
+                    'contract_name',
+                    'signing_date',
+                    'currency',
+                    'currency_value',
+                    'fixed_date',
+                    'contract_end_date',
+                ])
+                ->where([
+                    ['catgoery_id', $contractsold->catgoery_id],
+                    ['department_id', $contractsold->department_id],
+                    ['contract_type', $contractsold->contract_type],
+                ])->whereNot('id', $id)->get();
         }
 
         $contract_party_locations = ContractPartyData::where('custom_field_group_id', $contracts->id)->where('contract_party_type', 'internal')->pluck('contract_party_location_id');
