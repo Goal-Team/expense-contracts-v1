@@ -479,8 +479,18 @@ class ContractController extends Controller
         $contracts = Contract::select('*')->where('id', $id)->where('status', 1)->get();
 
         $ContractsFinal = $this->availableContracts($contracts, true);
-        
-        
+
+        // availableContracts() returns an empty list when the user may not see this contract,
+        // and also when the contract points at a business unit that no longer exists. The line
+        // below used to read element 0 of that empty list and the page threw
+        // "Undefined array key 0". This redirect sat 122 lines further down, after the eSign
+        // block had already run, so it never got the chance. It is the first thing now.
+        if (count($ContractsFinal) == 0) {
+            Log::warning('Contract detail page cannot show this contract', ['contract_id' => $id]);
+
+            return redirect('/contracts/list')->with('message', 'Oops! Invalid Contract/Access Restricted')->with('alert-class', 'alert-danger');
+        }
+
         // ------------------------------------------------------------------
         // If contract is in Signing / Progress, look up the stored
         // eSign compose response, call getEasySignLinks to check status.
@@ -608,10 +618,6 @@ class ContractController extends Controller
                 \Log::error("Failed to Download Esigned File" . $e->getMessage()."--".$e->getLine());
                 //die;
             }
-        }        
-
-        if (count($ContractsFinal) == 0) {
-            return redirect('/contracts/list')->with('message', 'Oops! Invalid Contract/Access Restricted')->with('alert-class', 'alert-danger');
         }
 
         if (env('update_doc_vars')) {
