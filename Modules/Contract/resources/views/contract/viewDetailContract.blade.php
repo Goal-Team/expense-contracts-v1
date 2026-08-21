@@ -1115,8 +1115,11 @@ cookie()->queue('attachment', true, 60);
 
     <div class="contractApprovals col">
         @php
-            $appDataAppRules = json_decode(trim($contract->rules_id));
-            $approvalTypeContract = $appDataAppRules[0]->approval_type ?? '';
+            // rules_id is a JSON text column and it holds a list of rules. It is NULL on a
+            // contract with no approval rules, and a bad value decodes to something that is not
+            // a list. contractFlow.blade.php guards the same read the same way.
+            $appDataAppRules = is_string($contract->rules_id) ? json_decode(trim($contract->rules_id)) : null;
+            $approvalTypeContract = is_array($appDataAppRules) ? ($appDataAppRules[0]->approval_type ?? '') : '';
         @endphp
         @foreach ($approvalsArr as $key => $approvalsData)
             @if($loop->last)
