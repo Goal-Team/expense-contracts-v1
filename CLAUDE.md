@@ -109,12 +109,16 @@ Naming follows PSR-1 / PSR-12, which is what this codebase already does:
 - **Class constants:** `UPPER_SNAKE_CASE`.
 - **Plain procedural functions** (helpers.php and friends): `snake_case`.
 
-Then, for a function you change:
+Then, for a function you change, pick by what is wrong with it:
 
-- **Keep the old name** if it says what the function does. No `x` suffix any more — that was for the
-  side-by-side rule and it is gone.
-- If the old name is bad — it does not say what the function does — **suggest a better name** that
-  matches the instruction the function carries out, and get it approved before you rename it.
+- **Name is good** — keep it. No `x` suffix any more; that was for the side-by-side rule and it is gone.
+- **Name is bad** — it does not say what the function does. **Rename it** to a name that matches the
+  instruction the function carries out, following PSR-1 / PSR-12 above. Suggest the name and get it
+  approved before you rename.
+- **Logic is bad** — change the logic in place. Same function, better body.
+- **Function does too much** — pull the extra concerns out into new functions beside it. The old
+  function stays only while something still calls it. **Delete it once nothing depends on it**, and
+  check with `grep` before you delete, including blade files.
 - **If in doubt, ask.**
 
 One function, one concern. But do not copy blocks of code to get there — pull the shared part out
