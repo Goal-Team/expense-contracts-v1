@@ -17,7 +17,7 @@ file. Production stays the dev's to run.
 | Table | Columns | Why |
 |---|---|---|
 | `contracts` | `parentcontract` | The `contractParent` lazy load scans 3,018 rows, 58 times per request. Biggest single win on the list. |
-| `contracts` | `catgoery_id, department_id, contract_type` | Line 718 filters on all three and scans the table. |
+| ~~`contracts`~~ | ~~`catgoery_id, department_id, contract_type`~~ | **DONE, [ticket 20](20-contractsoldothers-scan.md).** Applied as `(contract_type, department_id, catgoery_id)` - most selective column first. |
 | `contracts_history` | `id` | Line 410 filters on `id`, which is **not** the primary key of that table, so it scans. |
 | `user_action_log` | `group_id` | Line 951 scans it. Note the result feeds `$signedHistory`, which no blade reads — ticket 12 may delete the query instead, and then this index is not needed. **Check ticket 12 first.** |
 | `contract_party_data` | `contract_party_exe_id` | Line 731 scans 6,940 rows. |
@@ -82,3 +82,24 @@ Result: the page went from **HTTP 500** on the FastCGI timeout to **4,422 ms TTF
 **Five indexes left**, and one of them may not be needed: the `user_action_log.group_id` one exists
 only to serve `$signedHistory`, which no blade reads. Check [ticket 12](12-delete-waste.md) first — if
 that query is deleted, the index is not needed.
+
+**`contracts(contract_type, department_id, catgoery_id)` applied by [ticket 20](20-contractsoldothers-scan.md).**
+Migration
+[2026_08_22_000002_add_category_department_type_index_to_contracts.php](../../../database/migrations/2026_08_22_000002_add_category_department_type_index_to_contracts.php),
+commit `5ffd9c1`.
+
+The column order is reversed from the row above, on purpose. All three tests are equality, so any
+order serves that query, but a leading `catgoery_id` has only 3 values and gives the next partial user
+a third of the table. Measured on the seeded set: `contract_type` about 41 rows per value,
+`department_id` 84, `catgoery_id` 1,006.
+
+Two facts worth carrying:
+
+- **It built in 208 ms**, not 474 s. It holds three narrow columns and no `id`, so InnoDB never
+  touches the off-page text. Only the `(parentcontract, id)` index needs a window.
+- **`contract_type` and `catgoery_id` are `TEXT` columns.** MariaDB refuses the whole column - "key
+  was too long" - so the index needs a prefix length, and `$table->index()` cannot write one. That
+  migration uses `DB::statement`.
+
+**Four indexes left.** One of them may still not be needed: `user_action_log.group_id` serves
+`$signedHistory`, which no blade reads. Check [ticket 12](12-delete-waste.md) first.

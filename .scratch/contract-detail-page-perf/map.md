@@ -201,6 +201,18 @@ cost is shared too. The edit tab is what we measure and verify on.
   most of what tickets 12 and 13 were aiming at, on every tab but Details. Rows 5 and 6. Commit
   `47b4932`.
 
+- [20 - the `$contractsoldothers` scan](issues/20-contractsoldothers-scan.md) - **the index is the whole
+  win.** `contracts(contract_type, department_id, catgoery_id)`, most selective column first, took the
+  query from **928-1,823 ms to under 5 ms** and the Details tab from 4,088-5,233 ms to **3,295-3,433
+  ms**. `EXPLAIN` goes from `type ALL, rows 1509` to `type ref, rows 1`. It **built in 208 ms**, not the
+  474 s the `(parentcontract, id)` index took, so this one needs no window. Then the select narrowed
+  from `*` to the seven columns the blade reads, plus `without('contractPartyList')`: **359 queries**,
+  and 415 to 413 on contract 1. The narrow select wins one query, not time, because the index already
+  stopped the scan. Rows identical on both contracts. Rows 7 and 8. Commits `5ffd9c1`, `8ae50df`.
+  **Two things to remember:** `catgoery_id` and `contract_type` are `TEXT`, so the index needs a prefix
+  length and a **numeric** literal loses the index altogether; and the Details tab's remaining 3 s is
+  the child walk, [ticket 15](issues/15-recursive-child-walk.md).
+
 ## Order of work
 
 This tracker is markdown, so there is no query to find the frontier. The order is written down instead.
@@ -216,10 +228,10 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | [04 baseline](issues/04-baseline-attribution.md) | after 03 | Every row in the report sits under this one. |
 | ~~[16 is Related Contracts dead?](issues/16-unreachable-blade-region.md)~~ | **CLOSED** | It is not dead. `?tab=details` renders it. Nothing deleted. But it found ticket 18. |
 | ~~[18 guard the scans by tab](issues/18-guard-the-scans-by-tab.md)~~ | **CLOSED** | **Edit tab 4,208-4,589 ms to 455 ms, 258 queries to 86.** The biggest win on this map. |
-| [20 `$contractsoldothers` scan](issues/20-contractsoldothers-scan.md) | **NOW, top of the map** | 898-1,045 ms, 24% of the Details tab. A missing index plus a `select *` on a 9,390-byte row. Takes one of ticket 11's six. |
+| ~~[20 `$contractsoldothers` scan](issues/20-contractsoldothers-scan.md)~~ | **CLOSED** | **928-1,823 ms to under 5 ms.** The index did it; the narrow select won one query. Took one of ticket 11's six. |
 | [19 attachment tab, 2.2 s outside the database](issues/19-attachment-tab-slow-outside-db.md) | now, runs beside anything | The only tab whose cost is not queries: 91 queries, 2,638 ms. No other ticket on this map will touch it. |
 | [15 recursive child walk](issues/15-recursive-child-walk.md) | after 18, seed chains first | **2,337–2,616 ms on its own — the single most expensive thing on the page.** The index did not fix it: user variables and `FIND_IN_SET` make the optimiser walk every row anyway. 16 kept the caller, so this stands. Seed a parent-child chain first, or it measures a walk that returns nothing. |
-| [11 indexes](issues/11-missing-indexes.md) | four left, one of them is ticket 20's | An index added before the baseline hides itself. The `parentcontract` one went early because the page was returning 500, and it took 474 s to build. |
+| [11 indexes](issues/11-missing-indexes.md) | **four left**, ticket 20 took one | An index added before the baseline hides itself. The `parentcontract` one went early because the page was returning 500, and it took 474 s to build. Ticket 20's took 208 ms, so build time depends on the columns, not the table. |
 | [12 delete the waste](issues/12-delete-waste.md) | now, but re-scope it first | **Ticket 18 already collected most of this on every tab but Details.** The six unread results and the duplicate pairs still stand; the 158 repeated lookups mostly do not. Re-read before starting. |
 | [09 stop binding ids](issues/09-replace-wherein-with-joins.md) | after 04 | Four query shapes, nothing else. |
 | [13 visibleTo scope](issues/13-visible-to-scope.md) | after 12 | **Now a Details-tab-only ticket.** Ticket 18 removed its callers everywhere else. On Details it is still about 274 of the 360 queries, so it is the count win there and nowhere else. |
@@ -242,10 +254,9 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 
 ## Not yet specified
 
-- **The Details tab is now the whole problem.** 4,285 ms and 360 queries, against 455 ms and 86 on every
-  other tab. Three things hold it: the child walk (2,337 ms,
-  [ticket 15](issues/15-recursive-child-walk.md)), `$contractsoldothers` (981 ms,
-  [ticket 20](issues/20-contractsoldothers-scan.md)), and the `availableContracts()` loops (about 274
+- **The Details tab is now the whole problem.** 2,972-3,567 ms and 359 queries, against 455 ms and 86 on
+  every other tab. Two things hold it now that ticket 20 has closed: the child walk (1,977-3,377 ms,
+  [ticket 15](issues/15-recursive-child-walk.md)) and the `availableContracts()` loops (about 274
   queries, [ticket 13](issues/13-visible-to-scope.md)). Nothing else on the map moves it.
 - Why `SHOW TABLES` runs twice on every page view. Something asks the schema on a page load. Noticed by
   the baseline, cheap, unexplained.
