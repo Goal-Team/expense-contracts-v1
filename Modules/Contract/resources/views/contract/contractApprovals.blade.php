@@ -15,7 +15,13 @@
              
           
           <table class="table misgtable" style="display:none">
-            @foreach ($reqfields as $key => $label)
+            {{-- $reqfields is never passed to this view: nothing in the repo sets it, so the
+                 foreach threw "Undefined variable $reqfields" and ?tab=timelineedit returned
+                 HTTP 500. The table it fills is display:none and lists the contract fields that
+                 are missing. ContractController has a $reqfieldsText map of the same shape,
+                 key => label, which looks like the variable this was renamed to - but that is a
+                 guess, so the guard renders an empty table instead. --}}
+            @foreach (($reqfields ?? []) as $key => $label)
                 @empty($contract->$key)
                     <tr>
                         <td class="text-danger">{{ $label }}</td>
