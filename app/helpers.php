@@ -577,6 +577,35 @@ if (!function_exists('get_google_drive_doc_link')) {
         }
     }
     
+    if (!function_exists('reminder_alert_parts')) {
+        /**
+         * Split a stored reminder value into its three parts.
+         *
+         * The columns reminder_first_alertMeOn, reminder_second_alertMeOn,
+         * reminder_escalation_alertMeOn and reminder_escalation_alertMeOn_after hold three words
+         * separated by spaces - '30 days prior'. They are NULL on any contract that never had a
+         * reminder set, and the edit form used to explode() the value and read index 1 and 2 with
+         * no guard, which threw 'Undefined array key 1' and stopped the whole page rendering.
+         *
+         * Returns [$day, $unit, $direction]. Missing parts come back as '', 'days' and '', so an
+         * empty reminder shows an empty day box with Days selected and neither Prior nor After
+         * forced.
+         *
+         * $column is the column the value came from, passed straight to decryptString() so the
+         * call site still says which column it is reading.
+         */
+        function reminder_alert_parts($storedValue, string $column): array
+        {
+            $parts = explode(' ', trim((string) decryptString((string) $storedValue, $column)));
+
+            return [
+                $parts[0] ?? '',
+                ($parts[1] ?? '') !== '' ? $parts[1] : 'days',
+                $parts[2] ?? '',
+            ];
+        }
+    }
+
     if (!function_exists('get_table_data')) {
         function get_table_data(string $key, string $text)
         {
