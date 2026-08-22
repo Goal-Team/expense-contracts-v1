@@ -278,3 +278,32 @@ elevation and no `appcmd`. `Test-Path C:\WINDOWS\System32\inetsrv\compdyn.dll` r
 exists, dynamic does not. `applicationHost.config` itself is **readable without elevation** on this
 machine - only writing it needs an admin - so every fact in this Resolution was read from the live
 server rather than trusted from a note.
+
+## Follow-up 2026-08-22 — `Vary` is added, not replaced
+
+The dev asked whether this middleware has the cache-invalidation problem they distrust in IIS dynamic
+compression. **It does not, and reading the code is the proof: it stores nothing.** No cache read, no
+cache write, no key, no file. It gzips the body of the response it was just handed and returns it. There
+is nothing to invalidate because nothing is kept.
+
+The features are worth keeping apart, because three different IIS things get called "dynamic":
+
+| feature | keeps a copy? | invalidation risk |
+|---|---|---|
+| IIS **output caching** | yes, whole responses | real - this is the one that serves a stale page |
+| IIS **static** compression | yes, compressed files on disk | real, but IIS keys them on file changes |
+| IIS **dynamic** compression | no | none |
+| this middleware | no | none |
+
+**But the question found a real bug in exactly that area.** The middleware did
+`$response->headers->set('Vary', 'Accept-Encoding')`, and `set()` **replaces**. Any response already
+carrying a `Vary` — `Cookie`, `Accept-Language` — would have lost it, and dropping one of those is how a
+shared cache hands one user's page to another. Nothing in this app sets `Vary` today (`grep` over `app/`,
+`Modules/` and `config/` finds no other writer), so nothing was broken in practice. It was one added
+header away from being a serious bug.
+
+`addVaryAcceptEncoding()` now reads what is there, returns early if `Accept-Encoding` or `*` is already
+covered, and appends otherwise. Case-insensitive, because header field names are.
+
+Verified in the browser on `100479?tab=edit`: `vary: Accept-Encoding`, `content-encoding: gzip`,
+`content-length: 35434` against a decoded 326,254. Four warm fetches: 767, 586, 505, 469 ms.

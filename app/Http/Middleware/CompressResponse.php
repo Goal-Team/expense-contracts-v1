@@ -108,7 +108,12 @@ class CompressResponse
         // Tells every cache that the body depends on the request's
         // Accept-Encoding, so a proxy cannot hand a gzipped body to a client
         // that did not ask for one.
-        $response->headers->set('Vary', 'Accept-Encoding');
+        //
+        // Added, never set. headers->set() would replace a Vary the response
+        // already carries - Cookie, Accept-Language - and dropping one of those
+        // is how a shared cache serves one user's page to another. Nothing in
+        // this app sets Vary today; this keeps that true if something starts.
+        $this->addVaryAcceptEncoding($response);
 
         Log::debug('CompressResponse: gzipped', [
             'path' => $request->path(),
@@ -118,6 +123,29 @@ class CompressResponse
         ]);
 
         return $response;
+    }
+
+    /**
+     * Add Accept-Encoding to the response's Vary header without losing what is
+     * already there. Matching is case-insensitive because header values are.
+     */
+    private function addVaryAcceptEncoding(Response $response): void
+    {
+        $existing = array_filter(array_map(
+            'trim',
+            explode(',', (string) $response->headers->get('Vary', ''))
+        ));
+
+        foreach ($existing as $field) {
+            // Already covered, either by name or by the wildcard.
+            if (strcasecmp($field, 'Accept-Encoding') === 0 || $field === '*') {
+                return;
+            }
+        }
+
+        $existing[] = 'Accept-Encoding';
+
+        $response->headers->set('Vary', implode(', ', $existing));
     }
 
     private function shouldCompress(Request $request, mixed $response): bool
