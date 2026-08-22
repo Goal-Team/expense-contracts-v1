@@ -19,7 +19,9 @@ class Kernel extends HttpKernel
     // touch the response — which is what compressing a finished HTML document
     // needs. PerfTimingServiceProvider prepends its own middleware, so the
     // perf log still counts this compression in the request time.
-    \App\Http\Middleware\CompressResponse::class,
+    // CompressResponsex reads config/compression.php. CompressResponse is the
+    // older one with the same numbers hardcoded; swap this line to compare them.
+    \App\Http\Middleware\CompressResponsex::class,
     // \App\Http\Middleware\TrustHosts::class,
     \App\Http\Middleware\TrustProxies::class,
     \Illuminate\Http\Middleware\HandleCors::class,
