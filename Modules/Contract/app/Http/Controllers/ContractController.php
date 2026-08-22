@@ -967,7 +967,9 @@ class ContractController extends Controller
             });
 
         $customFields = CustomFields::where('status', 1)->orderBy('order_id')->get();
-        $categorys = Category::where('category_group', 'contract')->get();
+        // $categorys used to be read here and handed to the view. No blade this page renders
+        // reads it; the pages that do - createfield, partyCustomField and the Contractsetup
+        // views - are fed by their own controllers.
         $contractTypes = ContractType::get();
 
         $branchs = BranchUser::select(
@@ -1192,7 +1194,9 @@ class ContractController extends Controller
         $ContractObligations = ContractObligations::where('contract_id', $id)->where('flag', 1)
             ->get();
             
-        $signedHistory = $this->getSignedHistory($id);
+        // $signedHistory used to be read here - getSignedHistory() runs an unindexed read of
+        // user_action_log - and handed to the view. Nothing in the repo reads the name: no
+        // blade, no PHP, no JS. getSignedHistory() itself stays; it has other callers.
         
         // Get approvals (timeline). Exclude pre-approval flow rows (shown on the
         // Pre-Approval tab) and superseded rows.
@@ -1224,22 +1228,13 @@ class ContractController extends Controller
         // rows either way, and contractFlow.blade.php only reads them.
         $chartApprovals = $approvals;
 
-        // Determine current approval for the user
-        $currentApproval = null;
-        $isCurrentApprover = false;
         $userInfo = Helpers::userInfo();
-        if ($userInfo) {
-            $userEmail = strtolower($userInfo->email ?? '');
-            foreach ($approvals as $approval) {
-                $approverEmail = strtolower($approval->approver_email ?? '');
-                if ($approval->flag == 1 && $approverEmail === $userEmail) {
-                    $currentApproval = $approval;
-                    $isCurrentApprover = true;
-                    break;
-                }
-            }
-        }
-        
+
+        // $currentApproval and $isCurrentApprover were worked out here and handed to the view.
+        // No blade this page renders reads either name. The two blades in the repo that do -
+        // contract-custom/approvals/view.blade.php - are rendered by ContractCustomController,
+        // which builds its own copy. Checked across every blade, every module and every JS file.
+
         // Locked groups: any group that has at least one approved completed member
         $lockedGroups = ApprovalContracts::select('*')->where('contract_id', $id)->get()->filter(function($a){
             try {
@@ -1249,12 +1244,16 @@ class ContractController extends Controller
             }
         })->pluck('approver_type_row')->unique()->values()->toArray();        
 
-        $attachmentUrl = null;
-        if (!empty($contracts->contract_attachment)) {
-            $attachmentUrl = asset('storage/' . $contracts->contract_attachment);
-        }        
+        // $attachmentUrl was built here and handed to the view. No blade this page renders reads
+        // it. The three that do - contract-custom/approvals/view, contracts/negotiationReview and
+        // legal-review/show - are rendered by other controllers, which build their own.
 
         $userCanGate = $this->approvalActorIsOwnerOrAdmin($contracts);
+
+        // The list is worked out exactly as before and only its count is read. It is no longer
+        // handed to the view as $waitingGateGroupIds, because no blade reads that name. The
+        // query is left alone on purpose: it is one query either way, so rewriting it as an
+        // exists() would buy nothing and could change which rows count.
         $waitingGateGroupIds = ApprovalContracts::where('contract_id', $id)
             ->where('awaiting_owner_trigger', 1)
             ->pluck('unique_id')
@@ -1298,15 +1297,13 @@ class ContractController extends Controller
                 return $step;
             });
 
-        return view('contract::contract.viewDetailContract', compact('branchFirst', 'reqfieldsVal', 'reqfieldsText', 'reqfieldsVals', 'reqfieldsInpType', 'reqfieldsInpField', 'reqFieldsOptions', 'reqfieldsInpEdit', 'contractHistory', 'approvalsAttach', 'contractParties', 'contractspartsList', 'contractsparentList', 'contractsSubseqList', 'contractsoldothers', 'ent', 'catego', 'contractParties', 'entities', 'branchs', 'branchsAll', 'customFields', 'categorys', 'contractTypes', 'users', 'usersSel','approvals', 'chartApprovals', 'currentApproval', 'isCurrentApprover', 'attachmentUrl', 'userInfo', 'lockedGroups', 'legalAdvisors', 'preApprovalSteps'))->with('contractPartys', $ContractPartyData)
+        return view('contract::contract.viewDetailContract', compact('branchFirst', 'reqfieldsVal', 'reqfieldsText', 'reqfieldsVals', 'reqfieldsInpType', 'reqfieldsInpField', 'reqFieldsOptions', 'reqfieldsInpEdit', 'contractHistory', 'approvalsAttach', 'contractParties', 'contractspartsList', 'contractsparentList', 'contractsSubseqList', 'contractsoldothers', 'ent', 'catego', 'contractParties', 'entities', 'branchs', 'branchsAll', 'customFields', 'contractTypes', 'users', 'usersSel','approvals', 'chartApprovals', 'userInfo', 'lockedGroups', 'legalAdvisors', 'preApprovalSteps'))->with('contractPartys', $ContractPartyData)
             ->with('contract', $contracts)
             ->with('contractPartyData', $contractParty)
-            ->with('signedHistory', $signedHistory)
             ->with('approvalsArr', $approvalsArr)
             ->with('approvalsHistory', $approvalsHistory)
             ->with('ContractObligations', $ContractObligations)
             ->with('userCanGate', $userCanGate)
-            ->with('waitingGateGroupIds', $waitingGateGroupIds)
             ->with('canAdvanceNext', $canAdvanceNext)
             ->with('externalRepresentativeOptions', $externalRepresentativeOptions)
             ->with('dynamicApproverOptions', $dynamicApproverOptions);
