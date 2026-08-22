@@ -529,6 +529,17 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 
 ## Out of scope
 
+- **Switching on the approval gate.** [Ticket 24](issues/24-approval-gate.md). The hidden "required
+  fields Missing" table gates the Send button on Send For Approval and Send For Signing, and **it has
+  never run for anybody** — the tab holding it returned HTTP 500 on `main` too. Wiring the renamed
+  variable in on 2026-08-22 was **reverted the same day**: it switches a dead gate on, and the blade's
+  test is wrong for required custom fields, so it would block contracts that are complete (proved on
+  contract 16). **Why:** turning on a control that blocks the approval flow is functional work needing
+  the dev's intent, not load-time work. Ticket 03's `?? []` guard stays — that is what makes the tab
+  render, and it is breakage, which is in scope. The blade carries the whole analysis in a comment so
+  nobody wires it up by accident.
+
+
 - **Paginated dropdowns through an abstract base class.** The dev asked for this on 2026-08-21 and ruled
   it out of scope on 2026-08-22, after measurement contradicted the plan. The dropdown data costs **60 ms,
   1.4%** ([ticket 04](issues/04-baseline-attribution.md)); ticket 18 then removed most of it from every
