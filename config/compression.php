@@ -5,7 +5,7 @@
 | Response compression
 |--------------------------------------------------------------------------
 |
-| Settings for App\Http\Middleware\CompressResponsex. It gzips the finished
+| Settings for App\Http\Middleware\CompressResponse. It gzips the finished
 | HTTP response inside PHP.
 |
 | WHY THIS IS PHP AND NOT A WEB SERVER SETTING

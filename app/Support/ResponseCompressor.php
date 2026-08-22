@@ -11,10 +11,10 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 /**
  * Gzips a finished HTTP response.
  *
- * This is the shared part of App\Http\Middleware\CompressResponse and
- * App\Http\Middleware\CompressResponsex. The old middleware hands it fixed
- * values; the new one hands it values read from config/compression.php. The
- * behaviour is one copy of the code, so the two middlewares cannot drift.
+ * The compression itself, kept apart from the middleware that calls it so the
+ * refusal rules below live in one place and can be tested on their own.
+ * App\Http\Middleware\CompressResponse hands it the level, the minimum size
+ * and the content types from config/compression.php.
  *
  * WHAT IT DELIBERATELY LEAVES ALONE
  *  - Any response that already carries a Content-Encoding.

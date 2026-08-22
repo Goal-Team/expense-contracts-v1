@@ -4,71 +4,58 @@ namespace App\Http\Middleware;
 
 use App\Support\ResponseCompressor;
 use Closure;
+use Illuminate\Contracts\Config\Repository as Config;
 use Illuminate\Http\Request;
 
 /**
- * Gzips the HTML document before IIS sends it, with fixed settings.
+ * Gzips the HTTP response before IIS sends it, using config/compression.php.
  *
- * THIS IS THE OLD ONE. CompressResponsex replaces it and reads the same three
- * numbers from config/compression.php instead of hardcoding them. This class
- * stays so the two can be compared on the same page and the same data. Swap the
- * one line in app/Http/Kernel.php to switch between them.
+ * This is CompressResponse with the three fixed numbers turned into config, so
+ * a client can tune the level, the minimum size and the content types without
+ * editing code. The compression itself is one shared class, App\Support\
+ * ResponseCompressor, which both middlewares call - no copied code, so the two
+ * cannot drift apart.
  *
- * The gzip work itself now lives in App\Support\ResponseCompressor, which both
- * middlewares call. The numbers below are unchanged, so this class behaves
- * exactly as it did before - it just no longer holds its own copy of the code.
+ * The defaults in config/compression.php are the values CompressResponse
+ * hardcodes, so with no env keys set this behaves the same way.
  *
  * WHY THIS IS PHP AND NOT AN IIS SETTING
  * IIS compresses static files here and skips every PHP response. Static and
  * dynamic compression are two different IIS modules. The static one is
  * installed; the dynamic one is not - compdyn.dll is absent from
  * C:\WINDOWS\System32\inetsrv, and applicationHost.config holds no
- * <dynamicTypes> list. So no line in any web.config can switch it on. Turning
- * it on needs a Windows role feature installed by an administrator.
+ * <dynamicTypes> list. So no line in any web.config can switch it on.
  * See .scratch/contract-detail-page-perf/issues/17-gzip-the-html-document.md.
  *
- * WHAT IT COSTS
- * Level 6 turns the 326 KB contract detail page into 35 KB - 9.2x - for about
- * 5 ms of CPU. Measured on the real document.
- *
- * WHAT IT DELIBERATELY LEAVES ALONE
- * See App\Support\ResponseCompressor. Streamed and binary responses,
- * already-encoded responses, empty responses, tiny bodies, content types that
- * are already compressed, and clients that did not ask for gzip.
+ * WHY NOT A COMPOSER PACKAGE
+ * Every package was checked. None fits this app. See
+ * .scratch/contract-detail-page-perf/issues/23-response-compression-package.md.
  */
 class CompressResponse
 {
-    /**
-     * zlib level. 6 is gzencode's own default. Measured on the 326 KB contract
-     * detail page: level 1 gives 42,790 bytes in 2.0 ms, level 6 gives 35,432
-     * in 4.6 ms, level 9 gives 34,648 in 17.2 ms. Level 9 pays 12 ms more for
-     * 784 bytes, so 6 is the knee of the curve.
-     */
-    private const LEVEL = 6;
+    private bool $enabled;
 
-    /**
-     * Do not compress a body smaller than this. One TCP segment is about
-     * 1,400 bytes, so nothing under it can save a round trip.
-     */
-    private const MIN_BYTES = 1024;
+    private ResponseCompressor $compressor;
 
-    /** Content types worth compressing. Matched against the type before the ';'. */
-    private const TYPES = [
-        'text/html',
-        'text/plain',
-        'text/css',
-        'text/xml',
-        'application/json',
-        'application/javascript',
-        'application/xml',
-    ];
+    public function __construct(Config $config)
+    {
+        $this->enabled = (bool) $config->get('compression.enabled', true);
+
+        $this->compressor = new ResponseCompressor(
+            (int) $config->get('compression.level', 6),
+            (int) $config->get('compression.min_bytes', 1024),
+            (array) $config->get('compression.types', []),
+        );
+    }
 
     public function handle(Request $request, Closure $next)
     {
         $response = $next($request);
 
-        $compressor = new ResponseCompressor(self::LEVEL, self::MIN_BYTES, self::TYPES);
+        if (! $this->enabled) {
+            return $response;
+        }
 
-        return $compressor->apply($request, $response);
+        return $this->compressor->apply($request, $response);
     }
 }
