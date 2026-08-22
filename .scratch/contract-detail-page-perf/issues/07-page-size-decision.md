@@ -2,7 +2,7 @@
 
 Type: `wayfinder:task` (AFK)
 Blocked by: 04
-Status: OPEN
+Status: CLOSED — out of scope, 2026-08-22
 
 ## The big decision is already made
 
@@ -43,3 +43,20 @@ The edit form is one form spanning tabs. If a field lives in a tab that is no lo
 it is no longer submitted, and saving the contract silently wipes that column. This is the whole risk
 of this ticket. Either the fetched tab is inserted into the same form before submit, or each tab saves
 on its own. Decide which, write down which, and prove the save.
+
+## CLOSED — out of scope, 2026-08-22
+
+Two other tickets took this one's value and left only its risk.
+
+[Ticket 18](18-guard-the-scans-by-tab.md) guarded the Details-tab queries in the controller instead, which
+is where nearly all of this ticket's win actually was: the edit tab went **4,208-4,589 ms to 455 ms**
+without moving a single tab out of the document. [Ticket 17](17-gzip-the-html-document.md) then took the
+document from **326,254 bytes to 35,432**, so the remaining bytes are small in absolute terms.
+
+What is left is a modest byte saving bought with the one change on this whole map that can **silently wipe
+a column on save**. The edit form is one form spanning tabs. A field in a tab that is no longer in the
+document is no longer submitted, and saving the contract writes an empty value over it — with no error
+anywhere. That was written into this ticket as its main risk before any of the measurement existed, and it
+is still true.
+
+Bad trade. Closed.

@@ -2,7 +2,7 @@
 
 Type: `wayfinder:task` (AFK)
 Blocked by: 04, 09, 12, 13
-Status: OPEN
+Status: CLOSED — out of scope on the dev's call, 2026-08-22
 
 ## The decision, already made
 
@@ -33,3 +33,16 @@ with first ([Contract.php:114](../../../app/Models/Contract.php:114)).
 - The page renders identically. Prove it by comparing the rendered document before and after, ignoring
   whitespace — not by looking at it.
 - Committed in small commits, one concern moved per commit, so each hunk can be read on its own.
+
+## CLOSED — out of scope, 2026-08-22
+
+**The dev's call.** "Enough for now."
+
+The expensive parts came out on their own while optimising, which was the point of asking for the split.
+`viewContract` has lost four methods to the work: `relatedContractLists()`, `ancestryCte()`,
+`ancestorContractIds()` and `subsequentContractIds()`. What is left — pulling parties, approvals, history
+and obligations into their own methods — is pure readability with **no load-time effect**, and it is a
+large diff to review for no measurable gain.
+
+Not abandoned, just not this effort's. A later effort can take it with the page already fast, which is a
+better time to move code than while it is being optimised.

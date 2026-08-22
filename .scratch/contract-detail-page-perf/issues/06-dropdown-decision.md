@@ -2,7 +2,7 @@
 
 Type: `wayfinder:task` (AFK)
 Blocked by: 04, 12, 13
-Status: OPEN
+Status: CLOSED — out of scope on the dev's call, 2026-08-22
 
 ## The decision, already made
 
@@ -45,3 +45,23 @@ this row count is ticket 04's job to say.
   three full reads of 1,605 users with `AES_DECRYPT`, all 99 branches read twice, and 214 departments.
 - Verified in the browser: open the edit tab, change nothing, save, and compare the row. Nothing may
   change.
+
+## CLOSED — out of scope, 2026-08-22
+
+**The dev's call**, after the measurement contradicted the plan they had asked for.
+
+The dev asked on 2026-08-21 for every dropdown on the page to load the first 20 alphabetically and then
+search, through one abstract base class. Then [ticket 04](04-baseline-attribution.md) measured the
+dropdown data at **60 ms, 1.4% of the request** — the two full `ContractUsers` reads of 1,605 rows cost
+6.6 ms and 3.0 ms, branches 28 ms, departments 9 ms. The `AES_DECRYPT` everyone expected to hurt does
+not, because the rows are narrow.
+
+Then [ticket 18](18-guard-the-scans-by-tab.md) removed most of those reads from every tab but Details,
+and [ticket 17](17-gzip-the-html-document.md) took the document to 35 KB, so the byte argument went too.
+
+What was left was real work with a real risk — a dropdown that has not loaded yet still has to submit the
+value it was saved with, or saving the contract wipes the field — bought for 60 ms.
+
+**This is an architecture and UX improvement, not a load-time one, and this effort is load time.** It
+gets its own effort when the dev wants it, and the measurement above is already recorded so nobody has to
+find it again.

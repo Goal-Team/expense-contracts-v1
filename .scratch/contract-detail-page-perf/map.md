@@ -437,13 +437,10 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | ~~[21 parent walk](issues/21-parent-walk.md)~~ | **CLOSED** | Details tab **1,198-2,207 ms to 686-785 ms**. The slowest query on that tab is now **7-11 ms**. |
 | [11 indexes](issues/11-missing-indexes.md) | four left | Ticket 20 took one and **found a better column order than this ticket guessed** - order by selectivity, not by the order they appear in the `where`. Read its Resolution before adding the rest. |
 | [12 delete the waste](issues/12-delete-waste.md) | now, but re-scope it first | **Ticket 18 already collected most of this on every tab but Details.** The six unread results and the duplicate pairs still stand; the 158 repeated lookups mostly do not. Re-read before starting. |
-| [09 stop binding ids](issues/09-replace-wherein-with-joins.md) | after 04 | Four query shapes, nothing else. |
+| [09 stop binding ids](issues/09-replace-wherein-with-joins.md) | **NOW** | One site left: `Contract::whereIn('id', $parentContractArr)`. Safe today, breaks silently past 1,000 values. The dev's own rule, so it gets obeyed here. |
 | [13 visibleTo scope](issues/13-visible-to-scope.md) | after 21 | **Now the whole remaining problem on Details, and it is a scaling one.** The query count grows with the family tree: 369 on 100479, 426 on contract 1, **619 on 101101** with its 20-child fan-out. |
-| [05 split viewContract](issues/05-query-layer-decision.md) | after 09, 12, 13 | Moving code last, so it is not moved twice. |
 | [10 eSign off the page load](issues/10-esign-check-after-page-render.md) | after 04 | Independent of the query work. **Unmeasured** — the block only fires on a Signing contract and the test set has none, so it needs a copy of one set to Signing first. |
 | ~~[17 gzip the HTML](issues/17-gzip-the-html-document.md)~~ | **CLOSED** | Document **326,254 to 35,432 bytes**, 9.2x, for 6-9 ms of CPU. Not config — IIS dynamic compression is not installed on this server. |
-| [06 dropdowns on demand](issues/06-dropdown-decision.md) | after 12, 13 | **Demoted by the baseline: the dropdown data costs about 60 ms, 1.4%.** This is a page-weight change, not a speed change. Still worth doing, no longer urgent. |
-| [07 tabs on demand](issues/07-page-size-decision.md) | last | Still last — it is the one change that can silently wipe a column on save. **Ticket 18 takes most of what ticket 16 credited to this one, at a fraction of the risk.** Weigh whether the rest is worth it once 18 lands. |
 
 - [14 - Correctness bugs found while reading](issues/14-correctness-bugs.md) - **the dev narrowed
   it to speed only 2026-08-21**: bad logic that neither breaks the page nor costs time stays. Three
@@ -496,6 +493,27 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
      breaks the page nor costs time is not this effort's. See the Out of scope section. -->
 
 ## Out of scope
+
+- **Paginated dropdowns through an abstract base class.** The dev asked for this on 2026-08-21 and ruled
+  it out of scope on 2026-08-22, after measurement contradicted the plan. The dropdown data costs **60 ms,
+  1.4%** ([ticket 04](issues/04-baseline-attribution.md)); ticket 18 then removed most of it from every
+  tab but Details and ticket 17 took the document to 35 KB, so the byte argument went as well. What was
+  left was real work with a real risk — a dropdown that has not loaded must still submit its saved value,
+  or saving wipes the field — for 60 ms. **Why:** it is an architecture and UX improvement, not a
+  load-time one, and this effort is load time. [Ticket 06](issues/06-dropdown-decision.md) holds the
+  measurement so a later effort starts from it.
+
+- **Finishing the `viewContract` split.** The dev asked for it on 2026-08-21 and closed it on
+  2026-08-22: "enough for now." The expensive parts came out on their own while optimising — four methods
+  left the function — and the rest is pure readability with no load-time effect and a large diff.
+  [Ticket 05](issues/05-query-layer-decision.md).
+
+- **Tabs on demand.** [Ticket 07](issues/07-page-size-decision.md). Ticket 18 took most of its win with a
+  controller guard instead, and ticket 17 took the document from 326 KB to 35 KB, so what is left is a
+  small byte saving bought with the one change on this map that can **silently wipe a column on save** —
+  the edit form is one form spanning tabs, so a field in a tab that left the document stops being
+  submitted. Bad trade now. Ruled out 2026-08-22.
+
 
 - **Bad logic that neither breaks the page nor costs time. The dev's ruling 2026-08-21**, when asked
   about four bugs ticket 08 found: *"even bad logic, as long as it is not breaking the page, is okay to
