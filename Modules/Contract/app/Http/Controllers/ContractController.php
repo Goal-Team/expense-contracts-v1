@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Http;
@@ -293,37 +294,38 @@ class ContractController extends Controller
     }
 
     /**
-     * The ids of this contract's ancestors, nearest parent first - what the Parent Contracts
-     * table on the Details tab lists.
+     * The ids of this contract's ancestors, as a query - what the Parent Contracts table on the
+     * Details tab lists.
      *
-     * A root contract returns an empty array. The old query returned one row holding 0 for that
-     * case, and the caller bound that 0 into a whereIn that no id ever matched.
+     * It returns a query, not an array, and that is the point: the caller passes it straight to
+     * whereIn(), so the ids stay inside the database and nothing is bound. The rule is in
+     * CLAUDE.md, "Query rules": never pass a list of ids into whereIn. On this stack a whereIn
+     * with 1,000 or more bound values returns zero rows with no error, so the Parent Contracts
+     * table would go blank on a deep tree and look like missing data.
+     *
+     * A root contract makes the query return no rows, so the caller gets an empty list.
      */
-    private function ancestorContractIds($id): array
+    private function ancestorContractIds($id): QueryBuilder
     {
-        // DB::select, not Eloquent, and this is the documented exception in CLAUDE.md: the
-        // query is a WITH RECURSIVE, and Eloquent has no expression for a common table
-        // expression that refers to itself.
+        // fromRaw, not Eloquent, and this is the documented exception in CLAUDE.md: the query is
+        // a WITH RECURSIVE, and Eloquent has no expression for a common table expression that
+        // refers to itself. Everything around it is Eloquent - the caller is a Contract query and
+        // this is the subquery its whereIn reads.
+        //
+        // MariaDB accepts a WITH clause inside a derived table, so the recursive walk sits in the
+        // FROM of a normal one-column select. That is what lets whereIn take it.
         //
         // The old shape walked the table with the session variable @idlist and FIND_IN_SET. It
         // read every row of the table and sorted them, so it cost 222-255 ms on 3,018 rows, and
-        // no index could help it. It was also wrong: see the ticket.
+        // no index could help it. It was also wrong: see ticket 21.
         //
-        // The one binding is this contract id, so no list of ids crosses the wire.
-        $rows = DB::select(
-            "WITH RECURSIVE " . $this->ancestryCte() . "
-             SELECT pid FROM ancestry ORDER BY depth",
-            [$id]
-        );
-
-        $ids = array_map(static fn ($row) => (int) $row->pid, $rows);
-
-        Log::debug('Contract detail page walked up the contract family tree', [
-            'contract_id' => $id,
-            'ancestors' => count($ids),
-        ]);
-
-        return $ids;
+        // The one binding is this contract id.
+        return DB::query()
+            ->select('pid')
+            ->fromRaw(
+                '(WITH RECURSIVE ' . $this->ancestryCte() . ' SELECT pid FROM ancestry) AS ancestry_ids',
+                [$id]
+            );
     }
 
     /**
@@ -451,9 +453,30 @@ class ContractController extends Controller
 
 
         //Get Parent Contracts
-        $parentContractArr = $this->ancestorContractIds($id);
+        // whereIn reads the ancestor walk as a subquery, so no id is bound and no id crosses the
+        // wire. The rule is in CLAUDE.md: on this stack a whereIn with 1,000 or more bound values
+        // returns zero rows with no error, and this table would go blank on a deep tree.
+        //
+        // Two queries became one. The walk used to run on its own and hand its ids back to PHP.
+        //
+        // orderBy('id') is not new behaviour, it is the old behaviour written down. A whereIn on a
+        // bound list returned the rows in id order because that is the index order; the subquery
+        // makes MariaDB read the walk first, which returns the nearest parent first. The table has
+        // always printed the lowest id first, so the sort keeps the page as it is.
+        //
+        // The columns stay at select('*'). availableContracts() reads at least a dozen of them and
+        // decides by isset(), so a column left out changes the rows it returns without saying so,
+        // and the blade loops $contractsoldother->contractPartyList. Ticket 20's narrow select was
+        // safe because that query has no availableContracts() pass; this one does.
+        $contractsparentList = Contract::select('*')
+            ->whereIn('id', $this->ancestorContractIds($id))
+            ->orderBy('id')
+            ->get();
 
-        $contractsparentList = Contract::select('*')->whereIn('id', $parentContractArr)->get();
+        Log::debug('Contract detail page read the parent contracts', [
+            'contract_id' => $id,
+            'ancestors' => $contractsparentList->count(),
+        ]);
 
         $contractsparentList = $this->availableContracts($contractsparentList, true);
 
