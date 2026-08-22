@@ -298,8 +298,52 @@ class Helpers
         return true;
     }
     
+    /**
+     * The answers already worked out in this request, keyed by the arguments and by the session
+     * values the answer depends on.
+     *
+     * BranchScope, DepartmentScope and UserBranchScope each call getEntityBranches() every time
+     * they build a query, and every call runs the same three or four reads: the UserCredential
+     * row for the auth token, the ContractUsers row for that username, then the branch walk. On
+     * the contract detail page that came to 41 identical queries in one load.
+     *
+     * The session cannot change while one request runs, so the answer cannot either. A null
+     * entry is a real answer, so reads test array_key_exists and not isset.
+     */
+    protected static array $entityBranchesCache = [];
+
+    /**
+     * Drop the request cache. For tests, and for any code that changes the session user inside
+     * one request.
+     */
+    public static function forgetEntityBranches(): void
+    {
+        static::$entityBranchesCache = [];
+    }
+
     public static function getEntityBranches($accessLevel='Head Office', $accessDepartment=0){
-    
+
+        $cacheKey = implode('|', [
+            $accessLevel,
+            $accessDepartment,
+            (string) session()->get('contractUserToken'),
+            (string) session()->get('contractSessionEntity'),
+            (string) session()->get('contractSessionUserRole'),
+        ]);
+
+        if (array_key_exists($cacheKey, static::$entityBranchesCache)) {
+            return static::$entityBranchesCache[$cacheKey];
+        }
+
+        return static::$entityBranchesCache[$cacheKey] = static::resolveEntityBranches($accessLevel, $accessDepartment);
+    }
+
+    /**
+     * The body of getEntityBranches(). Split out so the cache above has one thing to wrap and
+     * every return path below stays exactly as it was.
+     */
+    protected static function resolveEntityBranches($accessLevel='Head Office', $accessDepartment=0){
+
         if(session()->get('contractUserToken')){
 
             $authtoken = session()->get('contractUserToken');
