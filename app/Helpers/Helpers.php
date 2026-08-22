@@ -384,6 +384,32 @@ class Helpers
     }
 
     /**
+     * The rows already read for an auth token in this request.
+     */
+    protected static array $authTokenUserCache = [];
+
+    /**
+     * The UserCredential row for an auth token, read once per token per request.
+     *
+     * Two places asked for it with the same four decrypted columns - here and
+     * ContractSessionMiddleware - and getEntityBranches() is called with two different argument
+     * pairs, so the contract detail page read it three times in one load. The row cannot change
+     * inside one request. A null answer is a real answer, so the test is array_key_exists.
+     */
+    public static function authTokenUser($authtoken)
+    {
+        $key = (string) $authtoken;
+
+        if (! array_key_exists($key, static::$authTokenUserCache)) {
+            static::$authTokenUserCache[$key] = UserCredentials::select('id', decrypt_data('username', 'UserCredential'), decrypt_data('name', 'UserCredential'), decrypt_data('Salutation', 'UserCredential'), decrypt_data('issuper', 'UserCredential'))
+                ->where('authtoken', $authtoken)
+                ->first();
+        }
+
+        return static::$authTokenUserCache[$key];
+    }
+
+    /**
      * The body of getEntityBranches(). Split out so the cache above has one thing to wrap and
      * every return path below stays exactly as it was.
      */
@@ -393,8 +419,8 @@ class Helpers
 
             $authtoken = session()->get('contractUserToken');
             $userLogRole = session()->get('contractSessionUserRole');
-        
-            $checkUserCredentials = UserCredentials::select('id',decrypt_data('username', 'UserCredential'),decrypt_data('name', 'UserCredential'), decrypt_data('Salutation', 'UserCredential'), decrypt_data('issuper','UserCredential'))->where('authtoken', $authtoken)->first();
+
+            $checkUserCredentials = static::authTokenUser($authtoken);
 
             if($checkUserCredentials){
 

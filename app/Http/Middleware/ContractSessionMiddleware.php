@@ -11,6 +11,7 @@ use App\Models\UserCredentials;
 use App\Models\AddUsers;
 
 use App\Http\Controllers\Controller;
+use App\Helpers\Helpers;
 
 use Storage;
 
@@ -57,7 +58,9 @@ class ContractSessionMiddleware
             return redirect('/misconfig')->with('misconfig',$allSet);
         }        
 
-        $checkUserCredentials = UserCredentials::select('id',decrypt_data('username', 'UserCredential'),decrypt_data('name', 'UserCredential'), decrypt_data('Salutation', 'UserCredential'), decrypt_data('issuper','UserCredential'))->where('authtoken', $authtoken)->first();
+        // Same row, same four decrypted columns, as Helpers::getEntityBranches() reads. One
+        // read per request now, shared through Helpers::authTokenUser().
+        $checkUserCredentials = Helpers::authTokenUser($authtoken);
         if($checkUserCredentials){
             
             $username = $checkUserCredentials->username;

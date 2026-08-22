@@ -397,9 +397,18 @@ class Controller extends BaseController
     }
     
     public function checkTablesConfiguration(){
-        $tables = DB::select('SHOW TABLES');
-        
+
         $requiredTable = [];
+
+        // Nothing is required, so nothing can be missing and this returns true whatever the
+        // schema holds. Leaving early skips a SHOW TABLES over the whole schema - the slowest
+        // single query left on the contract detail page, and ContractSessionMiddleware calls
+        // this twice per request. The check below is left intact for the day the list is filled.
+        if (empty($requiredTable)) {
+            return true;
+        }
+
+        $tables = DB::select('SHOW TABLES');
 
     
         $requiredTableText = array_map(function($value){ return ucwords(str_replace("_", " ", $value));}, $requiredTable);
