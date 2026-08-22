@@ -183,22 +183,24 @@ class Controller extends BaseController
             ->get();
         }
         
-        //For AccessLevel
-        $available_branches = BranchUser::pluck(decrypt_data('BranchName', 'branch'), 'id')->toArray();
-        $available_departms = EntityBusiness::pluck('id')->toArray();
-
-        $entity_list = EntityMain::pluck(decrypt_data('Nameoftheentity', 'entity'), 'id')->toArray();
-
-        // One query for every category name, read from the list inside the loop below. The loop
-        // used to call ContractCategories::find() once per contract, which was 57 queries of the
-        // 368 the contract detail page ran on its Details tab. Same shape as $available_branches
-        // and $entity_list above.
+        // For AccessLevel. These four lists are the same for every contract in the loop below,
+        // and the same for every call this request makes - the contract detail page calls this
+        // method four times, and each call ran all four queries again. They are held for the
+        // life of the request. Their scopes read the session, which cannot change inside one
+        // request either.
         //
-        // Held for the life of the request, because the contract detail page calls this method
-        // four times and the category list cannot change between those calls.
+        // $category_names replaces a ContractCategories::find() that ran once per contract: 57
+        // queries of the 368 the detail page ran on its Details tab.
+        static $available_branches = null;
+        static $available_departms = null;
+        static $entity_list = null;
         static $category_names = null;
-        if ($category_names === null) {
-            $category_names = ContractCategories::pluck('name', 'id')->toArray();
+
+        if ($available_branches === null) {
+            $available_branches = BranchUser::pluck(decrypt_data('BranchName', 'branch'), 'id')->toArray();
+            $available_departms = EntityBusiness::pluck('id')->toArray();
+            $entity_list        = EntityMain::pluck(decrypt_data('Nameoftheentity', 'entity'), 'id')->toArray();
+            $category_names     = ContractCategories::pluck('name', 'id')->toArray();
         }
 
         // The loop reads $contract->contractTypeData, which lazy-loads one row per contract - 56

@@ -107,9 +107,23 @@ if (!function_exists('fileStorageTypeController')) {
 }
 
 if (!function_exists('fileStorageType')) {
+    /**
+     * Which drive the application stores contract files on.
+     *
+     * One row, read from many places. fileStorageTypeController() alone asks three times, and
+     * the contract detail page asked nine times in one load. The row cannot change while a
+     * request runs, so the answer is held for the life of the request. A null answer - no
+     * row - is a real answer, so the test is array_key_exists and not isset.
+     */
     function fileStorageType()
     {
-        return FileStorage::where('id', 1)->value('type');
+        static $type = [];
+
+        if (! array_key_exists(0, $type)) {
+            $type[0] = FileStorage::where('id', 1)->value('type');
+        }
+
+        return $type[0];
     }
 }
 
