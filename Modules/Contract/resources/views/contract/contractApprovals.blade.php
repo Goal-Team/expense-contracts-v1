@@ -15,13 +15,23 @@
              
           
           <table class="table misgtable" style="display:none">
-            {{-- $reqfields is never passed to this view: nothing in the repo sets it, so the
-                 foreach threw "Undefined variable $reqfields" and ?tab=timelineedit returned
-                 HTTP 500. The table it fills is display:none and lists the contract fields that
-                 are missing. ContractController has a $reqfieldsText map of the same shape,
-                 key => label, which looks like the variable this was renamed to - but that is a
-                 guess, so the guard renders an empty table instead. --}}
-            @foreach (($reqfields ?? []) as $key => $label)
+            {{-- This loop read $reqfields, and nothing in the repo sets that variable any more, so
+                 ?tab=timelineedit returned HTTP 500 on "Undefined variable $reqfields". The dev
+                 confirmed 2026-08-22 that the variable was renamed to $reqfieldsText, so the loop
+                 reads that now. It is the key => label map ContractController builds at
+                 ContractController.php:1023, and contractApprovalsView.blade.php reads the same
+                 map for its labels.
+
+                 The ?? [] guard stays. The variable is always set today, so the guard costs
+                 nothing, and it stops the next rename taking the whole page down again.
+
+                 One thing does not fit, and it is written up in ticket 09 - the controller adds a
+                 row to $reqfieldsText for every required custom field, keyed by custom_field_id.
+                 A custom field value lives in custom_field_data, not on the contracts row, so
+                 $contract->$key is null for those keys and the field always prints "Missing".
+                 $reqfieldsVals[$key] holds the real value. Left alone because it is a wrong
+                 result, not a break, and the choice of test is the dev's. --}}
+            @foreach (($reqfieldsText ?? []) as $key => $label)
                 @empty($contract->$key)
                     <tr>
                         <td class="text-danger">{{ $label }}</td>
