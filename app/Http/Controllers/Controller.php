@@ -21,6 +21,7 @@ use DB;
 use Carbon\Carbon;
 use DateTime;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 
 class Controller extends BaseController
 {
@@ -188,6 +189,28 @@ class Controller extends BaseController
 
         $entity_list = EntityMain::pluck(decrypt_data('Nameoftheentity', 'entity'), 'id')->toArray();
 
+        // One query for every category name, read from the list inside the loop below. The loop
+        // used to call ContractCategories::find() once per contract, which was 57 queries of the
+        // 368 the contract detail page ran on its Details tab. Same shape as $available_branches
+        // and $entity_list above.
+        //
+        // Held for the life of the request, because the contract detail page calls this method
+        // four times and the category list cannot change between those calls.
+        static $category_names = null;
+        if ($category_names === null) {
+            $category_names = ContractCategories::pluck('name', 'id')->toArray();
+        }
+
+        // The loop reads $contract->contractTypeData, which lazy-loads one row per contract - 56
+        // more of those 368. Load them all in one query first. loadMissing() leaves an already
+        // loaded relation alone, and it is skipped unless the loop actually reads it.
+        //
+        // One row is not worth an eager load: it costs the same one query either way, and this
+        // page calls the method once with a single-contract collection on every tab.
+        if ($listArray && $contracts instanceof EloquentCollection && $contracts->count() > 1) {
+            $contracts->loadMissing('contractTypeData');
+        }
+
         $availableContracts = [];
 
         foreach ($contracts as $contract) {
@@ -225,16 +248,10 @@ class Controller extends BaseController
             $contract->contractParty = $contractParty;
 
             if (isset($contract->catgoery_id)) {
-                $category = \App\Models\ContractCategories::find($contract->catgoery_id);
-            
-                if ($category) {
-                    $contract->catgoery_identity = $contract->catgoery_id;
-                    $contract->catgoery_id = $category->name;
-                } else {
-                    // Optional: handle missing category
-                    $contract->catgoery_identity = $contract->catgoery_id;
-                    $contract->catgoery_id = null; // or 'Unknown'
-                }
+                // Read from the list built before the loop, not one query per contract. A missing
+                // category still leaves catgoery_identity set and catgoery_id null, as before.
+                $contract->catgoery_identity = $contract->catgoery_id;
+                $contract->catgoery_id = $category_names[$contract->catgoery_id] ?? null;
             }
             
             $contract->currency_value_converted = "-";

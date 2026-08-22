@@ -447,7 +447,12 @@ class ContractController extends Controller
 
         $FinalContractList = $ContractPartyLocList->intersect($ContractPartyDataList);
 
-        $contractspartsList = Contract::select('*')->whereIn('id', $FinalContractList)->where('id', '<>', $id)->where('status', 1)->get();
+        // with('contractParent'): the Other Contracts With Parties table reads
+        // $contractsoldother->contractParent once per row, to decide whether to draw the Link
+        // button (viewDetailContract.blade.php:2431). Lazy-loaded that was 55 of the 368 queries
+        // this tab ran. The blade only tests it for truth, so one child row per contract is all
+        // the eager load has to return.
+        $contractspartsList = Contract::with('contractParent')->select('*')->whereIn('id', $FinalContractList)->where('id', '<>', $id)->where('status', 1)->get();
 
         $contractspartsList = $this->availableContracts($contractspartsList, true);
 
