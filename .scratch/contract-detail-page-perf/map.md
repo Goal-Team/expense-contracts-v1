@@ -414,6 +414,37 @@ cost is shared too. The edit tab is what we measure and verify on.
   Also answered the `frequentHitThreshold` warning: it cannot delay this, because PHP has no hit counter,
   so the **first** request comes back gzipped. Commit `00d6219`.
 
+
+- [09 - stop binding lists of ids](issues/09-replace-wherein-with-joins.md), part done - **the Parent
+  Contracts list passes the query, not the ids.** `ancestorContractIds()` returns the recursive walk as
+  a subquery and `whereIn` reads it, so one binding crosses the wire instead of one per ancestor. Two
+  queries became one on every contract: **369 to 368** on `100479`, 426 to 425 on `1`, 400 to 399 on
+  `101143`, 619 to 618 on `101101`. Id sets match on 22 of 22 contracts, ids and order both, and all 30
+  documents are unchanged to the character. Report row 16. Commit `81f2581`.
+  **Four things to remember:** the ticket's "known sites" list was **wrong** - tickets 15 and 21
+  replaced the two family-tree *walks*, not the `whereIn` calls that read their ids, so **four sites
+  still bind**, the biggest being `$finalListChild` at 111 ids and 92.62 ms on `101101`; **MariaDB
+  accepts a `WITH` clause inside a derived table**, which is the only reason `whereIn` can hold a
+  recursive walk at all; `withoutGlobalScope('accessLevelSelect')` was **not** needed here, because the
+  `select('*')` trap only fires when the subquery is a `Contract` query and this one is a plain
+  `DB::query()`; and **the merged query is 2-5 ms slower than the two it replaced** - the win is that
+  the table cannot silently go blank past 1,000 ids, not speed.
+  **The columns stay at `select('*')` and that is deliberate.** Ticket 20's narrow select is not safe
+  on any query that feeds `availableContracts()`: that method reads at least ten columns and branches
+  on `isset()`, so a column left out changes the rows and the query count with no error.
+
+- [03 - break 8, `$reqfields`](issues/03-find-remaining-breaks.md) - **the dev confirmed it:
+  `$reqfieldsText`.** `?tab=timelineedit` fills its missing-fields table now instead of rendering an
+  empty one. The table is `display:none` but `contract.js` counts its rows and **disables the Send
+  button** on the Approval and Signing popups, so the rows gate the flow. Only the four `timelineedit`
+  documents change, by 618-858 characters; the other 26 are unchanged to the character. Report row 17.
+  Commit `6515eb5`.
+  **One thing is left for the dev:** the controller adds a row to `$reqfieldsText` for every required
+  custom field, keyed by `custom_field_id`, and a custom field value lives in `custom_field_data`, not
+  on the `contracts` row - so `@empty($contract->$key)` is always true and the field always prints
+  "Missing". Contract **16** proves it. There are three candidate arrays with three different meanings
+  of missing, so the fix is the dev's call, not a guess.
+
 ## Order of work
 
 This tracker is markdown, so there is no query to find the frontier. The order is written down instead.
@@ -437,7 +468,7 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | ~~[21 parent walk](issues/21-parent-walk.md)~~ | **CLOSED** | Details tab **1,198-2,207 ms to 686-785 ms**. The slowest query on that tab is now **7-11 ms**. |
 | [11 indexes](issues/11-missing-indexes.md) | four left | Ticket 20 took one and **found a better column order than this ticket guessed** - order by selectivity, not by the order they appear in the `where`. Read its Resolution before adding the rest. |
 | [12 delete the waste](issues/12-delete-waste.md) | now, but re-scope it first | **Ticket 18 already collected most of this on every tab but Details.** The six unread results and the duplicate pairs still stand; the 158 repeated lookups mostly do not. Re-read before starting. |
-| [09 stop binding ids](issues/09-replace-wherein-with-joins.md) | **NOW** | One site left: `Contract::whereIn('id', $parentContractArr)`. Safe today, breaks silently past 1,000 values. The dev's own rule, so it gets obeyed here. |
+| [09 stop binding ids](issues/09-replace-wherein-with-joins.md) | **NOW, four sites left** | **The "one site left" line was wrong.** Tickets 15 and 21 replaced the two family-tree *walks*, not the `whereIn` calls that read their ids. `$parentContractArr` is fixed (commit `81f2581`); the two `ContractPartyData` plucks, `$FinalContractList` and `$finalListChild` still bind. `$finalListChild` binds **111 ids on `101101`** and is the slowest query on that page at **92.62 ms** — take it next. |
 | [13 visibleTo scope](issues/13-visible-to-scope.md) | after 21 | **Now the whole remaining problem on Details, and it is a scaling one.** The query count grows with the family tree: 369 on 100479, 426 on contract 1, **619 on 101101** with its 20-child fan-out. |
 | [10 eSign off the page load](issues/10-esign-check-after-page-render.md) | after 04 | Independent of the query work. **Unmeasured** — the block only fires on a Signing contract and the test set has none, so it needs a copy of one set to Signing first. |
 | ~~[17 gzip the HTML](issues/17-gzip-the-html-document.md)~~ | **CLOSED** | Document **326,254 to 35,432 bytes**, 9.2x, for 6-9 ms of CPU. Not config — IIS dynamic compression is not installed on this server. |
@@ -468,10 +499,14 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
   `?history=` in the URL, the tab renders the **live** contract. The controller reads the parameter and
   never the cookie. Clicking the nav item works, because the link carries the id. Making the cookie load
   the snapshot is a new feature, so ticket 03 left it. Needs the dev.
-- **What `$reqfields` was renamed to.** `?tab=timelineedit` loops a variable nothing sets.
-  `ContractController` holds `$reqfieldsText`, a `key => label` map of exactly the right shape, which
-  looks like the answer — but it is a guess, so ticket 03 guarded the loop and renders an empty table.
-  Needs the dev.
+- ~~**What `$reqfields` was renamed to.**~~ **ANSWERED by the dev 2026-08-22: `$reqfieldsText`.** The
+  loop reads it now and `?tab=timelineedit` fills its table. Commit `6515eb5`, report row 17. **One
+  thing is still the dev's**: the controller adds a row to `$reqfieldsText` for every required custom
+  field, keyed by `custom_field_id`, and those values live in `custom_field_data`, so
+  `@empty($contract->$key)` is always true and the field always prints "Missing" — contract 16 proves
+  it. Three arrays hold three different meanings of missing (`$reqfieldsText`, `$reqfieldsVals`,
+  `$reqfieldsVal`), so the choice of test needs the dev. Written up in
+  [ticket 03](issues/03-find-remaining-breaks.md).
 - **This page reacts to URL shapes nobody has mapped.** `?tab=edit` runs 86 queries;
   `?tab=edit&_n=<anything>` runs **96**. Same with compression on and off, so it is not that change.
   Ticket 03 already found `?tab=<unknown>` serves the Details body. Something reads the query string in a

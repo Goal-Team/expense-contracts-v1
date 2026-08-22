@@ -266,3 +266,63 @@ a later effort.
 - **`ContractController.php` has a second copy of the history swap** at about line 10597, with the
   same null break that break 9 fixed, and a second copy of the three name lookups at about line 4435.
   Another page each time. A later effort on those pages can take the same fix.
+
+### Follow-up to break 8: `$reqfields` is `$reqfieldsText`, 2026-08-22
+
+**The dev confirmed the guess.** The loop in `contractApprovals.blade.php:24` reads `$reqfieldsText`
+now, so `?tab=timelineedit` fills its table instead of rendering an empty one. Commit `6515eb5`.
+
+**The loop's shape fits.** `$reqfieldsText` is `key => label`
+([ContractController.php:1023](../../../Modules/Contract/app/Http/Controllers/ContractController.php:1023)),
+the eight keys are `contracts` columns and the eight labels are plain strings, so
+`@empty($contract->$key)` works and no row prints a blank or an array-to-string notice.
+`contractApprovalsView.blade.php:140` already reads the same map for its labels, so the two blades
+agree on what it is for.
+
+**The table matters even though nobody sees it.** It is `display:none`, but
+[contract.js:1271](../../../Modules/Contract/resources/assets/js/contract.js:1271) and
+[:1305](../../../Modules/Contract/resources/assets/js/contract.js:1305) count its rows and **disable
+the popup's Send button** when it has any, on "Send For Approval" and "Send For Signing". So the rows
+gate the approval flow.
+
+What each contract prints:
+
+| contract | rows in the table |
+|---|---|
+| 100479 | Termination - Date, Signing Date |
+| 101143 | Termination - Date, Signing Date |
+| 1 | Termination - Date, Signing Date, Relationship with Apollo Group |
+| 16 | Contract End Date, Termination - Date, Signing Date, Relationship with Apollo Group |
+
+**The guard stays.** `($reqfieldsText ?? [])` costs nothing while the variable is always set, and it
+stops the next rename taking the page down.
+
+**One key shape does not fit, and it is written down rather than forced.** 111 lines below the map,
+[ContractController.php:1142](../../../Modules/Contract/app/Http/Controllers/ContractController.php:1142)
+adds a row to `$reqfieldsText` for every **required custom field**, keyed by `custom_field_id`. A custom
+field value lives in `custom_field_data`, not on the `contracts` row, so `$contract->$key` is `null` for
+those keys and the field **always** prints "Missing".
+
+Contract **16** proves it: `custom_field` 57, "Relationship with Apollo Group", is the one row in this
+database with `required = 1`, its `contract_type` is 1, contract 16's `contract_type` is 1, and
+`custom_field_data` holds `Related Party` for it. The table still says Missing.
+
+`$reqfieldsVals[$key]` holds the real value for both the plain columns and the custom fields, and
+`contractApprovalsView.blade.php` already pairs `$reqfieldsVals[$key]` with `$reqfieldsText[$key]` that
+way. Two things stopped this ticket changing the test:
+
+- It is a **wrong result, not a break**, and it costs no query and no time, so the
+  performance rule in [CLAUDE.md](../../../CLAUDE.md) leaves it.
+- `$reqfieldsVals['signing_date']` holds the **literal string `signing_date`** on a Signing contract
+  ([:1126](../../../Modules/Contract/app/Http/Controllers/ContractController.php:1126)), which the other
+  three blades treat as empty by testing `$inpVal == $key`. So swapping the test needs that rule copied
+  in, and there is a third candidate array, `$reqfieldsVal`, whose `true` means missing for a custom
+  field and `false` means missing for a plain column. Three arrays, three meanings of missing. **The
+  dev picks.**
+
+**Verified**: 30 loads, 13 tab values on `100479` and `1`, plus `16?tab=timelineedit` and
+`101143?tab=timelineedit`, all **200**. Only the four `timelineedit` documents change, by 618-858
+characters each; the other 26 match the pre-change document to the character, whitespace ignored.
+`storage/logs/laravel.log` holds no error and no warning across the run. Browser console on
+`1?tab=timelineedit`: the same two known entries, a 403 for an asset and the Tagify warning. Report
+row 17.
