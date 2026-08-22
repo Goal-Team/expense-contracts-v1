@@ -2,7 +2,8 @@
 
 Type: `wayfinder:task` (AFK)
 Blocked by: 04 — take the baseline before adding an index, or the baseline measures the wrong thing
-Status: PART DONE — the `parentcontract` covering index is applied. Five to go.
+Status: CLOSED 2026-08-22 — four indexes applied across tickets 11, 20 and this one's Resolution. Two of the six
+were dropped on measurement, not on opinion. See the Resolution at the end.
 
 ## Question
 
@@ -103,3 +104,54 @@ Two facts worth carrying:
 
 **Four indexes left.** One of them may still not be needed: `user_action_log.group_id` serves
 `$signedHistory`, which no blade reads. Check [ticket 12](12-delete-waste.md) first.
+
+## Resolution — 2026-08-22
+
+**Four of the six are in. The other two are dropped, and the row counts are the reason.**
+
+Applied, with the commit that did it:
+
+| Table | Columns | Applied by | Build | Effect |
+|---|---|---|---|---|
+| `contracts` | `parentcontract, id` | this ticket, `378ba21` | **474 s** | HTTP 500 to 4,422 ms |
+| `contracts` | `contract_type(20), department_id, catgoery_id(20)` | [ticket 20](20-contractsoldothers-scan.md), `5ffd9c1` | 208 ms | the query 928-1,823 ms to under 5 ms |
+| `contracts_history` | `id, created_at` | this Resolution | 307 ms | no number moves |
+| `custom_field_data` | `custom_field_group_id, custom_field_id, custom_field_group(20), id` | this Resolution | 221 ms | no number moves |
+
+Dropped:
+
+- **`contract_party_data(contract_party_exe_id)`.** The column holds **one** distinct value across
+  6,940 rows: 3,018 rows hold `1` and 3,922 hold `NULL`. A filter that matches 44% of the table
+  cannot use an index - MariaDB scans whatever we build. The query is also
+  [ticket 09](09-replace-wherein-with-joins.md)'s to rewrite, at
+  [ContractController.php:445](../../../Modules/Contract/app/Http/Controllers/ContractController.php:445).
+  If a client's data spreads that column over many parties, the index becomes worth adding; on this
+  data it is dead weight on every write.
+- **`user_action_log(group_id)`.** Held, as this ticket already said, for
+  [ticket 12](12-delete-waste.md). It serves `$signedHistory`, which no blade reads. The table holds
+  49 rows.
+
+### The two new ones move no number, and that is reported, not hidden
+
+Report row 18. Same **368** queries on `?tab=details` and **96** on `?tab=edit` before and after, and
+the millisecond spreads overlap. `EXPLAIN` proves both indexes are picked up - full scan to
+`type ref, rows 1`, `key_len` 8 and 30 - so they are doing their job on a table too small for the job
+to show:
+
+| Table | Rows on the seeded set |
+|---|---|
+| `contracts_history` | 17 |
+| `custom_field_data` | 6 |
+
+They are kept because both tables grow with use on a client database and neither growth has a ceiling.
+`contracts_history` gains a row every time any user saves any contract. `custom_field_data` gains a
+row per custom field per contract, and this page calls `dataCustomFields()` 8 times on the Details tab
+and about 48 on the tabs that draw the whole set.
+
+### One thing to remember
+
+**Read the row count before writing an index migration.** Ticket 08 named these six by reading the
+code, which is the right way to find a missing index and the wrong way to size it. Four of the six sat
+on tables of 6, 17 and 49 rows, or on a column with one value. The two that paid - both on
+`contracts` - are the two on the only large table on this page. One `information_schema.statistics`
+query and one `COUNT(DISTINCT ...)` would have sorted the list in a minute.
