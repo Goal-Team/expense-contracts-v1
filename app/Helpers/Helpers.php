@@ -239,9 +239,54 @@ class Helpers
         return openssl_decrypt($encrypted_data, 'aes-256-cbc', $key.$enkey, 0, $iv);
     }
     
+    /**
+     * The logged-in user's row.
+     *
+     * 76 call sites ask for it, and the query decrypts UserName in the WHERE, so it reads and
+     * decrypts all 1,605 user rows every time. The contract detail page asked six times in one
+     * load, and that was the most expensive shape left on the page. The session cannot change
+     * inside one request, so the row is read once and held.
+     *
+     * Nothing in the repo writes through this result - checked for `userInfo()->x =`, ->save(),
+     * ->update(), ->fill() - so returning the same model to every caller is safe.
+     */
     public static function userInfo()
     {
-    
+        $cacheKey = implode('|', [
+            (string) session()->get('contractSessionExUser'),
+            (string) session()->get('contractSessionUser'),
+            (string) session()->get('contractSessionEntity'),
+        ]);
+
+        if (array_key_exists($cacheKey, static::$userInfoCache)) {
+            return static::$userInfoCache[$cacheKey];
+        }
+
+        return static::$userInfoCache[$cacheKey] = static::resolveUserInfo();
+    }
+
+    /**
+     * The rows already read in this request, keyed by the session values the answer depends on.
+     * A false answer - no session user - is a real answer, so reads test array_key_exists.
+     */
+    protected static array $userInfoCache = [];
+
+    /**
+     * Drop the request cache. For tests, and for any code that changes the session user inside
+     * one request.
+     */
+    public static function forgetUserInfo(): void
+    {
+        static::$userInfoCache = [];
+    }
+
+    /**
+     * The body of userInfo(). Split out so the cache above has one thing to wrap and every
+     * return path below stays exactly as it was.
+     */
+    protected static function resolveUserInfo()
+    {
+
     if(session()->has('contractSessionExUser') && session()->get('contractSessionExUser')){
         $userObject = new \stdClass();
         $userObject->email = session()->get('contractSessionExUser');
