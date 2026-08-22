@@ -445,6 +445,36 @@ cost is shared too. The edit tab is what we measure and verify on.
   "Missing". Contract **16** proves it. There are three candidate arrays with three different meanings
   of missing, so the fix is the dev's call, not a guess.
 
+- [11 - the last two indexes](issues/11-missing-indexes.md) - **four of ticket 08's six are applied, two
+  are dropped on measurement.** `contracts_history(id, created_at)` and
+  `custom_field_data(custom_field_group_id, custom_field_id, custom_field_group(20), id)` are in, both
+  used by the optimiser - full scan to `type ref, rows 1` - and **neither moves a number**, because those
+  tables hold 17 and 6 rows on the seeded set. They stay because both grow with use on a client database.
+  Dropped: `contract_party_data(contract_party_exe_id)`, where the column holds **one** distinct value
+  across 6,940 rows, and `user_action_log(group_id)`, which waits on ticket 12. Report row 18.
+  **One thing to remember:** read the row count before writing an index migration. Ticket 08 named the
+  six by reading the code, which finds a missing index and cannot size it.
+
+- [13 - the loops](issues/13-visible-to-scope.md) - **the Details tab goes 368 queries to 82, and the
+  count stops growing with the contract family:** 502 to 85 on the 12-child fan-out, 130 to 79 on the
+  contract with almost no family. Every tab gains - edit 96 to 68, attachment 91 to 56. **All 32
+  documents, four contracts across eight tab values, are byte-identical**, compared in one session with
+  `git stash`. Five commits, report rows 19 to 23. Three N+1 loops went (`ContractCategories::find()`,
+  `contractTypeData`, `contractParent`) and four request-lifetime caches went in (`admin_setting()`,
+  `getEntityBranches()`, the four access lists with `fileStorageType()`, and `userInfo()`).
+  **`Contract::visibleTo()` is not built**, and after the measurement it should not be: the N+1 was the
+  reason for it, and with the N+1 gone the scope saves zero queries while being the largest logic change
+  on the map. It is in Out of scope now, as an architecture change for a later effort.
+  **Three things to remember:** the request-lifetime cache was worth more than the query rewrites - four
+  five-line changes took 115 queries off, and every other page gets the same saving; **guard an eager
+  load with `count() > 1`**, because on a one-row collection it costs the query it saves and contract
+  `16` went **up** by 3 without it; and `contractParent` returns a **child**, not a parent - the
+  `belongsTo` keys are the other way round.
+
+- **The `historical` cookie stays.** The dev asked to delete it and keep the deletion if nothing broke.
+  Something breaks: it is the only thing that keeps the Historical nav item on screen while the user
+  moves between tabs. Recorded in Not yet specified. No code changed.
+
 ## Order of work
 
 This tracker is markdown, so there is no query to find the frontier. The order is written down instead.
@@ -466,11 +496,11 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | ~~[22 cache the Drive access token](issues/22-cache-the-drive-token.md)~~ | **CLOSED** | **One refresh, then none.** `100479?tab=attachment` 1,327-1,384 ms to **1,066-1,212 ms**; contract `4` to 1,194-1,256 ms. The refresh cost 230 ms today, not the 494-582 ms ticket 19 saw. |
 | ~~[15 recursive child walk](issues/15-recursive-child-walk.md)~~ | **CLOSED** | Details tab **3,235-7,109 ms to 1,198-2,207 ms**. The old query was also **wrong**, on 202 of 3,018 contracts. |
 | ~~[21 parent walk](issues/21-parent-walk.md)~~ | **CLOSED** | Details tab **1,198-2,207 ms to 686-785 ms**. The slowest query on that tab is now **7-11 ms**. |
-| [11 indexes](issues/11-missing-indexes.md) | four left | Ticket 20 took one and **found a better column order than this ticket guessed** - order by selectivity, not by the order they appear in the `where`. Read its Resolution before adding the rest. |
+| ~~[11 indexes](issues/11-missing-indexes.md)~~ | **CLOSED** | Four of the six applied, two dropped on measurement: three of ticket 08's six tables hold 6, 17 and 49 rows, and a fourth column has one distinct value. |
 | [12 delete the waste](issues/12-delete-waste.md) | now, but re-scope it first | **Ticket 18 already collected most of this on every tab but Details.** The six unread results and the duplicate pairs still stand; the 158 repeated lookups mostly do not. Re-read before starting. |
 | [09 stop binding ids](issues/09-replace-wherein-with-joins.md) | **NOW, four sites left** | **The "one site left" line was wrong.** Tickets 15 and 21 replaced the two family-tree *walks*, not the `whereIn` calls that read their ids. `$parentContractArr` is fixed (commit `81f2581`); the two `ContractPartyData` plucks, `$FinalContractList` and `$finalListChild` still bind. `$finalListChild` binds **111 ids on `101101`** and is the slowest query on that page at **92.62 ms** — take it next. |
-| [13 visibleTo scope](issues/13-visible-to-scope.md) | after 21 | **Now the whole remaining problem on Details, and it is a scaling one.** The query count grows with the family tree: 369 on 100479, 426 on contract 1, **619 on 101101** with its 20-child fan-out. |
-| [10 eSign off the page load](issues/10-esign-check-after-page-render.md) | after 04 | Independent of the query work. **Unmeasured** — the block only fires on a Signing contract and the test set has none, so it needs a copy of one set to Signing first. |
+| ~~[13 visibleTo scope](issues/13-visible-to-scope.md)~~ | **CLOSED** | **Details tab 368 to 82 queries, and the count stops growing with the family tree** - 502 to 85 on the 12-child contract. The `visibleTo()` scope itself is **not** built and is now out of scope; the eager loading was the part that carried the numbers. |
+| [10 eSign off the page load](issues/10-esign-check-after-page-render.md) | **NOT THIS EFFORT** | The dev's call 2026-08-22: do it later. Ruled out of scope, see the section below. |
 | ~~[17 gzip the HTML](issues/17-gzip-the-html-document.md)~~ | **CLOSED** | Document **326,254 to 35,432 bytes**, 9.2x, for 6-9 ms of CPU. Not config — IIS dynamic compression is not installed on this server. |
 
 - [14 - Correctness bugs found while reading](issues/14-correctness-bugs.md) - **the dev narrowed
@@ -495,10 +525,19 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
   426 on contract `1`, **619 on `101101`** (a 12-child fan-out). The blade lazy-loads
   `select * from contracts where parentcontract = ? limit 1` for every related contract, and the four
   `availableContracts()` loops walk every row. Ticket 13's, and the seeded chains make it visible.
-- **Should the Historical tab load a snapshot from its cookie?** Today, with the cookie set but no
-  `?history=` in the URL, the tab renders the **live** contract. The controller reads the parameter and
-  never the cookie. Clicking the nav item works, because the link carries the id. Making the cookie load
-  the snapshot is a new feature, so ticket 03 left it. Needs the dev.
+- ~~**Should the Historical tab load a snapshot from its cookie?**~~ **SETTLED 2026-08-22. The cookie
+  stays, and nothing changed.** The dev asked to try deleting it - keep the deletion if everything still
+  works, put it back if not. It does not work: the cookie is the only thing that keeps the **Historical
+  nav item on screen while the user moves between tabs**. Every other tab's link carries no `?history=`,
+  so `$historicalVersionId`
+  ([viewDetailContract.blade.php:98](../../Modules/Contract/resources/views/contract/viewDetailContract.blade.php:98))
+  would be empty and the nav item would vanish; the only way back to a snapshot would be to pick it again
+  from the History tab. That is a feature loss, not a tidy-up, so by the dev's own test the cookie is left
+  alone. The **body** of the page never depended on it: the controller reads `$_GET['history']` and never
+  the cookie, which is the odd behaviour ticket 03 recorded and is unchanged. Two dead things were found
+  next to it and left alone, because they cost nothing: the `.navstascokie` click handlers in
+  `contract.js:2396` and `contractflow.js:1424` write the cookie, and **no blade emits that class**, so
+  neither has ever run.
 - ~~**What `$reqfields` was renamed to.**~~ **ANSWERED by the dev 2026-08-22: `$reqfieldsText`.** The
   loop reads it now and `?tab=timelineedit` fills its table. Commit `6515eb5`, report row 17. **One
   thing is still the dev's**: the controller adds a row to `$reqfieldsText` for every required custom
@@ -589,3 +628,18 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 - The `composer.lock` and `nwidart/laravel-modules` version mismatch, and the
   `APP_ENCRYPTION_KEY`-from-hostname design. Both real, both unrelated to this page's speed; both
   already recorded in the dashboard effort's map.
+
+- **`Contract::visibleTo()`, the visibility rule in SQL.** Asked for by the dev 2026-08-21 as half of
+  [ticket 13](issues/13-visible-to-scope.md); ruled out of scope 2026-08-22 after the other half was
+  measured. The reason to build it was the N+1 inside `availableContracts()`, and the N+1 is gone: the
+  method now runs **no query per row**, so moving the same rule into SQL saves zero queries, zero bytes
+  and no measurable time. Against that it is the largest logic change on the map - it decides which
+  contracts a user may see. **Why:** it is an architecture improvement, not a load-time one, and the
+  dev's rule of 2026-08-22 is that performance means page size, load time, render time, database time
+  and query count. The case for it survives for a later effort: 55 pages call `availableContracts()`,
+  the name does not say what it does, and the rule is written in PHP where SQL would express it.
+
+- **Taking the eSign check off the page load.** [Ticket 10](issues/10-esign-check-after-page-render.md).
+  The dev's call 2026-08-22: "we will have to do it later, not this exercise." It stays unmeasured -
+  the block only fires on a Signing contract and the test set has none, so it needs a copy of one set to
+  Signing first. Nothing is wrong with the ticket; it is simply a later effort's.

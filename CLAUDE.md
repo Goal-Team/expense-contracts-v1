@@ -205,6 +205,18 @@ nothing and it makes the diff harder to read.
 Write each one you leave into the effort's ticket, with the file and line, so a later effort picks it up
 instead of finding it again.
 
+**Performance is every number the user waits on, not only the server time.** The dev's list, 2026-08-22:
+
+- the size of the page
+- the time to load it — the server response time **and** the browser's own work
+- the first render and the last render
+- the time spent in the database
+- the count of queries
+
+A change that improves one of those is on the task. A change that improves none of them is not, however
+wrong the code looks. **The query count is the number that must not regress**, because it does not drift
+between sessions the way milliseconds do.
+
 ## Measurement report
 
 **Every performance change gets a row in the report file of the effort it belongs to** — one file per
