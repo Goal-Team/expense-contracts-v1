@@ -2,7 +2,8 @@
 
 Type: `wayfinder:task` (AFK)
 Blocked by: 04
-Status: OPEN
+Status: PART DONE 2026-08-22 - items 1 and 3 are finished. Item 2, the nine duplicate query pairs, is
+still open and its line numbers need re-basing. See Progress at the end.
 
 ## Question
 
@@ -52,3 +53,68 @@ just wrote.
 - Verified in the browser: every tab still shows what it showed. This is the ticket most likely to
   blank a section by deleting one thing too many.
 - Small commits — one per kind of waste at least, not one big one.
+
+## Progress - 2026-08-22
+
+**`100479?tab=details` is at 76 queries and 93.6 ms in the database.** It was 368 at the start of the
+session. This ticket did the last 8 of that; [ticket 13](13-visible-to-scope.md) did the rest.
+
+### Item 3, the two uncached lookups - DONE, and three more like them
+
+Both named lookups are done, and reading them exposed three more of the same shape. All five are
+request-lifetime caches: work the answer out once, hold it in a static, key it on whatever the answer
+depends on.
+
+| What | Calls per page load, before | Report row |
+|---|---|---|
+| `admin_setting('enable_role_based_data')`, from `ContractRoledBasedScope` | **64** | 19 |
+| `Helpers::getEntityBranches()`, from three scopes | 41 queries across its calls | 21 |
+| The four access lists in `availableContracts()`, and `fileStorageType()` | 12 and 9 | 22 |
+| `Helpers::userInfo()` | 6, each decrypting all 1,605 user rows | 23 |
+| `Helpers::authTokenUser()`, new, shared with `ContractSessionMiddleware` | 3 | 24 |
+
+**Every one of these is shared with the whole application**, as this ticket warned. Holding a value for
+the length of one request cannot change what another page gets back, and the one writer of each was
+checked: `AdminSettings` clears its entry on `setValue()` and on the model's `saved` and `deleted`
+events, and `ContractsetupController` redirects after writing the storage type.
+
+### Item 1, the six unread results - DONE
+
+All six are gone from the view payload. Report row 25, and the check behind each is in the commit
+message: every blade in every module, every PHP file, every JS file, with backup files and the
+compiled cache ruled out as callers.
+
+**Only two of the six cost a query** - the `Category` read and `getSignedHistory()`. The other four
+were PHP work and payload. `getSignedHistory()` itself stays, because it has other callers.
+
+**One more dead query went with them**, found while reading: `checkTablesConfiguration()` builds an
+**empty** required-table list, so it always returns `true` - after running `SHOW TABLES` over the whole
+schema, twice per request through `ContractSessionMiddleware`. At 9.1 ms it was the slowest single
+query left on the page. Report row 24.
+
+### Item 2, the nine duplicate pairs - STILL OPEN
+
+**Do not work from the line numbers in this ticket.** They come from ticket 08, and tickets 15, 18, 20,
+21 and 13 have all moved that file since. Re-find each pair before touching it.
+
+What the measurement says is left, on `100479?tab=details` - **10 duplicate groups, 30 executions, about
+20 ms in total**:
+
+| n | shape | worth |
+|---|---|---|
+| 8 | `custom_field_data` by group, field and group name | **not a duplicate** - eight different fields |
+| 5 | `contract_party_data where custom_field_group_id in (100479)` | real. `Contract::$with` fires this every time the subject contract is loaded, and it is loaded five times |
+| 3 | `country where id = ?` | real |
+| 2 | `contract_type where applicable = ?` | real |
+| 2 | `custom_field where status = ?` | real |
+| 2 | `approval_contracts where contract_id = ? and flag = ?` | real |
+| 2 | the `AddUsers` list | real |
+
+The five subject-contract loads are the biggest of them and the one worth doing first:
+[line 507](../../../Modules/Contract/app/Http/Controllers/ContractController.php:507) and
+[line 724](../../../Modules/Contract/app/Http/Controllers/ContractController.php:724) both read it, and
+`relatedContractLists()` reads it again.
+
+**Judge it against the numbers before starting.** The whole page now spends 93.6 ms in the database and
+these 30 executions are about 20 ms of it. That is worth having, and it is no longer the biggest thing
+on the page.
