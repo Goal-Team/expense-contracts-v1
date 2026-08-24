@@ -2,7 +2,9 @@
 
 Type: `wayfinder:task` (AFK)
 Blocked by: 04 — needs the baseline so the saving can be shown
-Status: OPEN
+Status: CLOSED - OUT OF SCOPE on the dev's call, 2026-08-24: "we will have to do it later, not this
+exercise". Nothing is wrong with the ticket. It stays unmeasured, because the eSign block only fires on a
+Signing contract and the test set has none, so a later effort needs a copy of one set to Signing first.
 
 ## The decision, already made
 
