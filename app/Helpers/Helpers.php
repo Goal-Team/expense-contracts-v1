@@ -410,6 +410,33 @@ class Helpers
     }
 
     /**
+     * The rows already read for a username in this request.
+     */
+    protected static array $accessUserCache = [];
+
+    /**
+     * The AddUsers row that carries a username's access level, branch head and business
+     * functions, read once per username per request.
+     *
+     * getEntityBranches() is called with two different argument pairs, and each call read this
+     * row again. The query decrypts UserName inside the WHERE, so it reads and decrypts all
+     * 1,605 user rows every time.
+     */
+    public static function accessUser($username)
+    {
+        $key = (string) $username;
+
+        if (! array_key_exists($key, static::$accessUserCache)) {
+            static::$accessUserCache[$key] = AddUsers::select('id', 'AccessLevel', 'branchhead', decrypt_data('email', 'AddUsers'), decrypt_data('FirstName', 'AddUsers'), decrypt_data('UserName', 'AddUsers'), decrypt_data('BusinessFunctionAccess', 'AddUsers'))
+                ->where(decrypt_datas('UserName', 'AddUsers'), $username)
+                ->where('Customer', session()->get('contractSessionEntity'))
+                ->first();
+        }
+
+        return static::$accessUserCache[$key];
+    }
+
+    /**
      * The body of getEntityBranches(). Split out so the cache above has one thing to wrap and
      * every return path below stays exactly as it was.
      */
@@ -426,11 +453,11 @@ class Helpers
 
               $username = $checkUserCredentials->username;
             
-              $add_users = AddUsers::select('id','AccessLevel', 'branchhead', decrypt_data('email', 'AddUsers'),decrypt_data('FirstName', 'AddUsers'),  decrypt_data('UserName', 'AddUsers'), decrypt_data('BusinessFunctionAccess','AddUsers'))
-                  ->where(decrypt_datas('UserName', 'AddUsers'), $username)
-                  ->where('Customer', session()->get('contractSessionEntity'))
-                  ->first();  
-                  
+              // Same row for both argument pairs this method is called with, and the query
+              // decrypts UserName in the WHERE, so it reads every user row. Read once per
+              // username per request.
+              $add_users = static::accessUser($username);
+
 
               if($add_users){
                   

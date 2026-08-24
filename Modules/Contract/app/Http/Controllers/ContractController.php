@@ -806,10 +806,14 @@ class ContractController extends Controller
 
         $branchFirst = [];
 
+        // One read for all six entity names, instead of one query per party row. The loop below
+        // asked for the same entity twice on the test contract.
+        $entityNames = EntityMain::select('id', decrypt_data('Nameoftheentity', 'entity'))
+            ->get()
+            ->keyBy('id');
+
         foreach ($contractParty as $contractPart) {
-            $entities = EntityMain::select('id', decrypt_data('Nameoftheentity', 'entity'))
-                ->where('id', $contractPart->contract_party_id)
-                ->first();
+            $entities = $entityNames[$contractPart->contract_party_id] ?? null;
 
             if (isset($entities->Nameoftheentity)) {
                 $contractPart->Nameoftheentity = $entities->Nameoftheentity;

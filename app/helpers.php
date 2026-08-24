@@ -455,11 +455,24 @@ if (!function_exists('decrypt_datas')) {
 
 
 if (!function_exists('get_country')) {
+    /**
+     * The country name for an id.
+     *
+     * Called once per party address, so the same country comes back several times in one page
+     * load - three times on the contract detail page. A country name cannot change inside one
+     * request, so each id is read once and held.
+     */
     function get_country($id)
     {
+        static $names = [];
+
         if ($id > 0) {
-            $country = Country::where('id', $id)->first();
-            return $country ? $country->Name : 0;
+            if (! array_key_exists($id, $names)) {
+                $country = Country::where('id', $id)->first();
+                $names[$id] = $country ? $country->Name : 0;
+            }
+
+            return $names[$id];
         }
         return 0;
     }
