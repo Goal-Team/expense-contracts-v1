@@ -475,16 +475,21 @@ cost is shared too. The edit tab is what we measure and verify on.
   Something breaks: it is the only thing that keeps the Historical nav item on screen while the user
   moves between tabs. Recorded in Not yet specified. No code changed.
 
-- [12 - the waste](issues/12-delete-waste.md), part done - **items 1 and 3 are finished, item 2 is not.**
+- [12 - the waste](issues/12-delete-waste.md) - **all three items done, `100479?tab=details` is at 70 queries.**
   Six results that reached the view and no blade read are gone, and only two of them cost a query. A
   seventh dead query went with them: `checkTablesConfiguration()` builds an **empty** required-table
   list, so it always returns `true` - after a `SHOW TABLES` over the whole schema, twice per request.
   At 9.1 ms that was the slowest single query left on the page. Item 3's two uncached lookups turned
   into five request-lifetime caches, listed in the ticket. Report rows 24 and 25.
-  **What is left** is item 2, the duplicate pairs: 10 groups, 30 executions, about 20 ms of the page's
-  93.6 ms database time. The biggest is the subject contract being loaded five times, each load dragging
-  `Contract::$with` behind it. **The ticket's line numbers are stale** - tickets 13, 15, 18, 20 and 21
-  have all moved that file - so re-find each pair before touching it.
+  Item 2, the duplicate pairs, is done too - rows 26 and 27. **The ticket's line numbers were all wrong**,
+  because five tickets had moved that file, so a temporary `DB::listen` logged the SQL and four stack
+  frames for every query instead and named each repeat in one page load. Four sites repeated:
+  `get_country()`, the `AddUsers` row inside `getEntityBranches()`, the entity name inside the party
+  loop, and **the subject contract row, read twice, each read pulling `Contract::$with` behind it**.
+  The contract row needed a `clone`: `availableContracts()` decrypts and reformats **in place**, so the
+  row cannot be read raw again after it runs.
+  **One thing to remember:** trace, do not read. Every line number in a ticket older than two commits is
+  a guess on this file.
 
 ## Order of work
 
@@ -508,7 +513,7 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 | ~~[15 recursive child walk](issues/15-recursive-child-walk.md)~~ | **CLOSED** | Details tab **3,235-7,109 ms to 1,198-2,207 ms**. The old query was also **wrong**, on 202 of 3,018 contracts. |
 | ~~[21 parent walk](issues/21-parent-walk.md)~~ | **CLOSED** | Details tab **1,198-2,207 ms to 686-785 ms**. The slowest query on that tab is now **7-11 ms**. |
 | ~~[11 indexes](issues/11-missing-indexes.md)~~ | **CLOSED** | Four of the six applied, two dropped on measurement: three of ticket 08's six tables hold 6, 17 and 49 rows, and a fourth column has one distinct value. |
-| [12 delete the waste](issues/12-delete-waste.md) | **part done, item 2 left** | **Ticket 18 already collected most of this on every tab but Details.** The six unread results and the duplicate pairs still stand; the 158 repeated lookups mostly do not. Re-read before starting. |
+| ~~[12 delete the waste](issues/12-delete-waste.md)~~ | **CLOSED** | **Ticket 18 already collected most of this on every tab but Details.** The six unread results and the duplicate pairs still stand; the 158 repeated lookups mostly do not. Re-read before starting. |
 | [09 stop binding ids](issues/09-replace-wherein-with-joins.md) | **NOW, four sites left** | **The "one site left" line was wrong.** Tickets 15 and 21 replaced the two family-tree *walks*, not the `whereIn` calls that read their ids. `$parentContractArr` is fixed (commit `81f2581`); the two `ContractPartyData` plucks, `$FinalContractList` and `$finalListChild` still bind. `$finalListChild` binds **111 ids on `101101`** and is the slowest query on that page at **92.62 ms** — take it next. |
 | ~~[13 visibleTo scope](issues/13-visible-to-scope.md)~~ | **CLOSED** | **Details tab 368 to 82 queries, and the count stops growing with the family tree** - 502 to 85 on the 12-child contract. The `visibleTo()` scope itself is **not** built and is now out of scope; the eager loading was the part that carried the numbers. |
 | [10 eSign off the page load](issues/10-esign-check-after-page-render.md) | **NOT THIS EFFORT** | The dev's call 2026-08-22: do it later. Ruled out of scope, see the section below. |

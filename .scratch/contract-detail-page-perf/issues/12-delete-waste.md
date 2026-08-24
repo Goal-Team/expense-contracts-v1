@@ -2,8 +2,8 @@
 
 Type: `wayfinder:task` (AFK)
 Blocked by: 04
-Status: PART DONE 2026-08-22 - items 1 and 3 are finished. Item 2, the nine duplicate query pairs, is
-still open and its line numbers need re-basing. See Progress at the end.
+Status: CLOSED 2026-08-24 - all three items done. `100479?tab=details` is at **70 queries**, from 368 at the
+start of the session. See Progress and Resolution at the end.
 
 ## Question
 
@@ -92,29 +92,61 @@ were PHP work and payload. `getSignedHistory()` itself stays, because it has oth
 schema, twice per request through `ContractSessionMiddleware`. At 9.1 ms it was the slowest single
 query left on the page. Report row 24.
 
-### Item 2, the nine duplicate pairs - STILL OPEN
+### Item 2, the duplicate pairs - DONE 2026-08-24
 
-**Do not work from the line numbers in this ticket.** They come from ticket 08, and tickets 15, 18, 20,
-21 and 13 have all moved that file since. Re-find each pair before touching it.
+**Found by tracing, not by reading.** The ticket's line numbers came from ticket 08 and five tickets had
+moved that file since, so instead a temporary `DB::listen` wrote the SQL and four stack frames for every
+query on the page, into `storage/logs/qtrace.log`. One page load named every repeat exactly. The trace
+was removed again; it is not in the branch.
 
-What the measurement says is left, on `100479?tab=details` - **10 duplicate groups, 30 executions, about
-20 ms in total**:
+Four sites repeated, and all four now read once. Report rows 26 and 27.
 
-| n | shape | worth |
+| What | Calls before | Why it repeated |
 |---|---|---|
-| 8 | `custom_field_data` by group, field and group name | **not a duplicate** - eight different fields |
-| 5 | `contract_party_data where custom_field_group_id in (100479)` | real. `Contract::$with` fires this every time the subject contract is loaded, and it is loaded five times |
-| 3 | `country where id = ?` | real |
-| 2 | `contract_type where applicable = ?` | real |
-| 2 | `custom_field where status = ?` | real |
-| 2 | `approval_contracts where contract_id = ? and flag = ?` | real |
-| 2 | the `AddUsers` list | real |
+| `get_country()` | 3 | one call per party address, same country each time |
+| The `AddUsers` row in `getEntityBranches()` | 2 | once per argument pair, and the query decrypts `UserName` in the `WHERE` |
+| The entity name in the party loop | 1 per party row | `EntityMain` read inside a `foreach` |
+| **The subject contract row** | **2, each pulling `Contract::$with`** | `viewContract` reads it at the top and again 200 lines down |
 
-The five subject-contract loads are the biggest of them and the one worth doing first:
-[line 507](../../../Modules/Contract/app/Http/Controllers/ContractController.php:507) and
-[line 724](../../../Modules/Contract/app/Http/Controllers/ContractController.php:724) both read it, and
-`relatedContractLists()` reads it again.
+The contract row is the interesting one. It could not simply be reused, because
+`availableContracts()` **writes decrypted names, formatted dates and label text back onto the model it
+is given**, so the row cannot be read raw again afterwards. The method now takes an untouched `clone`
+before that pass and the later branch reads the clone. `clone` copies the attribute array by value, so
+the decrypt pass cannot reach it.
 
-**Judge it against the numbers before starting.** The whole page now spends 93.6 ms in the database and
-these 30 executions are about 20 ms of it. That is worth having, and it is no longer the biggest thing
-on the page.
+### What is left, and why it is left
+
+`100479?tab=details` now runs **70 queries**. What still repeats:
+
+| n | shape | why it is left |
+|---|---|---|
+| 8 | `custom_field_data` by group, field and group name | **not repeats** - eight different fields. Folding them into one query is a real change to `dataCustomFields()`, which 48 call sites use |
+| 4 | `contract_party_data ... in (100479)` | `Contract::$with` behind three list queries in `relatedContractLists()` that each happen to include this contract. Folding needs those lists restructured |
+| 2 | `custom_field where status = ?` | two readers, not yet traced |
+| 2 | `contract_type where applicable = ?` | two readers, not yet traced |
+| 2 | `contract_party_data where custom_field_group_id = ?` | two readers, not yet traced |
+| 2 | the entity name list | two readers, not yet traced |
+
+That is about 10 queries for a day's careful work on an 800-line method, against a page that now spends
+under 150 ms in the database. **Stop here.** If a later effort wants them, the way to find them is the
+`DB::listen` trace above, not reading.
+
+## Resolution - 2026-08-24
+
+All three items done. `100479?tab=details` went **368 queries to 70** across this ticket and
+[ticket 13](13-visible-to-scope.md), and every tab gained: edit 96 to 56, attachment 91 to 46, history
+80 to 46.
+
+Report rows 24, 25, 26 and 27. **Every change was checked the same way**: 32 documents - four contracts
+across eight tab values - fetched before and after with `git stash`, and every hash equal.
+
+**Three things to remember.**
+
+- **Trace, do not read.** Four tickets had moved this file, so every line number in this ticket was
+  wrong. A 20-line `DB::listen` that logs the SQL and four stack frames answered in one page load what
+  reading could not answer in an hour.
+- **A method that mutates what you pass it stops you reusing the row.** `availableContracts()` decrypts
+  and reformats in place. That is why the contract was read twice, and it will block the next person
+  the same way. A `clone` taken before the call is the cheap way round it.
+- **The dead ones were the cheap ones.** `checkTablesConfiguration()` ran a `SHOW TABLES` over the whole
+  schema, twice per request, to check an **empty** list. It was the slowest single query on the page.
