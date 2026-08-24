@@ -506,6 +506,13 @@ class ContractController extends Controller
         
         $contracts = Contract::select('*')->where('id', $id)->where('status', 1)->get();
 
+        // availableContracts() writes decrypted names, formatted dates and label text back onto
+        // the model it is given, so the row cannot be read raw again afterwards. Keep an
+        // untouched copy now. It is what the live-contract branch further down reads, instead of
+        // fetching the same row a second time. clone copies the attribute array by value, so the
+        // decrypt pass below cannot reach it.
+        $subjectContractRow = $contracts->first() ? clone $contracts->first() : null;
+
         $ContractsFinal = $this->availableContracts($contracts, true);
 
         // availableContracts() returns an empty list when the user may not see this contract,
@@ -721,7 +728,10 @@ class ContractController extends Controller
         if ($contracts === null) {
             // The snapshot is gone, so every later read shows the live contract too.
             $historyId = '';
-            $contracts = Contract::select('*')->where('id', $id)->first();
+            // The untouched copy taken at the top of this method, not a second read of the same
+            // row. The query above it has already proved the row exists and has status 1,
+            // because an empty result redirects long before this line.
+            $contracts = $subjectContractRow;
             $contractParty = ContractPartyData::where('custom_field_group_id', $id)->get();
         }
 
