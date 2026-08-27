@@ -327,14 +327,19 @@ $(document).on('click', '#btnTermination', function(e){
       serverSide: true,
       ajax: {
           'url': APP_URL + '/contracts/data',
-          // A function, not an object, so the cookies are read again on every
-          // draw instead of once when the table is built.
+          // A function, not an object, so the URL query string is read again on
+          // every draw. The URL is the filter state (dev rule 2026-08-27) - a link
+          // with the filters in it can be shared, and no cookie carries state.
           data: function (d) {
-             d.status = _getCookie('filterStatus') ?? $('#status').val();
-             d.userData = _getCookie('myFilterStatus') ?? 0;
-             d.contype = _getCookie('filterConType') ?? 0;
-             d.locations = _getCookie('filterConLoc') ?? 0;
+             var params = _listParams();
+             d.status = params.get('status') ?? $('#status').val();
+             d.userData = params.get('my') ? 1 : 0;
+             d.contype = params.get('contype') ?? 0;
+             d.concates = params.get('concates') ?? 0;
+             d.locations = params.get('locations') ?? 0;
              d.party_id = partyIdFilter;
+             // The bulk-export page still prefills its form from these two cookies.
+             _syncExportCookies(d.status);
           },
           'method': 'post',
             headers: {
@@ -367,14 +372,7 @@ $(document).on('click', '#btnTermination', function(e){
             orderable: false,
             render : function ( data, type, row ) 
            {
-               
-            //For Settting History Filter behalf status
-            let columnKey = 'status';
-            if(!_getCookie('filterStatus')){
-                _setCookie('filterApplied', true, 1);
-                _setCookie('filterStatus', $('#status').val(), 1);
-            }
-            
+
             var button = '<a href="' + APP_URL +'/contracts/' + data.id+'?tab=details" class="btn btn-sm btn-icon dropdown-toggle hide-arrow text-body" data-bs-toggle="tooltip" title="Preview"><i class="ti ti-eye mx-2 ti-sm"></i></a>';
 
             
@@ -728,37 +726,28 @@ $(document).on('click', '#btnTermination', function(e){
       dom: '<"row"<"col-sm-12 col-md-6"l><"col-sm-12 col-md-6 d-flex justify-content-center justify-content-md-end"f>><"table-responsive"t><"row"<"col-sm-12 col-md-6"i><"col-sm-12 col-md-6"p>>'
     });
     
-    dt_filter.on('search.dt', function() {
-        recount_status_(dt_filter.rows( { filter : 'applied'} ).data(), dt_filter.rows( { filter : 'applied'} ).nodes().length);
-    });
-    
-    
     $(document).on("change", ".filterContractList", function () {
-        //For Settting History Filter behalf column filter
-        $('.filterContractList').each(function (i) {
-            var filterVals = $(this).val();
-            var filterName = $(this).attr('id');
-            if(!_getCookie('filterSet')){
-                let columnKey = filterName;
-                let filtersSetData = {};
-                 filtersSetData[columnKey] = filterVals;
-                _setCookie('filterApplied', true, 1);
-                _setCookie('filterSet', JSON.stringify(filtersSetData), 1);
-            }else{
-                let getFilterSet = _getCookie('filterSet') ?? '[]';
-                let filtersSetData = JSON.parse(getFilterSet);
-                let columnKey = filterName;
-                filtersSetData[columnKey] = filterVals;
-                _setCookie('filterSet', JSON.stringify(filtersSetData), 1);
-            }
-        });
+        // Write the multi-select filters into the URL query string. The status
+        // dropdown reloads the page (the tab strips are server-rendered); the other
+        // three redraw the table in place, same as before - only the address bar
+        // changes, so the current view can be copied and sent to a colleague.
+        var params = _listParams();
+        _setJsonParam(params, 'contype', $('#contracttype').val());
+        _setJsonParam(params, 'concates', $('#contractcates').val());
+        _setJsonParam(params, 'locations', $('#contractlocs').val());
         if($(this).attr('name') != 'contractstats'){
+            history.replaceState(null, '', _listUrl(params));
+            _toggleClearFilters();
             dt_filter.ajax.reload();
         }else{
-          _setCookie('filterStatus', $(this).val());
-          window.location.href=`${APP_URL}/contracts/list`;            
+            if($(this).val()){
+                params.set('status', $(this).val());
+            }else{
+                params.delete('status');
+            }
+            window.location.href = _listUrl(params);
         }
-    });    
+    });
     
     $('#column-filter-table').on('change', function (e) {
         e.preventDefault();
@@ -1031,38 +1020,50 @@ $(document).ready(function() {
     // ================= Onclick Status action ====================//
     
     
+    // Every action below rewrites the URL query string and navigates. The URL is
+    // the filter state (dev rule 2026-08-27) - no cookie carries it any more.
     $(document).on("click", ".loadstatus", function () {
-      let statusName = $(this).data('stat');
-      _setCookie('filterStatus', statusName);
-      window.location.href=`${APP_URL}/contracts/list`;
+      var params = _listParams();
+      params.set('status', $(this).data('stat'));
+      window.location.href = _listUrl(params);
     });
     $(document).on("click", "#clearMyActions", function () {
-      _deleteCookie('myFilterStatus');
-       _setCookie('filterStatus', 'all');
-      window.location.href=`${APP_URL}/contracts/list`;
+      var params = _listParams();
+      params.delete('my');
+      params.set('status', 'all');
+      window.location.href = _listUrl(params);
     });
-    
+
     $(document).on("click", "#clearAllFilters", function () {
-        _setCookie('filterStatus', 'all');
-        _deleteCookie('filterApplied');
-        _deleteCookie('filterSet');
-        _deleteCookie('filterConLoc'); 
-        _deleteCookie('filterConType');
-        window.location.href=`${APP_URL}/contracts/list`;
+      var params = _listParams();
+      params.delete('contype');
+      params.delete('concates');
+      params.delete('locations');
+      params.set('status', 'all');
+      window.location.href = _listUrl(params);
     });
 
     $(document).on("click", "#clearAllActions", function () {
-      let userName = $(this).data('user');
-      _setCookie('myFilterStatus', userName);
-      window.location.href=`${APP_URL}/contracts/list`;
+      var params = _listParams();
+      params.set('my', '1');
+      window.location.href = _listUrl(params);
     });
-    
-     if(_getCookie('filterStatus')){
-        $(`#status_${_getCookie('filterStatus')}`).addClass("act");
-        $("status").val(_getCookie('filterStatus'));
-     }
-    
-    // ================= Onclick Status action ends ====================//      
+
+    var loadParams = _listParams();
+    if(loadParams.get('status')){
+        $(`#status_${loadParams.get('status')}`).addClass("act");
+    }
+    _toggleClearFilters();
+
+    // One-transition cleanup: the server ignores the old filter cookies now, and a
+    // stale value must not linger for another page to trip on. filterStatus and
+    // filterSet stay - the bulk-export page still reads them (see _syncExportCookies).
+    _deleteCookie('myFilterStatus');
+    _deleteCookie('filterConType');
+    _deleteCookie('filterConLoc');
+    _deleteCookie('filterApplied');
+
+    // ================= Onclick Status action ends ====================//
        
 });
     //@date:: 21 May 2024,  @author :: Mangaleswari, @desc:: Representative delete row funtion
@@ -1231,16 +1232,60 @@ $(document).ready(function() {
         }
     }
     
-    function recount_status_(dataFiltered, dataFilteredLength){
-        if(_getCookie('filterConLoc') || _getCookie('filterConType')){
-            $('#clearAllFilters').removeClass('d-none');
-        }
-        
-        if(_getCookie('filterApplied') === 'true' && _getCookie('filterSet')){
-            $('#clearAllFilters').removeClass('d-none');
+    // ============ URL filter state helpers (dev rule 2026-08-27) ============ //
+
+    function _listParams() {
+        return new URLSearchParams(window.location.search);
+    }
+
+    function _listUrl(params) {
+        var qs = params.toString();
+        return APP_URL + '/contracts/list' + (qs ? '?' + qs : '');
+    }
+
+    // A multi-select's value goes into the URL as a JSON array; an empty
+    // selection removes the parameter.
+    function _setJsonParam(params, name, val) {
+        if (Array.isArray(val) && val.length > 0) {
+            params.set(name, JSON.stringify(val));
+        } else {
+            params.delete(name);
         }
     }
-    
+
+    // Show the Clear Filters button when the URL carries a filter.
+    function _toggleClearFilters() {
+        var params = _listParams();
+        if (params.get('contype') || params.get('concates') || params.get('locations')) {
+            $('#clearAllFilters').removeClass('d-none');
+        } else {
+            $('#clearAllFilters').addClass('d-none');
+        }
+    }
+
+    // The bulk-export page (contractBuilkExport.blade.php) prefills its download
+    // form from the filterStatus and filterSet cookies. Those two cookies stay,
+    // as the list-to-export handoff only, and mirror the URL on every draw.
+    // Nothing on this page reads them back.
+    function _syncExportCookies(status) {
+        _setCookie('filterStatus', status, 1);
+        var params = _listParams();
+        var filterSet = {};
+        try {
+            if (params.get('contype')) filterSet['contracttype'] = JSON.parse(params.get('contype'));
+            if (params.get('concates')) filterSet['contractcates'] = JSON.parse(params.get('concates'));
+            if (params.get('locations')) filterSet['contractlocs'] = JSON.parse(params.get('locations'));
+        } catch (e) {
+            filterSet = {};
+        }
+        if (Object.keys(filterSet).length > 0) {
+            _setCookie('filterSet', JSON.stringify(filterSet), 1);
+        } else {
+            _deleteCookie('filterSet');
+        }
+    }
+
+
     function _setCookie(name, value, daysToExpire, path = '/', domain = '') {
     const cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}`
 

@@ -2158,12 +2158,11 @@ class ContractController extends Controller
     public function listContractData(Request $request)
     {
 
-        $this->getFilterSetData($request);
+        // Every filter arrives as a request field. The JS reads them from the URL query
+        // string and sends them per draw (dev rule 2026-08-27: no filter cookies). This
+        // method reads no cookie and writes no cookie, so stale filter cookies from
+        // before the change are ignored.
         $partyIdFilter = (int)($request->input('party_id') ?? 0);
-
-        if (isset($_POST['status'])) {
-            setcookie('filterStatus', $_POST['status'], time() + (86400 * 30), "/");
-        }
 
         // No status field means no list, same as before the server-side-paging rewrite.
         if (!isset($_POST['status'])) {
@@ -2215,7 +2214,9 @@ class ContractController extends Controller
         }
 
         $perfT = microtime(true);
-        if (isset($_COOKIE['myFilterStatus'])) {
+        // "My contracts" arrives as the userData field, from the URL's my parameter.
+        // '0' means off, same as the old missing-cookie case.
+        if ($request->input('userData')) {
 
             // Both whereIn calls take a query, never a list of ids. A list with 1,000 or more
             // bound ids silently returns zero rows on this stack
@@ -2606,8 +2607,11 @@ class ContractController extends Controller
 
     public function listContract(Request $request)
     {
-        
-        $this->getFilterSetData($request);
+
+        // The filter state lives in the URL query string (dev rule 2026-08-27):
+        // ?status=...&contype=[..]&concates=[..]&locations=[..]&my=1. A link with the
+        // filters in it can be shared, and no cookie is read - stale filter cookies
+        // from before the change change nothing here.
 
         //$available_branches = BranchUser::pluck('id','BranchName')->toArray();
 
@@ -2674,39 +2678,17 @@ class ContractController extends Controller
             'initial_draft' => $initial_draft_total
         );
 
+        // A malformed shared URL must not break the page: only a JSON array counts.
+        $queryList = function (?string $raw) {
+            $vals = json_decode($raw ?? '');
+            return is_array($vals) ? $vals : [];
+        };
+
         return view('contract::contract.contractList', compact('branchs', 'contractTypes', 'ContractCategories', 'contractStatus'))->with('counts', $stus)
-        ->with('sellocal', json_decode($_POST['locations'] ?? '') ?? [])
-        ->with('selcate', json_decode($_POST['concates'] ?? '') ?? [])
-        ->with('selstatus', $_COOKIE['filterStatus'] ?? '')
-        ->with('selcontype', json_decode($_POST['contype'] ?? '') ?? []);
-    }
-    
-    public function getFilterSetData($request){
-        $filterSetArray = [
-            'contractlocs' => ['table'=>'branch', 'column' => 'branchName', 'where' => 'id', 'req' => 'locations', 'encode'=> true],
-            'contracttype' => ['table'=>'contract_type', 'column' => 'contract_type', 'where' => 'contract_type_id', 'req' => 'contype', 'encode'=> true],
-            'contractcates' => ['table'=>'contract_categories', 'column' => 'name', 'where' => 'id', 'req' => 'concates', 'encode'=> true],
-            'contractprior' => ['table'=>[], 'column' => 'contract_priority', 'where' => 'id', 'req' => 'contract_priority', 'encode'=> true],
-            'contractstats' => ['table'=>[], 'column' => 'contract_status', 'where' => 'id', 'req' =>'status', 'encode'=> false]
-        ];
-        
-        
-        if(isset($_COOKIE['filterSet'])){
-            $allFilters = json_decode($_COOKIE['filterSet']);
-            if (!is_object($allFilters) && !is_array($allFilters)) {
-                return;
-            }
-            foreach($allFilters as $allFilt => $allFiltVal){
-                //$field = explode('_', $allFilt);
-                $field = $allFilt;
-                $finalField = $filterSetArray[$field] ?? false;
-                if($finalField){
-                    if(empty($_POST[$finalField['req']])){
-                        $_POST[$finalField['req']] = ($finalField['encode'] ? json_encode($allFiltVal) : $allFiltVal);
-                    }
-                }
-            }
-        }        
+        ->with('sellocal', $queryList($request->input('locations')))
+        ->with('selcate', $queryList($request->input('concates')))
+        ->with('selstatus', $request->input('status') ?? '')
+        ->with('selcontype', $queryList($request->input('contype')));
     }
 
     public function storeContract(Request $request)
