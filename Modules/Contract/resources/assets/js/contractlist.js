@@ -321,27 +321,33 @@ $(document).on('click', '#btnTermination', function(e){
         //         } );
         //     } );
         },
+      // The server pages, filters, sorts and searches now (Laravel side:
+      // ContractController::listContractData + App\Support\ServerSideDataTable).
+      // Only one page of rows crosses the wire per draw.
+      serverSide: true,
       ajax: {
           'url': APP_URL + '/contracts/data',
-          data: {
-             status:(_getCookie('filterStatus') ?? $('#status').val()),
-             userData:(_getCookie('myFilterStatus') ?? 0),
-             contype:(_getCookie('filterConType') ?? 0),
-           locations:(_getCookie('filterConLoc') ?? 0),
-           party_id: partyIdFilter
+          // A function, not an object, so the cookies are read again on every
+          // draw instead of once when the table is built.
+          data: function (d) {
+             d.status = _getCookie('filterStatus') ?? $('#status').val();
+             d.userData = _getCookie('myFilterStatus') ?? 0;
+             d.contype = _getCookie('filterConType') ?? 0;
+             d.locations = _getCookie('filterConLoc') ?? 0;
+             d.party_id = partyIdFilter;
           },
           'method': 'post',
             headers: {
             'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-            },          
+            },
       },
       "ordering": true,
-      deferLoading: 57,
-      processing: true,      
+      processing: true,
       columns: [
-        { data: 'id',   render : function ( data, type, row, meta) 
+        { data: 'id',   render : function ( data, type, row, meta)
            {
-               var rowIndex = meta.row + 1; // Adding 1 to start index from 1 instead of 0
+               // Row number keeps counting across pages.
+               var rowIndex = meta.settings._iDisplayStart + meta.row + 1;
                return rowIndex;
            }},
         { data: 'contract_name'},
