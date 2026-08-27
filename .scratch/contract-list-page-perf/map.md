@@ -121,6 +121,10 @@ protocol, filtering done in PHP, no LIMIT anywhere). View is
   missing `status`, malformed `filterSet`). Wrong results written down: all `executed_*` tabs
   empty (case bug → ticket 06), `myFilterStatus` empty on the seeded set (1,000-binding bug →
   ticket 05). `status=all` AJAX is 2,508 rows / 34.2 MB decoded JSON.
+- [02 baseline and attribution](issues/02-baseline-attribution.md) — GET ~2.8 s TTFB / 14
+  queries; default AJAX ~5.6 s TTFB / 13 queries / 5.5 MB (34.2 MB at `status=all`); table
+  last render ~14.7 s. 58% of the AJAX time is `availableContracts()` PHP loops, DB only
+  ~0.7 s; the `accessLevelSelect` scope turns both list queries into `select *`.
 
 ## Order of work
 
