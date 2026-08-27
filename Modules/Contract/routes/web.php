@@ -3,6 +3,7 @@
 use Illuminate\Support\Facades\Route;
 use Modules\Contract\Http\Controllers\ContractController;
 use Modules\Contract\Http\Controllers\ContractCustomController;
+use Modules\Contract\Http\Controllers\GoogleDriveController;
 use Modules\Contract\Http\Controllers\ContractImportController;
 use Modules\Contract\Http\Controllers\ContractDashboardController;
 use Modules\Contract\Http\Controllers\ContractOptionListController;
@@ -247,7 +248,7 @@ Route::post('contracts/approval/contract-custom/{id}/reject', [ContractCustomCon
 Route::get('contracts/approval/contract-custom/{contract}/approval/{approval}/view', [ContractCustomController::class, 'approvalView'])->name('contracts.approval.view');
 Route::post('contracts/approval/contract-custom/{contract}/approval/{approval}/respond', [ContractCustomController::class, 'approvalRespond'])->name('contracts.approval.respond');
 Route::post('contracts/approval/contract-custom/{contract}/approval/notify', [ContractCustomController::class, 'notifyOwner'])->name('contracts.approval.notify');
-Route::post('contracts/approval/contract-custom/{contract}/approver-edit', [\App\Http\Controllers\ContractController::class, 'approverUpdate'])->name('contracts.approver.update');
+Route::post('contracts/approval/contract-custom/{contract}/approver-edit', [ContractCustomController::class, 'approverUpdate'])->name('contracts.approver.update');
 
 // MM / Oracle codes for contracts (Active-only)
 Route::get('contracts/approval/contract-custom/{id}/codes', [ContractCustomController::class, 'getContractCodes']);
