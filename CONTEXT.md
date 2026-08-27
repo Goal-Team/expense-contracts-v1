@@ -25,6 +25,13 @@ every row. No index means the database reads the whole table every time.
 **Full scan** — the database reading every row in a table to answer one question. Slow, and
 gets slower as rows pile up.
 
+**Bound value** — a value PHP sends to the database with a query. `where id = ?` sends one bound
+value. `whereIn('id', [1,2,3])` sends three. On this stack a query with 1,000 or more bound values
+silently returns no rows, so a list of ids is never sent as bound values.
+
+**Subquery** — a query written inside another query. The database runs both and the ids never leave
+it, so nothing is bound and the 1,000-value fault cannot happen.
+
 **Collation** — the rule the database uses for sorting text and for deciding whether two bits
 of text count as the same. It is why `Terminated` and `terminated` match in SQL but not in PHP.
 This project uses character set `utf8mb4` and collation `utf8mb4_unicode_ci` — it works on both

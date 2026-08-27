@@ -7,8 +7,14 @@ use Illuminate\Support\Facades\DB;
 
 /**
  * Seeds ~3,000 synthetic contracts (plus party and approval rows) into
- * apollo_contracts_expense so the contracts dashboard can be measured at
- * production-like N. See .scratch/contracts-dashboard-perf/issues/04-seed-realistic-dataset.md
+ * apollo_contracts_expense so the contracts dashboard and the contract detail page can be
+ * measured at production-like N.
+ * See .scratch/contracts-dashboard-perf/issues/04-seed-realistic-dataset.md and
+ * .scratch/contract-detail-page-perf/issues/02-seed-realistic-contract-rows.md
+ *
+ * A column is filled here because the dashboard or the detail page reads it. A NULL column is
+ * not a neutral placeholder: the page either crashes on it (explode() on a NULL reminder), or
+ * skips the block that reads it, which makes the measurement come from the wrong population.
  *
  * IMPORTANT - run with HTTP_HOST set, e.g.
  *
@@ -92,6 +98,13 @@ class PerfDatasetSeeder extends Seeder
 
     private const CHUNK = 200;
 
+    /**
+     * A contract row now carries ~25 encrypted columns plus a 1.5 KB rules_id payload, about
+     * 7 KB in all. 200 of them overrun MySQL's 1 MB max_allowed_packet, so contracts insert in
+     * smaller batches than the party and approval rows.
+     */
+    private const CHUNK_CONTRACTS = 40;
+
     public function run(): void
     {
         $this->assertEncryptionKey();
@@ -105,8 +118,10 @@ class PerfDatasetSeeder extends Seeder
         [$contracts, $meta] = $this->buildContracts($pools);
 
         $this->command->info('Inserting ' . count($contracts) . ' contracts...');
-        $this->insertChunked('contracts', $contracts);
+        $this->insertChunked('contracts', $contracts, self::CHUNK_CONTRACTS);
         unset($contracts);
+
+        $this->assignParentChains();
 
         $parties = $this->buildParties($meta, $pools);
         $this->command->info('Inserting ' . count($parties) . ' contract_party_data rows...');
@@ -179,13 +194,18 @@ class PerfDatasetSeeder extends Seeder
         $categories    = DB::table('contract_categories')->orderBy('id')->pluck('id')->all();
         $entities      = DB::table('entity')->orderBy('id')->pluck('id')->all();
 
-        foreach (['accessibleBranches', 'otherBranches', 'departments', 'contractTypes', 'categories', 'entities'] as $name) {
+        // The signatory select on the edit tab lists every AddUsers row (table ContractUsers) and
+        // marks the option whose id equals contracts.signatory. A signatory outside this pool
+        // leaves the select on "-Select Signatory-", which is the blank field the seed used to show.
+        $signatories = DB::table('ContractUsers')->orderBy('id')->limit(20)->pluck('id')->all();
+
+        foreach (['accessibleBranches', 'otherBranches', 'departments', 'contractTypes', 'categories', 'entities', 'signatories'] as $name) {
             if (empty($$name)) {
                 throw new \RuntimeException("Reference pool '{$name}' is empty; cannot build plausible rows.");
             }
         }
 
-        return compact('accessibleBranches', 'otherBranches', 'departments', 'contractTypes', 'categories', 'entities');
+        return compact('accessibleBranches', 'otherBranches', 'departments', 'contractTypes', 'categories', 'entities', 'signatories');
     }
 
     // ---------------------------------------------------------------- contracts
@@ -197,13 +217,77 @@ class PerfDatasetSeeder extends Seeder
             'Aster Pharma Supply', 'Zenith Security Services', 'Nova Biomedical', 'Cauvery Catering',
             'Helix IT Solutions', 'Pinnacle Housekeeping', 'Everest Elevators', 'Meridian Radiology',
         ];
-        $endTypes    = ['onetimeContract', 'fixedTerm', 'autoRenewal'];
-        $priorities  = ['low', 'medium', 'high', 'critical'];
+        // The four values the Duration radio group on the edit tab offers. 'autoRenewal' was
+        // seeded here before and is not one of them, so no radio was ever checked. Automatic
+        // renewal is a property of a fixedTerm contract (renewal_type), not an end type.
+        $endTypes    = ['onetimeContract', 'fixedTerm', 'evergreen'];
+        // The priority select offers low / medium / high only. 'critical' selected nothing.
+        $priorities  = ['low', 'medium', 'high'];
 
         // Encrypt the small set of repeated values once instead of 3,000 times each.
         $encEndType  = array_map(fn ($v) => encryptString($v, 'end_contract_type'), array_combine($endTypes, $endTypes));
         $encCurrency = encryptString('INR', 'currency');
         $encMode     = encryptString('new', 'contract_mode');
+        // The commencement radio posts 'FixedDate' or 'Eventbased', and the write path encrypts it.
+        $encCommencement = encryptString('FixedDate', 'commencement_type');
+        $encCurrencyContract = encryptString('INR', 'currency_contract');
+        $encEvergreen = encryptString('mutually', 'evergreen_condition');
+        $encTerminationReason = encryptString('mutually', 'termination_reason');
+
+        // Every remaining pool below feeds a field the contract detail page reads. Each one is
+        // encrypted once per distinct value, not once per row: 3,000 rows times 25 encrypted
+        // columns is 75,000 AES calls otherwise.
+        $pool = [
+            'renewal_type'         => ['automaticrenewal', 'manualRenewal'],
+            'period_auto_renewal_unit' => ['years', 'months'],
+            'exclusivity'          => ['Exclusivity to Company', 'Exclusive to Contracting Party', 'Mutually Exclusive', 'Non Exclusive'],
+            'billing_frequency'    => ['Weekly', 'Monthly', 'Quarterly', 'Half Yearly', 'Annually', 'Onetime'],
+            'payment_schedule'     => [
+                'Monthly in arrears, on the 5th',
+                'Quarterly in advance',
+                'On milestone sign-off',
+                '50% advance, 50% on delivery',
+                'Net 30 from the invoice date',
+            ],
+            'payment_terms'        => [
+                'Net 30 days from receipt of a valid invoice. Late payment carries 1.5% per month.',
+                'Net 45 days. Invoices without a purchase order number are returned unpaid.',
+                'Payment within 15 days of milestone acceptance by the department head.',
+                'Net 60 days. Any disputed amount is held back until the dispute closes.',
+            ],
+            'taxes'                => ['18% GST extra', '12% GST included', '5% GST plus TDS at 2%', 'GST as applicable', '18% GST, TDS 10% at source'],
+            'escalation_clauses'   => ['5% every 12 months', 'CPI linked, reviewed each year', 'No escalation for the first 24 months', '7% on each renewal', 'Fixed for the full term'],
+            'discounts'            => ['2% for payment within 10 days', 'Volume discount 5% above 1,000 units', 'No discount', '3% early settlement discount'],
+            'retention'            => ['5% held until final acceptance', '10% held for 12 months', 'No retention', '2.5% held against defects'],
+            'payment_escrow'       => ['Not applicable', 'Escrow released on milestone sign-off', 'Source code held in escrow'],
+            'financial_guarantees' => ['Bank guarantee for 10% of the contract value', 'Performance bond for 12 months', 'Corporate guarantee from the parent company', 'None'],
+            'currency_conversion'  => ['Not applicable, INR only', 'RBI reference rate on the invoice date', 'Spot rate on the payment date'],
+            // 'on' / 'off' is what the reminder checkbox posts.
+            'reminder_enable'      => ['on', 'on', 'on', 'off'],
+            'reminder_alert'       => ['Contract End Date', 'Renewal Date'],
+            'reminder_repeats'     => ['Daily', 'Every 3 days', 'Weekly', 'Fortnightly', 'Monthly', 'Never'],
+            // "<number> <days|months|years> <prior|after>" - the shape the write path builds and
+            // the shape reminder_alert_parts() splits back into three form fields.
+            'alert_on_first'       => ['30 days prior', '45 days prior', '60 days prior', '15 days prior', '90 days prior', '3 months prior'],
+            'alert_on_second'      => ['15 days prior', '7 days prior', '30 days prior', '21 days prior'],
+            'alert_on_escalation'  => ['7 days prior', '5 days prior', '10 days prior', '14 days prior'],
+            'alert_on_after'       => ['7 days after', '3 days after', '14 days after', '1 months after'],
+        ];
+
+        // 'reminder_alert', 'reminder_repeats' and the four alert_on_* pools feed several columns
+        // each. decryptString() only needs the ciphertext, not a matching column name, so one
+        // encryption per distinct string is enough.
+        $enc = [];
+        foreach ($pool as $name => $values) {
+            foreach (array_unique($values) as $value) {
+                $enc[$name][$value] = encryptString($value, $name);
+            }
+        }
+        $pick = function (string $name, int $i) use ($pool, $enc): string {
+            $value = $pool[$name][$i % count($pool[$name])];
+
+            return $enc[$name][$value];
+        };
 
         $stages = [];
         foreach (self::STATUS_PLAN as $status => $count) {
@@ -242,12 +326,18 @@ class PerfDatasetSeeder extends Seeder
             $deptId  = $pools['departments'][$n % count($pools['departments'])];
             $endType = $endTypes[$n % 3];
 
-            $name  = sprintf('%s Agreement - %s (Seed %s)', $endType === 'autoRenewal' ? 'Service' : 'Supply', $vendor, $seq);
+            $name  = sprintf('%s Agreement - %s (Seed %s)', $endType === 'evergreen' ? 'Service' : 'Supply', $vendor, $seq);
             $value = 25000 + (($n * 4137) % 9750000);
 
             // Dates spread over a few years so expiry/renewal views have something to show.
             $start = strtotime('2022-01-01 +' . (($n * 7) % 1460) . ' days');
             $end   = strtotime('+' . (12 + ($n % 48)) . ' months', $start);
+
+            // Automatic renewal belongs to a fixedTerm contract. Half of them renew
+            // automatically with a notice period, half renew by hand.
+            $isFixedTerm  = $endType === 'fixedTerm';
+            $isAutoRenew  = $isFixedTerm && ($n % 2) === 0;
+            $isTerminated = $substatus === 'Terminated';
 
             // Every 10th contract gets NO internal party. Those are silently dropped from
             // every dashboard counter by Controller.php:221 and that must stay testable.
@@ -281,25 +371,73 @@ class PerfDatasetSeeder extends Seeder
                 'contract_mode'        => $encMode,
                 'contract_name'        => encryptString($name, 'contract_name'),
                 'contract_type'        => (string) $typeId,
-                'contract_description' => 'Synthetic row generated by PerfDatasetSeeder for dashboard performance measurement.',
-                'commencement_type'    => 'fixedDate',
+                'contract_description' => encryptString(
+                    'Synthetic row ' . $seq . ' from PerfDatasetSeeder. Supply and service scope for ' . $vendor . '.',
+                    'contract_description'
+                ),
+                'contract_tags'        => json_encode([(string) $typeId]),
+                'commencement_type'    => $encCommencement,
                 'fixed_date'           => date('Y-m-d', $start),
                 'contract_end_date'    => date('Y-m-d', $end),
                 'end_contract_type'    => $encEndType[$endType],
                 'onetime_end_date'     => $endType === 'onetimeContract' ? date('Y-m-d', $end) : null,
-                'fixedterm_end_date'   => $endType === 'fixedTerm' ? date('Y-m-d', $end) : null,
-                'renewal_type'         => $endType === 'autoRenewal' ? 'auto' : null,
+                'fixedterm_end_date'   => $isFixedTerm ? date('Y-m-d', $end) : null,
+                'renewal_type'         => $isFixedTerm ? $pick('renewal_type', $isAutoRenew ? 0 : 1) : null,
+                'period_auto_renewal'  => $isAutoRenew ? (1 + ($n % 3)) : null,
+                'period_auto_renewal_unit' => $isAutoRenew ? $pick('period_auto_renewal_unit', $n) : null,
+                'auto_renewal_date'    => $isAutoRenew ? date('Y-m-d', $end) : null,
+                'manual_renewal_date'  => ($isFixedTerm && ! $isAutoRenew) ? date('Y-m-d', $end) : null,
+                'evergreen_condition'  => $endType === 'evergreen' ? $encEvergreen : null,
+                'termination_date'     => $isTerminated ? date('Y-m-d', $end) : null,
+                'termination_reason'   => $isTerminated ? $encTerminationReason : null,
                 'signing_date'         => in_array($status, ['Signing', 'Executed'], true) ? date('Y-m-d', $start) : null,
+                'exclusivity'          => $pick('exclusivity', $n),
                 'currency'             => $encCurrency,
                 'currency_value'       => encryptString((string) $value, 'currency_value'),
                 'billing_value'        => (string) $value,
                 'total_value'          => (string) $value,
-                'currency_contract'    => 'INR',
-                'billing_frequency'    => ['monthly', 'quarterly', 'annually'][$n % 3],
+                'currency_contract'    => $encCurrencyContract,
+                'billing_frequency'    => $pick('billing_frequency', $n),
+                'payment_schedule'     => $pick('payment_schedule', $n),
+                'payment_terms'        => $pick('payment_terms', $n),
+                'taxes'                => $pick('taxes', $n),
+                'escalation_clauses'   => $pick('escalation_clauses', $n),
+                'discounts'            => $pick('discounts', $n),
+                'retention'            => $pick('retention', $n),
+                'payment_escrow'       => $pick('payment_escrow', $n),
+                'financial_guarantees' => $pick('financial_guarantees', $n),
+                'currency_conversion'  => $pick('currency_conversion', $n),
+
+                // Four blade blocks split these on a space and read index 1 and 2. A NULL here
+                // is what crashed the page (ticket 01), so all fifteen get a value.
+                'reminder_enable'                        => $pick('reminder_enable', $n),
+                'reminder_first_alert'                   => $pick('reminder_alert', $n),
+                'reminder_first_alertMeOn'               => $pick('alert_on_first', $n),
+                'reminder_first_alert_repeats'           => $pick('reminder_repeats', $n),
+                'reminder_second_alert'                  => $pick('reminder_alert', $n + 1),
+                'reminder_second_alertMeOn'              => $pick('alert_on_second', $n),
+                'reminder_second_alert_repeats'          => $pick('reminder_repeats', $n + 2),
+                'reminder_escalation_alert'              => $pick('reminder_alert', $n),
+                'reminder_escalation_alertMeOn'          => $pick('alert_on_escalation', $n),
+                'reminder_escalation_alert_repeats'      => $pick('reminder_repeats', $n + 4),
+                'reminder_escalation_alert_after'        => $pick('reminder_alert', $n + 1),
+                'reminder_escalation_alertMeOn_after'    => $pick('alert_on_after', $n),
+                'reminder_escalation_alert_repeats_after' => $pick('reminder_repeats', $n + 1),
+
+                // Read at 25 sites across seven partials. The path is a Google Drive style file
+                // id, which is what the real rows hold; Storage::exists() says no and the page
+                // links to /invalidfile, the same as a real contract whose file has gone.
+                'contract_attachment'          => self::MARKER . str_pad((string) $id, 12, '0', STR_PAD_LEFT),
+                'contract_attachment_filename' => 'contract_' . $id . '_seedperf.docx',
+
                 'catgoery_id'          => (string) $pools['categories'][$n % count($pools['categories'])],
                 'department_id'        => $deptId,
                 'owner'                => 1507,
                 'created_by'           => 1507,
+                'signatory'            => $pools['signatories'][$n % count($pools['signatories'])],
+                // Drives the whole approval-flow render in contractFlow / contractApprovalsView /
+                // signApprovals. NULL made every one of those blocks draw nothing.
+                'rules_id'             => $this->buildRulesId($n),
                 'legal_advisor_email'  => null,
                 'legal_contact_status' => 'not_contacted',
                 'contract_status'      => $status,
@@ -310,7 +448,7 @@ class PerfDatasetSeeder extends Seeder
                 'status'               => 1,
                 'storage_type'         => 'Local',
                 'contract_unique_id'   => self::MARKER . '-' . $seq,
-                'contract_priority'    => $priorities[$n % 4],
+                'contract_priority'    => $priorities[$n % count($priorities)],
                 'contract_name_hash'   => hash('sha256', $name),
                 'tenure'               => (12 + ($n % 48)) . ' months',
                 'created_at'           => date('Y-m-d H:i:s', $start),
@@ -319,6 +457,68 @@ class PerfDatasetSeeder extends Seeder
         }
 
         return [$rows, $meta];
+    }
+
+    /**
+     * The approval-rule payload contracts.rules_id holds: a JSON array of one object whose
+     * 'approver' and 'signatory' members are themselves JSON strings. Shape copied from the
+     * real rows; contractFlow.blade.php walks it to draw the approval flow, and
+     * contractApprovalsView / signApprovals read it too.
+     *
+     * Four variants, picked by $n, so the flow is not identical on every page: sequential or
+     * parallel review, and with or without a signatory group.
+     */
+    private function buildRulesId(int $n): string
+    {
+        static $cache = [];
+
+        $variant = $n % 4;
+
+        if (isset($cache[$variant])) {
+            return $cache[$variant];
+        }
+
+        $approver = function (string $type, array $people): array {
+            return [[
+                'role'                     => 'Approver',
+                'approval_type'            => $type,
+                'auto_next_enabled'        => 0,
+                'dynamic_approver_enabled' => 0,
+                'approvers'                => $people,
+            ]];
+        };
+
+        $jeeva     = ['id' => 1507, 'type' => 'name', 'name' => 'Jeeva', 'email' => 'jeevanantham@legalitysimplified.com'];
+        $ownerOne  = ['id' => 1508, 'type' => 'name', 'name' => 'Owner One', 'email' => 'owner.one@example.com'];
+        $apprOne   = ['id' => 1509, 'type' => 'name', 'name' => 'Approver One', 'email' => 'approver.one@example.com'];
+        $signOne   = ['id' => 1510, 'type' => 'name', 'name' => 'Signatory One', 'email' => 'signatory.one@example.com'];
+
+        $reviewType = ($variant % 2) === 0 ? 'sequential' : 'parallel';
+        $reviewers  = ($variant % 2) === 0 ? [$jeeva] : [$jeeva, $ownerOne];
+
+        $approverPayload = [
+            'review'          => $approver($reviewType, $reviewers),
+            'negotiation'     => [],
+            'finalization'    => $approver('sequential', [$apprOne]),
+            'approval'        => $approver('sequential', [$ownerOne]),
+            'signatory'       => $variant < 2 ? $approver('sequential', [$signOne]) : [],
+            '_parent_routing' => [
+                'review'       => ['on_approve' => 'negotiation', 'on_reject' => ''],
+                'negotiation'  => ['on_approve' => 'finalization', 'on_reject' => 'review'],
+                'finalization' => ['on_approve' => 'approval', 'on_reject' => 'negotiation'],
+                'approval'     => ['on_approve' => 'signatory', 'on_reject' => 'review'],
+            ],
+        ];
+
+        $cache[$variant] = json_encode([[
+            'id'              => 1,
+            'approval_type'   => 'sequential',
+            'approval_status' => 'required',
+            'approver'        => json_encode($approverPayload),
+            'signatory'       => json_encode(['sign' => '228', 'owner' => '1507', 'notify' => [], 'signutform' => []]),
+        ]]);
+
+        return $cache[$variant];
     }
 
     // ---------------------------------------------------------------- parties
@@ -421,9 +621,13 @@ class PerfDatasetSeeder extends Seeder
         foreach ($statuses as $s) {
             $encStatus[$s] = encryptString($s, 'status');
         }
+        // approval_contracts.approval_status is a plain varchar(20) since migration
+        // 2026_08_21_000001_narrow_approval_contracts_approval_status. encryptStringx() reads
+        // config('app.PLAINTEXT_COLUMNS') and returns the word unchanged, which is what every
+        // write site in the app now does. encryptString() here overran the column.
         $encApprovalStatus = [];
         foreach ($approvalStatuses as $s) {
-            $encApprovalStatus[$s] = encryptString($s, 'approval_status');
+            $encApprovalStatus[$s] = encryptStringx($s, 'approval_contracts.approval_status');
         }
 
         $rows = [];
@@ -476,11 +680,127 @@ class PerfDatasetSeeder extends Seeder
         return $rows;
     }
 
+    // ------------------------------------------------------------ parent-child
+
+    /**
+     * Links some seeded contracts to a parent, so the detail page has real renewal chains to
+     * walk. Without this every parentcontract is 0, so the parent walk and the child walk on
+     * the Details tab return nothing and a rewrite of either one cannot be measured.
+     * See .scratch/contract-detail-page-perf/issues/15-recursive-child-walk.md step 0.
+     *
+     * The shapes, because a recursive walk behaves differently on each:
+     *   - 300 pairs: one contract, one renewal. The common shape.
+     *   - 100 chains three rows deep.
+     *   - 50 chains four rows deep.
+     *   - two wide fan-outs, 12 children and 20 children, and one branch of the first
+     *     fan-out goes two rows deeper, so a fan-out and a chain meet in one tree.
+     *
+     * 684 of the 3,000 seeded rows get a parent, so 77% stay a root. Not every contract is
+     * a renewal.
+     *
+     * NO CYCLE IS POSSIBLE HERE. Every parent index is smaller than its child index, so a
+     * parent id is always smaller than its child id, and a chain of strictly falling ids
+     * cannot return to where it started. assertNoParentCycles() checks the written rows.
+     *
+     * Public so it can be run on an already-seeded database without re-running run().
+     */
+    public function assignParentChains(): void
+    {
+        $links = []; // child row number => parent row number
+
+        // 300 pairs: one contract, one renewal.
+        for ($n = 0; $n < 600; $n += 2) {
+            $links[$n + 1] = $n;
+        }
+
+        // 100 chains three rows deep.
+        for ($n = 600; $n < 900; $n += 3) {
+            $links[$n + 1] = $n;
+            $links[$n + 2] = $n + 1;
+        }
+
+        // 50 chains four rows deep.
+        for ($n = 900; $n < 1100; $n += 4) {
+            $links[$n + 1] = $n;
+            $links[$n + 2] = $n + 1;
+            $links[$n + 3] = $n + 2;
+        }
+
+        // Two wide fan-outs: one master contract with many children.
+        for ($n = 1101; $n <= 1112; $n++) {
+            $links[$n] = 1100;
+        }
+        for ($n = 1121; $n <= 1140; $n++) {
+            $links[$n] = 1120;
+        }
+
+        // One branch of the first fan-out goes two rows deeper.
+        $links[1141] = 1101;
+        $links[1142] = 1141;
+
+        foreach ($links as $childN => $parentN) {
+            if ($parentN >= $childN) {
+                throw new \RuntimeException('Parent row number must be smaller than the child row number.');
+            }
+        }
+
+        // A parent id is always the child id minus a fixed offset, so the rows group by that
+        // offset and the whole set is written in about 20 statements. The id lists are short
+        // literal values built here, not ids read from another query.
+        $byOffset = [];
+        foreach ($links as $childN => $parentN) {
+            $byOffset[$childN - $parentN][] = self::ID_BASE + $childN;
+        }
+
+        foreach ($byOffset as $offset => $childIds) {
+            foreach (array_chunk($childIds, 500) as $chunk) {
+                DB::table('contracts')
+                    ->whereIn('id', $chunk)
+                    // DB::raw because the new value is column arithmetic on the row being
+                    // updated. Eloquent has no expression for "this row's id minus 5".
+                    ->update(['parentcontract' => DB::raw('id - ' . (int) $offset)]);
+            }
+        }
+
+        $this->assertNoParentCycles();
+
+        $withParent = DB::table('contracts')->where('parentcontract', '<>', 0)->count();
+        $this->say('Linked ' . count($links) . ' contracts to a parent; ' . $withParent . ' rows now have one.');
+    }
+
+    /**
+     * Proves no contract is its own ancestor. A cycle makes the recursive child walk on the
+     * detail page spin until MariaDB's max_recursive_iterations stops it.
+     */
+    private function assertNoParentCycles(): void
+    {
+        // A parent id below the child id on every row is the proof: an ancestor chain of
+        // strictly falling ids cannot come back to its start. Eloquent cannot compare two
+        // columns of the same row, so whereColumn is the closest it gets.
+        $rising = DB::table('contracts')
+            ->where('parentcontract', '<>', 0)
+            ->whereColumn('parentcontract', '>=', 'id')
+            ->count();
+
+        if ($rising > 0) {
+            throw new \RuntimeException($rising . ' contracts point at a parent id at or above their own id. A cycle is possible.');
+        }
+
+        $this->say('Cycle check: 0 contracts point at a parent id at or above their own id.');
+    }
+
+    private function say(string $message): void
+    {
+        if (isset($this->command)) {
+            $this->command->info($message);
+        }
+    }
+
     // ---------------------------------------------------------------- plumbing
 
-    private function insertChunked(string $table, array $rows): void
+    private function insertChunked(string $table, array $rows, ?int $size = null): void
     {
-        foreach (array_chunk($rows, self::CHUNK) as $chunk) {
+        foreach (array_chunk($rows, $size ?? self::CHUNK) as $chunk) {
             DB::table($table)->insert($chunk);
         }
     }

@@ -107,9 +107,23 @@ if (!function_exists('fileStorageTypeController')) {
 }
 
 if (!function_exists('fileStorageType')) {
+    /**
+     * Which drive the application stores contract files on.
+     *
+     * One row, read from many places. fileStorageTypeController() alone asks three times, and
+     * the contract detail page asked nine times in one load. The row cannot change while a
+     * request runs, so the answer is held for the life of the request. A null answer - no
+     * row - is a real answer, so the test is array_key_exists and not isset.
+     */
     function fileStorageType()
     {
-        return FileStorage::where('id', 1)->value('type');
+        static $type = [];
+
+        if (! array_key_exists(0, $type)) {
+            $type[0] = FileStorage::where('id', 1)->value('type');
+        }
+
+        return $type[0];
     }
 }
 
@@ -441,11 +455,24 @@ if (!function_exists('decrypt_datas')) {
 
 
 if (!function_exists('get_country')) {
+    /**
+     * The country name for an id.
+     *
+     * Called once per party address, so the same country comes back several times in one page
+     * load - three times on the contract detail page. A country name cannot change inside one
+     * request, so each id is read once and held.
+     */
     function get_country($id)
     {
+        static $names = [];
+
         if ($id > 0) {
-            $country = Country::where('id', $id)->first();
-            return $country ? $country->Name : 0;
+            if (! array_key_exists($id, $names)) {
+                $country = Country::where('id', $id)->first();
+                $names[$id] = $country ? $country->Name : 0;
+            }
+
+            return $names[$id];
         }
         return 0;
     }
@@ -577,6 +604,98 @@ if (!function_exists('get_google_drive_doc_link')) {
         }
     }
     
+    if (!function_exists('reminder_alert_parts')) {
+        /**
+         * Split a stored reminder value into its three parts.
+         *
+         * The columns reminder_first_alertMeOn, reminder_second_alertMeOn,
+         * reminder_escalation_alertMeOn and reminder_escalation_alertMeOn_after hold three words
+         * separated by spaces - '30 days prior'. They are NULL on any contract that never had a
+         * reminder set, and the edit form used to explode() the value and read index 1 and 2 with
+         * no guard, which threw 'Undefined array key 1' and stopped the whole page rendering.
+         *
+         * Returns [$day, $unit, $direction]. Missing parts come back as '', 'days' and '', so an
+         * empty reminder shows an empty day box with Days selected and neither Prior nor After
+         * forced.
+         *
+         * $column is the column the value came from, passed straight to decryptString() so the
+         * call site still says which column it is reading.
+         */
+        function reminder_alert_parts($storedValue, string $column): array
+        {
+            $parts = explode(' ', trim((string) decryptString((string) $storedValue, $column)));
+
+            return [
+                $parts[0] ?? '',
+                ($parts[1] ?? '') !== '' ? $parts[1] : 'days',
+                $parts[2] ?? '',
+            ];
+        }
+    }
+
+    if (!function_exists('contract_detail_current_tab')) {
+        /**
+         * Say which tab the contract detail page opens.
+         *
+         * One place owns this rule. ContractController::viewContract() calls it to skip the work a
+         * tab does not need, and viewDetailContract.blade.php calls it to pick the open tab. The
+         * URL carries the tab in ?tab=, and a load with no ?tab= opens Pre-Approval or Timeline.
+         *
+         * A contract in Pre-Approval cannot open Timeline, and a contract that is not in
+         * Pre-Approval cannot open Pre-Approval. The two forcing rules below do that.
+         *
+         * $contract is the contract row the page shows. It is a Contract or a ContractHistory.
+         */
+        function contract_detail_current_tab($contract): string
+        {
+            $isPreApproval = (($contract->contract_status ?? null) === 'Pre-Approval')
+                || !empty($contract->preapproval_stage);
+
+            $tab = $_GET['tab'] ?? ($isPreApproval ? 'pre-approval' : 'timeline');
+
+            if ($isPreApproval && $tab === 'timeline') {
+                $tab = 'pre-approval';
+            }
+
+            if (!$isPreApproval && $tab === 'pre-approval') {
+                $tab = 'timeline';
+            }
+
+            return $tab;
+        }
+    }
+
+    if (!function_exists('contract_detail_shows_related_contracts')) {
+        /**
+         * Say if the open tab renders the Related Contracts region.
+         *
+         * viewDetailContract.blade.php builds one body block for each tab in the list below. Any
+         * other tab value falls through to the last branch, and only that branch holds the four
+         * Related Contracts tables - the category table, the parent table, the subsequent table
+         * and the shared-party table. The Details tab is the one that reaches it.
+         *
+         * The controller calls this to decide if it runs the three whole-table scans that fill
+         * those tables. The blade calls it on the last branch of the same chain, so the rule
+         * lives here and nowhere else.
+         */
+        function contract_detail_shows_related_contracts(string $currentTab): bool
+        {
+            $tabsWithOwnBody = [
+                'timeline',
+                'pre-approval',
+                'timelineedit',
+                'history',
+                'flow',
+                'edit',
+                'attachment',
+                'e-stamp',
+                'obligation',
+            ];
+
+            return !in_array($currentTab, $tabsWithOwnBody, true);
+        }
+    }
+
     if (!function_exists('get_table_data')) {
         function get_table_data(string $key, string $text)
         {

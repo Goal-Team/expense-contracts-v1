@@ -25,10 +25,18 @@ use App\Models\ContractType;
 use App\Models\ContractPartyData;
 use App\Models\BranchUser;
 use App\Helpers\Helpers;
+use Illuminate\Support\Facades\Cache;
+use Illuminate\Support\Facades\Log;
 
 class GoogleDriveController extends Controller
 {
     private $client;
+
+    /** Cache key prefix for the Google access token. */
+    const DRIVE_TOKEN_CACHE_PREFIX = 'google_drive_access_token:';
+
+    /** Seconds the cached token dies before Google drops it. */
+    const DRIVE_TOKEN_SAFETY_MARGIN = 120;
 
     public function __construct()
     {
@@ -514,21 +522,129 @@ class GoogleDriveController extends Controller
         // same file); otherwise the read-only preview link.
         return 'https://drive.google.com/file/d/' . $fileid . ($edit ? '/edit' : '/view');
     }
-    public function changePermission($fileid, $prev_email="", $current_email="", $onlyView=false)
+    /**
+     * Cache key for the Google access token.
+     *
+     * The key holds a hash of the client id, the client secret, the token endpoint and the
+     * refresh token. Two Google accounts, or two credential files, give two different keys, so
+     * one account can never read the other account's token.
+     */
+    private function driveTokenCacheKey()
     {
-        
-        // Initialize Google Client
-        $clientSecretPath = $this->setConfig();
+        $config = $this->setConfig();
+        $web = $config['web'] ?? [];
+
+        return self::DRIVE_TOKEN_CACHE_PREFIX . sha1(implode('|', [
+            $web['client_id'] ?? '',
+            $web['client_secret'] ?? '',
+            $web['token_uri'] ?? '',
+            (string) env('GOOGLE_DRIVE_REFRESH_TOKEN'),
+        ]));
+    }
+
+    /**
+     * A Google client that already holds a valid access token.
+     *
+     * A Google access token lasts an hour. This method keeps it in the cache, so a page view
+     * pays the 500 ms refresh only when the cached token is gone. The cached entry dies
+     * DRIVE_TOKEN_SAFETY_MARGIN seconds before Google drops the token, so a request never picks
+     * up a token that expires while the request runs.
+     *
+     * Pass $forceRefresh to drop the cached token and get a new one. Use it after an
+     * authentication failure, nowhere else.
+     */
+    public function authorizedClient($forceRefresh = false)
+    {
         $client = new Google_Client();
-        $client->setAuthConfig($clientSecretPath);
+        $client->setAuthConfig($this->setConfig());
         $client->addScope(Google_Service_Drive::DRIVE);
 
-        // Check and refresh access token if expired
-        if ($client->isAccessTokenExpired()) {
-            $refreshToken = env('GOOGLE_DRIVE_REFRESH_TOKEN');
-            $client->fetchAccessTokenWithRefreshToken($refreshToken);
+        $key = $this->driveTokenCacheKey();
+
+        if ($forceRefresh) {
+            Cache::forget($key);
+        } else {
+            $token = Cache::get($key);
+            if (is_array($token) && !empty($token['access_token'])) {
+                $client->setAccessToken($token);
+                if (!$client->isAccessTokenExpired()) {
+                    Log::debug('Google Drive token: cache hit, no refresh.');
+
+                    return $client;
+                }
+                Cache::forget($key);
+            }
         }
-        
+
+        Log::debug('Google Drive token: cache miss, refresh runs.', ['forced' => (bool) $forceRefresh]);
+
+        $client->fetchAccessTokenWithRefreshToken(env('GOOGLE_DRIVE_REFRESH_TOKEN'));
+
+        $token = $client->getAccessToken();
+        if (is_array($token) && !empty($token['access_token'])) {
+            $life = (int) ($token['expires_in'] ?? 3600) - self::DRIVE_TOKEN_SAFETY_MARGIN;
+            if ($life > 0) {
+                Cache::put($key, $token, $life);
+                Log::debug('Google Drive token: refreshed and cached.', ['seconds' => $life]);
+            }
+        } else {
+            Log::warning('Google Drive token refresh returned no access token.');
+        }
+
+        return $client;
+    }
+
+    /**
+     * Does this exception say the access token is bad?
+     *
+     * Only an authentication failure may drop the cached token. A missing file gives 404 and
+     * must not.
+     */
+    private function isDriveAuthFailure(\Exception $e)
+    {
+        if (in_array((int) $e->getCode(), [401, 403], true)) {
+            $message = strtolower($e->getMessage());
+
+            return strpos($message, 'invalid credentials') !== false
+                || strpos($message, 'invalid_grant') !== false
+                || strpos($message, 'autherror') !== false
+                || strpos($message, 'unauthorized') !== false
+                || strpos($message, 'invalid authentication') !== false;
+        }
+
+        return false;
+    }
+
+    public function changePermission($fileid, $prev_email="", $current_email="", $onlyView=false)
+    {
+        try {
+            return $this->applyFilePermissions($this->authorizedClient(), $fileid, $prev_email, $current_email, $onlyView);
+        } catch (\Exception $e) {
+            if ($this->isDriveAuthFailure($e)) {
+                // The cached token is no good. Drop it, refresh once, try once. No loop.
+                Log::warning('Google Drive rejected the access token. Dropping the cached token and retrying once.', [
+                    'file_id' => $fileid,
+                    'code' => $e->getCode(),
+                ]);
+                try {
+                    return $this->applyFilePermissions($this->authorizedClient(true), $fileid, $prev_email, $current_email, $onlyView);
+                } catch (\Exception $retryError) {
+                    return 'Error permission file changes: ' . $retryError->getMessage(); // Return error message
+                }
+            }
+
+            return 'Error permission file changes: ' . $e->getMessage(); // Return error message
+        }
+    }
+
+    /**
+     * Grant the wanted people access to one Drive file, with the given client.
+     *
+     * This is the body changePermission used to hold. It throws instead of catching, so
+     * changePermission can decide whether to retry with a new token.
+     */
+    private function applyFilePermissions($client, $fileid, $prev_email="", $current_email="", $onlyView=false)
+    {
         $OptParams = array(
             'fields' => '*'
         );        
@@ -616,7 +732,8 @@ class GoogleDriveController extends Controller
             // // print_r($current_email);
             // // print_r($permExist);
             // // die;
-            return 'Error permission file changes: ' . $e->getMessage(); // Return error message
+            // changePermission owns the error message and the one retry.
+            throw $e;
         }
     }
 

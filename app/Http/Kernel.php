@@ -14,6 +14,13 @@ class Kernel extends HttpKernel
    * @var array<int, class-string|string>
    */
   protected $middleware = [
+    // First in the global stack on purpose. The pipeline sends the request down
+    // the list and the response back up it, so the first entry is the last to
+    // touch the response — which is what compressing a finished HTML document
+    // needs. PerfTimingServiceProvider prepends its own middleware, so the
+    // perf log still counts this compression in the request time.
+    // Reads config/compression.php.
+    \App\Http\Middleware\CompressResponse::class,
     // \App\Http\Middleware\TrustHosts::class,
     \App\Http\Middleware\TrustProxies::class,
     \Illuminate\Http\Middleware\HandleCors::class,

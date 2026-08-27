@@ -21,6 +21,7 @@ use DB;
 use Carbon\Carbon;
 use DateTime;
 use Illuminate\Support\Facades\Route;
+use Illuminate\Database\Eloquent\Collection as EloquentCollection;
 
 class Controller extends BaseController
 {
@@ -182,11 +183,35 @@ class Controller extends BaseController
             ->get();
         }
         
-        //For AccessLevel
-        $available_branches = BranchUser::pluck(decrypt_data('BranchName', 'branch'), 'id')->toArray();
-        $available_departms = EntityBusiness::pluck('id')->toArray();
+        // For AccessLevel. These four lists are the same for every contract in the loop below,
+        // and the same for every call this request makes - the contract detail page calls this
+        // method four times, and each call ran all four queries again. They are held for the
+        // life of the request. Their scopes read the session, which cannot change inside one
+        // request either.
+        //
+        // $category_names replaces a ContractCategories::find() that ran once per contract: 57
+        // queries of the 368 the detail page ran on its Details tab.
+        static $available_branches = null;
+        static $available_departms = null;
+        static $entity_list = null;
+        static $category_names = null;
 
-        $entity_list = EntityMain::pluck(decrypt_data('Nameoftheentity', 'entity'), 'id')->toArray();
+        if ($available_branches === null) {
+            $available_branches = BranchUser::pluck(decrypt_data('BranchName', 'branch'), 'id')->toArray();
+            $available_departms = EntityBusiness::pluck('id')->toArray();
+            $entity_list        = EntityMain::pluck(decrypt_data('Nameoftheentity', 'entity'), 'id')->toArray();
+            $category_names     = ContractCategories::pluck('name', 'id')->toArray();
+        }
+
+        // The loop reads $contract->contractTypeData, which lazy-loads one row per contract - 56
+        // more of those 368. Load them all in one query first. loadMissing() leaves an already
+        // loaded relation alone, and it is skipped unless the loop actually reads it.
+        //
+        // One row is not worth an eager load: it costs the same one query either way, and this
+        // page calls the method once with a single-contract collection on every tab.
+        if ($listArray && $contracts instanceof EloquentCollection && $contracts->count() > 1) {
+            $contracts->loadMissing('contractTypeData');
+        }
 
         $availableContracts = [];
 
@@ -225,16 +250,10 @@ class Controller extends BaseController
             $contract->contractParty = $contractParty;
 
             if (isset($contract->catgoery_id)) {
-                $category = \App\Models\ContractCategories::find($contract->catgoery_id);
-            
-                if ($category) {
-                    $contract->catgoery_identity = $contract->catgoery_id;
-                    $contract->catgoery_id = $category->name;
-                } else {
-                    // Optional: handle missing category
-                    $contract->catgoery_identity = $contract->catgoery_id;
-                    $contract->catgoery_id = null; // or 'Unknown'
-                }
+                // Read from the list built before the loop, not one query per contract. A missing
+                // category still leaves catgoery_identity set and catgoery_id null, as before.
+                $contract->catgoery_identity = $contract->catgoery_id;
+                $contract->catgoery_id = $category_names[$contract->catgoery_id] ?? null;
             }
             
             $contract->currency_value_converted = "-";
@@ -378,9 +397,18 @@ class Controller extends BaseController
     }
     
     public function checkTablesConfiguration(){
-        $tables = DB::select('SHOW TABLES');
-        
+
         $requiredTable = [];
+
+        // Nothing is required, so nothing can be missing and this returns true whatever the
+        // schema holds. Leaving early skips a SHOW TABLES over the whole schema - the slowest
+        // single query left on the contract detail page, and ContractSessionMiddleware calls
+        // this twice per request. The check below is left intact for the day the list is filled.
+        if (empty($requiredTable)) {
+            return true;
+        }
+
+        $tables = DB::select('SHOW TABLES');
 
     
         $requiredTableText = array_map(function($value){ return ucwords(str_replace("_", " ", $value));}, $requiredTable);

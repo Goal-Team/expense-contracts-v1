@@ -153,8 +153,12 @@
         <h5 class="p-2 mt-2">
             Signing Pending With {{ json_decode($approvalValues->username)->name ." (". json_decode($approvalValues->username)->email .")" }} 
             @php
-                $approvalsDetails = json_decode($contract->rules_id);
-                $signUtFormPath = json_decode($approvalsDetails[0]->signatory)->signutform ?? null;
+                // rules_id is a JSON text column and it holds a list of rules. It is NULL on a
+                // contract with no approval rules, and then $approvalsDetails[0] threw and the
+                // page did not render. contractFlow.blade.php guards the same read the same way.
+                $approvalsDetails = is_string($contract->rules_id) ? json_decode($contract->rules_id) : null;
+                $signatoryJson = is_array($approvalsDetails) ? ($approvalsDetails[0]->signatory ?? null) : null;
+                $signUtFormPath = is_string($signatoryJson) ? (json_decode($signatoryJson)->signutform ?? null) : null;
             @endphp
             @if($signUtFormPath != null)
                 <a href="{{fileViewUrl($signUtFormPath)}}" class="text-warning float-end fs-6" target="new" alt="View Form"><i class="ti ti-file ti-xs"></i> Undertaking Form Click to view</a>

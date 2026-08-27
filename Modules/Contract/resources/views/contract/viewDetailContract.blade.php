@@ -88,12 +88,15 @@ cookie()->queue(cookie()->forget('attachment')); ?>
 cookie()->queue('historical', $_GET['history'], 60);
 ?>
 @endif
-@if(isset($_GET['attachment']))
-<?php
-die;
-cookie()->queue('attachment', true, 60);
-?>
-@endif
+@php
+    // Which past version the Historical tab shows. The History tab links to it as
+    // ?tab=historical&history=<history_id>, and the cookie above remembers the last one so the
+    // tab stays reachable from the other tabs. The controller swaps the contract for that
+    // snapshot; see ContractController::viewContract().
+    // Empty means no version is chosen. Then the Historical nav item is not drawn, and the body
+    // falls back to the live contract, the same as the Details tab.
+    $historicalVersionId = $_GET['history'] ?? request()->cookie('historical') ?? '';
+@endphp
 @if (isset($_GET['tab']) && $_GET['tab'] == 'attachment')
 <script>
     if(document.getElementById("attachmentDivFocus")){
@@ -685,19 +688,9 @@ cookie()->queue('attachment', true, 60);
         <ul class="nav nav-tabs m-0 m0 {{ $errors->any() ? '' : 'sticky-element1' }}" id="mainTabDetails" role="tablist" style="padding: 5px;">
 
             @php
-                $isPreApproval = ($contract->contract_status === 'Pre-Approval') || !empty($contract->preapproval_stage);
-                $defaultTab = $isPreApproval ? 'pre-approval' : 'timeline';
-                $currentTab = $_GET['tab'] ?? $defaultTab;
-                
-                // Force pre-approval tab if contract is in pre-approval status
-                if ($isPreApproval && $currentTab === 'timeline') {
-                    $currentTab = 'pre-approval';
-                }
-                
-                // Force timeline tab if contract is NOT in pre-approval status
-                if (!$isPreApproval && $currentTab === 'pre-approval') {
-                    $currentTab = 'timeline';
-                }
+                // One place owns the tab rule - contract_detail_current_tab() in app/helpers.php.
+                // The controller calls the same helper, so it skips the work this tab never shows.
+                $currentTab = contract_detail_current_tab($contract);
             @endphp
             
             @if ($currentTab == 'pre-approval')
@@ -901,12 +894,14 @@ cookie()->queue('attachment', true, 60);
                         aria-selected="false">Obligations</button>
                 </a></li>                
 
-            <li class="nav-item active "><a href="{{ url('contracts/'.$contract->id.'?tab=historical&history='. $_GET['history'] )}}">
+            @if ($historicalVersionId !== '')
+            <li class="nav-item active "><a href="{{ url('contracts/'.$contract->id.'?tab=historical&history='. $historicalVersionId )}}">
                     <button type="button" class="nav-link active" role="tab" data-bs-toggle="tab"
                         data-bs-target="#navs-top-profile" aria-controls="navs-top-profile"
                         aria-selected="false">Historical</button>
                 </a> <a href="{{ url('contracts/'.$contract->id )}}?clearcokke="> X </a></li>
-                
+            @endif
+
             <li class="nav-item active"><a href="{{ url('contracts/'.$contract->id.'?tab=e-stamp' )}}">
                     <button type="button" class="nav-link" role="tab" data-bs-toggle="tab"
                         data-bs-target="#navs-top-profile" aria-controls="navs-top-profile"
@@ -1063,12 +1058,12 @@ cookie()->queue('attachment', true, 60);
             @endif
 
 
-            @if (request()->cookie('historical'))
+            @if ($historicalVersionId !== '')
 
             @if (isset($_GET['tab']) && $_GET['tab'] == 'historical')
 
             @else
-            <li class="nav-item  "><a href="{{ url('contracts/'.$contract->id.'?tab=historical&history='.request()->cookie('historical') )}}">
+            <li class="nav-item  "><a href="{{ url('contracts/'.$contract->id.'?tab=historical&history='. $historicalVersionId )}}">
                     <button type="button" class="nav-link" role="tab" data-bs-toggle="tab"
                         data-bs-target="#navs-top-profile" aria-controls="navs-top-profile"
                         aria-selected="false">Historical</button>
@@ -1114,8 +1109,11 @@ cookie()->queue('attachment', true, 60);
 
     <div class="contractApprovals col">
         @php
-            $appDataAppRules = json_decode(trim($contract->rules_id));
-            $approvalTypeContract = $appDataAppRules[0]->approval_type ?? '';
+            // rules_id is a JSON text column and it holds a list of rules. It is NULL on a
+            // contract with no approval rules, and a bad value decodes to something that is not
+            // a list. contractFlow.blade.php guards the same read the same way.
+            $appDataAppRules = is_string($contract->rules_id) ? json_decode(trim($contract->rules_id)) : null;
+            $approvalTypeContract = is_array($appDataAppRules) ? ($appDataAppRules[0]->approval_type ?? '') : '';
         @endphp
         @foreach ($approvalsArr as $key => $approvalsData)
             @if($loop->last)
@@ -1380,7 +1378,9 @@ cookie()->queue('attachment', true, 60);
 
 @include('contract::contract.contractObligation', ['paryda', $contractPartys , 'ContractObligations' , $ContractObligations])
 
-@else
+{{-- The Details tab. It is the only tab that renders the Related Contracts region below, so the
+     controller reads the same helper and skips the three scans that fill it on every other tab. --}}
+@elseif (contract_detail_shows_related_contracts($currentTab))
 
 <div class="row my-4">
     <div class="col">
@@ -1832,25 +1832,25 @@ cookie()->queue('attachment', true, 60);
                                                         <div class="form-group row">
                                                             <h6 class="mb-2">Alert Me on</h6>
 
-                                                            <?php $fristarl  = explode(" ", decryptString($contract->reminder_first_alertMeOn, 'reminder_first_alertMeOn')); ?>
+                                                            <?php [$firstAlertDay, $firstAlertUnit, $firstAlertDirection] = reminder_alert_parts($contract->reminder_first_alertMeOn, 'reminder_first_alertMeOn'); ?>
                                                             <div class="col">
-                                                                {{ $fristarl[0]}}
+                                                                {{ $firstAlertDay }}
 
                                                             </div>
                                                             <div class="col">
-                                                                @if($fristarl[1] == 'days')
+                                                                @if($firstAlertUnit == 'days')
                                                                 <p>Days</p>
-                                                                @elseif($fristarl[1] == 'months')
+                                                                @elseif($firstAlertUnit == 'months')
                                                                 <p>Months</p>
-                                                                @elseif($fristarl[1] == 'years')
+                                                                @elseif($firstAlertUnit == 'years')
                                                                 <p>Years</p>
                                                                 @endif
 
                                                             </div>
                                                             <div class="col">
-                                                                @if($fristarl[2] == 'prior')
+                                                                @if($firstAlertDirection == 'prior')
                                                                 <p>Prior</p>
-                                                                @elseif($fristarl[2] == 'after')
+                                                                @elseif($firstAlertDirection == 'after')
                                                                 <p>After</p>
                                                                 @endif
 
@@ -1880,26 +1880,26 @@ cookie()->queue('attachment', true, 60);
                                                         <div class="form-group row">
 
                                                             <h6 class="mb-2">Alert Me on</h6>
-                                                            <?php $secondarl  = explode(" ", decryptString($contract->reminder_second_alertMeOn, 'reminder_second_alertMeOn')); ?>
+                                                            <?php [$secondAlertDay, $secondAlertUnit, $secondAlertDirection] = reminder_alert_parts($contract->reminder_second_alertMeOn, 'reminder_second_alertMeOn'); ?>
                                                             <div class="col">
-                                                                {{ $secondarl[0]}}
+                                                                {{ $secondAlertDay }}
 
                                                             </div>
                                                             <div class="col">
 
-                                                                @if($secondarl[1] == 'days')
+                                                                @if($secondAlertUnit == 'days')
                                                                 <p>Days</p>
-                                                                @elseif($secondarl[1] == 'months')
+                                                                @elseif($secondAlertUnit == 'months')
                                                                 <p>Months</p>
-                                                                @elseif($secondarl[1] == 'years')
+                                                                @elseif($secondAlertUnit == 'years')
                                                                 <p>Years</p>
                                                                 @endif
 
                                                             </div>
                                                             <div class="col">
-                                                                @if($secondarl[2] == 'prior')
+                                                                @if($secondAlertDirection == 'prior')
                                                                 <p>Prior</p>
-                                                                @elseif($secondarl[2] == 'after')
+                                                                @elseif($secondAlertDirection == 'after')
                                                                 <p>After</p>
                                                                 @endif
 
@@ -1929,25 +1929,25 @@ cookie()->queue('attachment', true, 60);
                                                         <div class="form-group row">
 
                                                             <h6 class="mb-2">Alert Me on</h6>
-                                                            <?php $escalationarl  = explode(" ", decryptString($contract->reminder_escalation_alertMeOn, 'reminder_escalation_alertMeOn')); ?>
+                                                            <?php [$escalationAlertDay, $escalationAlertUnit, $escalationAlertDirection] = reminder_alert_parts($contract->reminder_escalation_alertMeOn, 'reminder_escalation_alertMeOn'); ?>
                                                             <div class="col">
-                                                                {{ $escalationarl[0]}}
+                                                                {{ $escalationAlertDay }}
                                                             </div>
                                                             <div class="col">
 
-                                                                @if($escalationarl[1] == 'days')
+                                                                @if($escalationAlertUnit == 'days')
                                                                 <p>Days</p>
-                                                                @elseif($escalationarl[1] == 'months')
+                                                                @elseif($escalationAlertUnit == 'months')
                                                                 <p>Months</p>
-                                                                @elseif($escalationarl[1] == 'years')
+                                                                @elseif($escalationAlertUnit == 'years')
                                                                 <p>Years</p>
                                                                 @endif
 
                                                             </div>
                                                             <div class="col">
-                                                                @if($escalationarl[2] == 'prior')
+                                                                @if($escalationAlertDirection == 'prior')
                                                                 <p>Prior</p>
-                                                                @elseif($escalationarl[2] == 'after')
+                                                                @elseif($escalationAlertDirection == 'after')
                                                                 <p>After</p>
                                                                 @endif
 
@@ -1977,25 +1977,25 @@ cookie()->queue('attachment', true, 60);
                                                         <div class="form-group row">
 
                                                             <h6 class="mb-2">Alert Me on</h6>
-                                                            <?php $escalationarl  = explode(" ", decryptString($contract->reminder_escalation_alertMeOn_after, 'reminder_escalation_alertMeOn_after')); ?>
+                                                            <?php [$escalationAfterDay, $escalationAfterUnit, $escalationAfterDirection] = reminder_alert_parts($contract->reminder_escalation_alertMeOn_after, 'reminder_escalation_alertMeOn_after'); ?>
                                                             <div class="col">
-                                                                {{ $escalationarl[0] ?? 'Not Available'}}
+                                                                {{ $escalationAfterDay }}
                                                             </div>
                                                             <div class="col">
 
-                                                                @if($escalationarl[1] ?? 'Not Available' == 'days')
+                                                                @if($escalationAfterUnit == 'days')
                                                                 <p>Days</p>
-                                                                @elseif($escalationarl[1] ?? 'Not Available' == 'months')
+                                                                @elseif($escalationAfterUnit == 'months')
                                                                 <p>Months</p>
-                                                                @elseif($escalationarl[1] ?? 'Not Available' == 'years')
+                                                                @elseif($escalationAfterUnit == 'years')
                                                                 <p>Years</p>
                                                                 @endif
 
                                                             </div>
                                                             <div class="col">
-                                                                @if($escalationarl[2] ?? 'Not Available' == 'prior')
+                                                                @if($escalationAfterDirection == 'prior')
                                                                 <p>Prior</p>
-                                                                @elseif($escalationarl[2] ?? 'Not Available' == 'after')
+                                                                @elseif($escalationAfterDirection == 'after')
                                                                 <p>After</p>
                                                                 @endif
 

@@ -239,9 +239,54 @@ class Helpers
         return openssl_decrypt($encrypted_data, 'aes-256-cbc', $key.$enkey, 0, $iv);
     }
     
+    /**
+     * The logged-in user's row.
+     *
+     * 76 call sites ask for it, and the query decrypts UserName in the WHERE, so it reads and
+     * decrypts all 1,605 user rows every time. The contract detail page asked six times in one
+     * load, and that was the most expensive shape left on the page. The session cannot change
+     * inside one request, so the row is read once and held.
+     *
+     * Nothing in the repo writes through this result - checked for `userInfo()->x =`, ->save(),
+     * ->update(), ->fill() - so returning the same model to every caller is safe.
+     */
     public static function userInfo()
     {
-    
+        $cacheKey = implode('|', [
+            (string) session()->get('contractSessionExUser'),
+            (string) session()->get('contractSessionUser'),
+            (string) session()->get('contractSessionEntity'),
+        ]);
+
+        if (array_key_exists($cacheKey, static::$userInfoCache)) {
+            return static::$userInfoCache[$cacheKey];
+        }
+
+        return static::$userInfoCache[$cacheKey] = static::resolveUserInfo();
+    }
+
+    /**
+     * The rows already read in this request, keyed by the session values the answer depends on.
+     * A false answer - no session user - is a real answer, so reads test array_key_exists.
+     */
+    protected static array $userInfoCache = [];
+
+    /**
+     * Drop the request cache. For tests, and for any code that changes the session user inside
+     * one request.
+     */
+    public static function forgetUserInfo(): void
+    {
+        static::$userInfoCache = [];
+    }
+
+    /**
+     * The body of userInfo(). Split out so the cache above has one thing to wrap and every
+     * return path below stays exactly as it was.
+     */
+    protected static function resolveUserInfo()
+    {
+
     if(session()->has('contractSessionExUser') && session()->get('contractSessionExUser')){
         $userObject = new \stdClass();
         $userObject->email = session()->get('contractSessionExUser');
@@ -298,24 +343,121 @@ class Helpers
         return true;
     }
     
+    /**
+     * The answers already worked out in this request, keyed by the arguments and by the session
+     * values the answer depends on.
+     *
+     * BranchScope, DepartmentScope and UserBranchScope each call getEntityBranches() every time
+     * they build a query, and every call runs the same three or four reads: the UserCredential
+     * row for the auth token, the ContractUsers row for that username, then the branch walk. On
+     * the contract detail page that came to 41 identical queries in one load.
+     *
+     * The session cannot change while one request runs, so the answer cannot either. A null
+     * entry is a real answer, so reads test array_key_exists and not isset.
+     */
+    protected static array $entityBranchesCache = [];
+
+    /**
+     * Drop the request cache. For tests, and for any code that changes the session user inside
+     * one request.
+     */
+    public static function forgetEntityBranches(): void
+    {
+        static::$entityBranchesCache = [];
+    }
+
     public static function getEntityBranches($accessLevel='Head Office', $accessDepartment=0){
-    
+
+        $cacheKey = implode('|', [
+            $accessLevel,
+            $accessDepartment,
+            (string) session()->get('contractUserToken'),
+            (string) session()->get('contractSessionEntity'),
+            (string) session()->get('contractSessionUserRole'),
+        ]);
+
+        if (array_key_exists($cacheKey, static::$entityBranchesCache)) {
+            return static::$entityBranchesCache[$cacheKey];
+        }
+
+        return static::$entityBranchesCache[$cacheKey] = static::resolveEntityBranches($accessLevel, $accessDepartment);
+    }
+
+    /**
+     * The rows already read for an auth token in this request.
+     */
+    protected static array $authTokenUserCache = [];
+
+    /**
+     * The UserCredential row for an auth token, read once per token per request.
+     *
+     * Two places asked for it with the same four decrypted columns - here and
+     * ContractSessionMiddleware - and getEntityBranches() is called with two different argument
+     * pairs, so the contract detail page read it three times in one load. The row cannot change
+     * inside one request. A null answer is a real answer, so the test is array_key_exists.
+     */
+    public static function authTokenUser($authtoken)
+    {
+        $key = (string) $authtoken;
+
+        if (! array_key_exists($key, static::$authTokenUserCache)) {
+            static::$authTokenUserCache[$key] = UserCredentials::select('id', decrypt_data('username', 'UserCredential'), decrypt_data('name', 'UserCredential'), decrypt_data('Salutation', 'UserCredential'), decrypt_data('issuper', 'UserCredential'))
+                ->where('authtoken', $authtoken)
+                ->first();
+        }
+
+        return static::$authTokenUserCache[$key];
+    }
+
+    /**
+     * The rows already read for a username in this request.
+     */
+    protected static array $accessUserCache = [];
+
+    /**
+     * The AddUsers row that carries a username's access level, branch head and business
+     * functions, read once per username per request.
+     *
+     * getEntityBranches() is called with two different argument pairs, and each call read this
+     * row again. The query decrypts UserName inside the WHERE, so it reads and decrypts all
+     * 1,605 user rows every time.
+     */
+    public static function accessUser($username)
+    {
+        $key = (string) $username;
+
+        if (! array_key_exists($key, static::$accessUserCache)) {
+            static::$accessUserCache[$key] = AddUsers::select('id', 'AccessLevel', 'branchhead', decrypt_data('email', 'AddUsers'), decrypt_data('FirstName', 'AddUsers'), decrypt_data('UserName', 'AddUsers'), decrypt_data('BusinessFunctionAccess', 'AddUsers'))
+                ->where(decrypt_datas('UserName', 'AddUsers'), $username)
+                ->where('Customer', session()->get('contractSessionEntity'))
+                ->first();
+        }
+
+        return static::$accessUserCache[$key];
+    }
+
+    /**
+     * The body of getEntityBranches(). Split out so the cache above has one thing to wrap and
+     * every return path below stays exactly as it was.
+     */
+    protected static function resolveEntityBranches($accessLevel='Head Office', $accessDepartment=0){
+
         if(session()->get('contractUserToken')){
 
             $authtoken = session()->get('contractUserToken');
             $userLogRole = session()->get('contractSessionUserRole');
-        
-            $checkUserCredentials = UserCredentials::select('id',decrypt_data('username', 'UserCredential'),decrypt_data('name', 'UserCredential'), decrypt_data('Salutation', 'UserCredential'), decrypt_data('issuper','UserCredential'))->where('authtoken', $authtoken)->first();
+
+            $checkUserCredentials = static::authTokenUser($authtoken);
 
             if($checkUserCredentials){
 
               $username = $checkUserCredentials->username;
             
-              $add_users = AddUsers::select('id','AccessLevel', 'branchhead', decrypt_data('email', 'AddUsers'),decrypt_data('FirstName', 'AddUsers'),  decrypt_data('UserName', 'AddUsers'), decrypt_data('BusinessFunctionAccess','AddUsers'))
-                  ->where(decrypt_datas('UserName', 'AddUsers'), $username)
-                  ->where('Customer', session()->get('contractSessionEntity'))
-                  ->first();  
-                  
+              // Same row for both argument pairs this method is called with, and the query
+              // decrypts UserName in the WHERE, so it reads every user row. Read once per
+              // username per request.
+              $add_users = static::accessUser($username);
+
 
               if($add_users){
                   

@@ -11,6 +11,10 @@ Rationale: this repo ships `vendor/`, `node_modules/`, and a `.env` whose
 `APP_ENCRYPTION_KEY` is derived from the serving hostname; a worktree copy is neither cheap
 nor functional here.
 
+**One branch per page for the optimisation work.** Set by the dev 2026-08-21. Each page gets its own
+branch off `main`. Commit as soon as a change works, in small commits — not one big commit at the end.
+Pages are done one at a time, never in parallel.
+
 ## Database rules
 
 **Only touch the `apollo_contracts_expense` database.** It is the contracts database and the
@@ -25,6 +29,65 @@ and only run it after the dev approves.
 
 Columns may be added to `apollo_contracts_expense` tables when the gain is worth it — the bar
 is a proper migration with a working `down()`, plus a plan for backfilling existing rows.
+
+## Query rules
+
+**Write Eloquent, not raw SQL.** Set by the dev 2026-08-21. Reach for the tools in this order, and
+only move down the list when the one above genuinely cannot do the job:
+
+1. **Eloquent relationships** — `whereHas`, `withCount`, `with`. Reads like the domain, and it is the
+   first choice. If the relationship does not exist on the model yet, **add it** rather than dropping
+   a level.
+2. **Eloquent on a subquery** — `whereIn('id', Model::select('id')->where(...))`. Still Eloquent, and
+   it keeps the ids inside the database.
+3. **Query builder `join`** — named columns, no SQL string.
+4. **`DB::raw` / `whereRaw` / `selectRaw`** — last resort. If you use one, say in a comment on the line
+   why Eloquent could not express it.
+
+**Never pass a list of ids into `whereIn`.** The pattern to delete on sight is a `pluck()` feeding a
+`whereIn()`:
+
+```php
+// wrong - two queries, and it breaks silently
+$ids  = ContractPartyData::where('custom_field_group_id', $id)->pluck('contract_party_location_id');
+$rows = ContractPartyData::whereIn('contract_party_location_id', $ids)->pluck('custom_field_group_id');
+```
+
+Three things are wrong with it. It runs two queries where one does the work. It carries every id
+across the wire as a bound parameter. And **on this stack a `whereIn` with 1,000 or more bound values
+silently returns zero rows** — no error, no warning, just an empty result and a blank section of the
+page. See [.scratch/wherein-1000-bug/spec.md](.scratch/wherein-1000-bug/spec.md).
+
+Write it as one query, passing the **query** to `whereIn` instead of the values. Nothing is bound and
+nothing crosses the wire:
+
+```php
+$rows = ContractPartyData::whereIn(
+        'contract_party_location_id',
+        ContractPartyData::select('contract_party_location_id')->where('custom_field_group_id', $id)
+    )
+    ->distinct()
+    ->pluck('custom_field_group_id');
+```
+
+`whereIn` with a short, fixed list of literal values — `whereIn('contract_status', ['Draft', 'Review'])`
+— is fine. The rule is about lists of ids that come out of another query and grow with the data.
+
+**Watch the row count when you fold two queries into one.** A join can return duplicates where a
+`pluck()` collapsed them. Add `distinct()` where the old code relied on that, and compare the id sets
+before and after — not the look of the page.
+
+**A `Contract` subquery needs one extra step.** `Contract::boot()`
+([app/Models/Contract.php:114](app/Models/Contract.php:114)) adds a global scope that calls
+`select('*')`, and it runs **after** your own `select()`, so it overwrites it. A one-column subquery
+becomes an all-columns subquery and MySQL answers `Operand should contain 1 column`. Drop that one
+scope by name:
+
+```php
+Contract::withoutGlobalScope('accessLevelSelect')->select('id')->where(...)
+```
+
+Drop only that scope. `ContractRoledBasedScope` is the visibility rule and must stay.
 
 ## Logging and debug output
 
@@ -91,11 +154,12 @@ This is for questions only. Explanations and specs stay in normal plain words (s
 of a reply, no recap of work already shown above. Answer, or report the one thing that changed, and
 stop.
 
-## Adding improved functions
+## Changing functions
 
-**Never rewrite a working function in place. Add a new one beside it.** The old one stays until the
-new one is measured and proven, so old and new can be compared on the same page and the same data.
-Deleting the old one is a separate, later step.
+**Change the function in place. Do not leave a copy of the old one beside it.** Set by the dev
+2026-08-21, reversing the earlier rule. Two near-identical functions make the code harder to read and
+the git diff harder to follow. Git holds the old version, so nothing is lost: if a change makes things
+worse, revert the commit. Every migration has a working `down()` for the same reason.
 
 Naming follows PSR-1 / PSR-12, which is what this codebase already does:
 
@@ -104,23 +168,64 @@ Naming follows PSR-1 / PSR-12, which is what this codebase already does:
 - **Class constants:** `UPPER_SNAKE_CASE`.
 - **Plain procedural functions** (helpers.php and friends): `snake_case`.
 
-Then, for the new function beside the old one:
+Then, for a function you change, pick by what is wrong with it:
 
-- If the old name is good, the new one is the old name with **`x`** on the end
-  (`buildCounters` -> `buildCountersx`).
-- If the old name is bad — it does not say what the function does — **suggest a better name** that
-  matches the instruction the function carries out, and get it approved before writing code.
+- **Name is good** — keep it. No `x` suffix any more; that was for the side-by-side rule and it is gone.
+- **Name is bad** — it does not say what the function does. **Rename it** to a name that matches the
+  instruction the function carries out, following PSR-1 / PSR-12 above. Suggest the name and get it
+  approved before you rename.
+- **Logic is bad** — change the logic in place. Same function, better body.
+- **Function does too much** — pull the extra concerns out into new functions beside it. The old
+  function stays only while something still calls it. **Delete it once nothing depends on it**, and
+  check with `grep` before you delete, including blade files.
+- **Many callers, and the name is bad** — do not change it in place. **Write the new function beside
+  it, move the callers over one at a time, and delete the old one when nothing depends on it.** The
+  dev's call 2026-08-21. This is the one case where two functions live side by side, and the reason is
+  not comparison — it is that changing a function 55 pages rely on, in one commit, cannot be reviewed.
+  A single-caller function is still changed in place.
 - **If in doubt, ask.**
 
 One function, one concern. But do not copy blocks of code to get there — pull the shared part out
 into its own function and call it from both.
 
+## Staying on a performance task
+
+**On a performance task, leave wrong code alone unless it throws or it costs time.** Set by the dev
+2026-08-21. Two tests decide whether a thing is yours to touch:
+
+1. **Does it break the page?** Then fix it. A page that does not render cannot be measured.
+2. **Does it cost queries, time or bytes?** Then fix it. Duplicate queries, dead queries, per-row
+   lookups, a second decrypt pass over the same rows.
+
+Neither of those? **Write it down and move on.** A wrong result, a null check that works by accident, a
+comparison that reads the wrong variable — real bugs, and none of them is the task. The dev's reason:
+logic gets fixed on its own later, and the performance is measured again then. Fixing it now buys
+nothing and it makes the diff harder to read.
+
+Write each one you leave into the effort's ticket, with the file and line, so a later effort picks it up
+instead of finding it again.
+
+**Performance is every number the user waits on, not only the server time.** The dev's list, 2026-08-22:
+
+- the size of the page
+- the time to load it — the server response time **and** the browser's own work
+- the first render and the last render
+- the time spent in the database
+- the count of queries
+
+A change that improves one of those is on the task. A change that improves none of them is not, however
+wrong the code looks. **The query count is the number that must not regress**, because it does not drift
+between sessions the way milliseconds do.
+
 ## Measurement report
 
-**Every performance change gets a row in one file:
-[.scratch/contracts-dashboard-perf/measurements/report.md](.scratch/contracts-dashboard-perf/measurements/report.md).**
-One table, old number and new number side by side, plus a remark for any side effect. One file so the
-biggest wins are obvious at a glance. Never start a second report file.
+**Every performance change gets a row in the report file of the effort it belongs to** — one file per
+effort, named `measurements/report.md` under that effort's `.scratch/` folder. One table, one row per
+change, plus a remark for any side effect. Never start a second report file inside one effort.
+
+**A row records the new numbers only. There is no old-number column.** Set by the dev 2026-08-21. The
+row above already holds the previous number, so writing it twice adds nothing. Row 0 of every table is
+the baseline, so the first row has something to sit under.
 
 ## Verifying UI changes in the browser
 

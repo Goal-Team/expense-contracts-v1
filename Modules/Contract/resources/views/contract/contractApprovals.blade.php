@@ -15,7 +15,36 @@
              
           
           <table class="table misgtable" style="display:none">
-            @foreach ($reqfields as $key => $label)
+            {{-- This table is EMPTY ON PURPOSE. Do not wire a variable into it without reading
+                 the whole note.
+
+                 The loop used to read $reqfields, which nothing in the repo sets, so
+                 ?tab=timelineedit returned HTTP 500 on "Undefined variable $reqfields" - on main
+                 as well, so this tab has been dead for everyone. Ticket 03 added the ?? [] guard,
+                 which is what makes the tab render at all.
+
+                 $reqfieldsText looks like the variable it was renamed to and the dev confirmed
+                 that on 2026-08-22, so the loop briefly read it. That was reverted the same day,
+                 because wiring it up does more than fill a table:
+
+                 contract.js:1272 and :1306 count the rows in this table and DISABLE the Send
+                 button on "Send For Approval" and "Send For Signing". The gate has never run for
+                 anybody, because the tab holding it returned 500. Filling the table switches a
+                 dead gate on.
+
+                 And the test below is wrong for part of the map. ContractController adds a row to
+                 $reqfieldsText for every required custom field, keyed by custom_field_id. A custom
+                 field value lives in custom_field_data, not on the contracts row, so
+                 $contract->$key is null and the field always reads "Missing" - proved on contract
+                 16, whose custom field 57 holds a value. So the gate would block Send for
+                 contracts that are complete.
+
+                 The controller already computes the right answer: $reqfieldsVal[$key] is the
+                 boolean "is this field satisfied", including the signing_date rule. A correct gate
+                 reads that, not $contract->$key. That is functional work on the approval flow, not
+                 performance work, so it is its own ticket - see
+                 .scratch/contract-detail-page-perf/issues/24-approval-gate.md --}}
+            @foreach (($reqfields ?? []) as $key => $label)
                 @empty($contract->$key)
                     <tr>
                         <td class="text-danger">{{ $label }}</td>

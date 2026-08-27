@@ -428,24 +428,24 @@
                                     <div class="col-sm-4">
                                         <div class="form-group row">
                                             <label class="">Alert Me on</label>
-                                            <?php $fristarl  = explode(" ", decryptString($contract->reminder_first_alertMeOn, 'reminder_first_alertMeOn')); 
+                                            <?php [$alertDay, $alertUnit, $alertDirection] = reminder_alert_parts($contract->reminder_first_alertMeOn, 'reminder_first_alertMeOn'); 
                                             
 
                                             ?>
                                             <div class="col">
-                                                <input type="text" class="form-control" min="1" name="Duration[Reminder][first][alertMeDay]" value="{{ $fristarl[0]}}" />
+                                                <input type="text" class="form-control" min="1" name="Duration[Reminder][first][alertMeDay]" value="{{ $alertDay}}" />
                                             </div>
                                             <div class="col">
                                                 <select class="select2 form-select col-sm-6" name="Duration[Reminder][first][alertMePrior]">
-                                                    <option value="days" {{$fristarl[1] == 'days' ? 'selected' : '' }}>Days</option>
-                                                    <option value="months" {{$fristarl[1] == 'months' ? 'selected' : '' }}>Months</option>
-                                                    <option value="years" {{$fristarl[1] == 'years' ? 'selected' : '' }}>Years</option>
+                                                    <option value="days" {{$alertUnit == 'days' ? 'selected' : '' }}>Days</option>
+                                                    <option value="months" {{$alertUnit == 'months' ? 'selected' : '' }}>Months</option>
+                                                    <option value="years" {{$alertUnit == 'years' ? 'selected' : '' }}>Years</option>
                                                 </select>
                                             </div>
                                             <div class="col">
                                                 <select class="select2 form-select  col-sm-6" name="Duration[Reminder][first][alertMeType]">
-                                                    <option value="prior" {{$fristarl[2] == 'prior' ? 'selected' : '' }}>Prior</option>
-                                                    <option value="after" {{$fristarl[2] == 'after' ? 'selected' : '' }}>After</option>
+                                                    <option value="prior" {{$alertDirection == 'prior' ? 'selected' : '' }}>Prior</option>
+                                                    <option value="after" {{$alertDirection == 'after' ? 'selected' : '' }}>After</option>
                                                 </select>
                                             </div>
                                         </div>
@@ -478,23 +478,23 @@
                                     </div>
                                     <div class="col-sm-4">
                                         <div class="form-group row">
-                                            <?php $fristarl  = explode(" ", decryptString($contract->reminder_second_alertMeOn, 'reminder_second_alertMeOn')); 
+                                            <?php [$alertDay, $alertUnit, $alertDirection] = reminder_alert_parts($contract->reminder_second_alertMeOn, 'reminder_second_alertMeOn'); 
                                             ?>
                                             <label class=" ">Alert Me on</label>
                                             <div class="col">
-                                                <input type="number" class="form-control" min="1" value="{{ $fristarl[0]}}" name="Duration[Reminder][second][alertMeDay]" />
+                                                <input type="number" class="form-control" min="1" value="{{ $alertDay}}" name="Duration[Reminder][second][alertMeDay]" />
                                             </div>
                                             <div class="col">
                                                 <select class="select2 form-select col-sm-6" name="Duration[Reminder][second][alertMePrior]">
-                                                    <option value="days" {{$fristarl[1] == 'days' ? 'selected' : '' }}>Days</option>
-                                                    <option value="months" {{$fristarl[1] == 'months' ? 'selected' : '' }}>Months</option>
-                                                    <option value="years" {{$fristarl[1] == 'years' ? 'selected' : '' }}>Years</option>
+                                                    <option value="days" {{$alertUnit == 'days' ? 'selected' : '' }}>Days</option>
+                                                    <option value="months" {{$alertUnit == 'months' ? 'selected' : '' }}>Months</option>
+                                                    <option value="years" {{$alertUnit == 'years' ? 'selected' : '' }}>Years</option>
                                                 </select>
                                             </div>
                                             <div class="col">
                                                 <select class="select2 form-select  col-sm-6" name="Duration[Reminder][second][alertMeType]">
-                                                    <option value="prior" {{$fristarl[2] == 'prior' ? 'selected' : '' }}>Prior</option>
-                                                    <option value="after" {{$fristarl[2] == 'after' ? 'selected' : '' }}>After</option>
+                                                    <option value="prior" {{$alertDirection == 'prior' ? 'selected' : '' }}>Prior</option>
+                                                    <option value="after" {{$alertDirection == 'after' ? 'selected' : '' }}>After</option>
                                                 </select>
                                             </div>
                                         </div>
@@ -527,22 +527,22 @@
                                     </div>
                                     <div class="col-sm-4">
                                         <div class="form-group row">
-                                            <?php $fristarl  = explode(" ", decryptString($contract->reminder_escalation_alertMeOn, 'reminder_escalation_alertMeOn')); 
+                                            <?php [$alertDay, $alertUnit, $alertDirection] = reminder_alert_parts($contract->reminder_escalation_alertMeOn, 'reminder_escalation_alertMeOn'); 
                                             ?>                                                            
                                             <label class=" ">Alert Me on</label>
                                             <div class="col">
-                                                <input type="number" class="form-control" min="1" value="{{ $fristarl[0]}}" name="Duration[Reminder][escalation][alertMeDay]" />
+                                                <input type="number" class="form-control" min="1" value="{{ $alertDay}}" name="Duration[Reminder][escalation][alertMeDay]" />
                                             </div>
                                             <div class="col">
                                                 <select class="select2 form-select col-sm-6" name="Duration[Reminder][escalation][alertMePrior]">
-                                                    <option value="days" {{$fristarl[1] == 'days' ? 'selected' : '' }}>Days</option>
-                                                    <option value="months" {{$fristarl[1] == 'months' ? 'selected' : '' }}>Months</option>
-                                                    <option value="years" {{$fristarl[1] == 'years' ? 'selected' : '' }}>Years</option>
+                                                    <option value="days" {{$alertUnit == 'days' ? 'selected' : '' }}>Days</option>
+                                                    <option value="months" {{$alertUnit == 'months' ? 'selected' : '' }}>Months</option>
+                                                    <option value="years" {{$alertUnit == 'years' ? 'selected' : '' }}>Years</option>
                                                 </select>
                                             </div>
                                             <div class="col">
                                                 <select class="select2 form-select col-sm-6" name="Duration[Reminder][escalation][alertMeType]">
-                                                    <option value="prior" {{$fristarl[2] == 'prior' ? 'selected' : '' }}>Prior</option>
+                                                    <option value="prior" {{$alertDirection == 'prior' ? 'selected' : '' }}>Prior</option>
                                                 </select>
                                             </div>
                                         </div>
@@ -575,22 +575,22 @@
                                     </div>
                                     <div class="col-sm-4">
                                         <div class="form-group row">
-                                            <?php $fristarl  = explode(" ", decryptString($contract->reminder_escalation_alertMeOn_after, 'reminder_escalation_alertMeOn_after')); 
+                                            <?php [$alertDay, $alertUnit, $alertDirection] = reminder_alert_parts($contract->reminder_escalation_alertMeOn_after, 'reminder_escalation_alertMeOn_after'); 
                                             ?>                                                            
                                             <label class=" ">Alert Me on</label>
                                             <div class="col">
-                                                <input type="number" class="form-control" min="1" value="{{ $fristarl[0] ?? ''}}" name="Duration[Reminder][escalation][alertMeDay_after]" />
+                                                <input type="number" class="form-control" min="1" value="{{ $alertDay}}" name="Duration[Reminder][escalation][alertMeDay_after]" />
                                             </div>
                                             <div class="col">
                                                 <select class="select2 form-select col-sm-6" name="Duration[Reminder][escalation][alertMeAfter]">
-                                                    <option value="days" {{$fristarl[1] ?? '' == 'days' ? 'selected' : '' }}>Days</option>
-                                                    <option value="months" {{$fristarl[1] ?? '' == 'months' ? 'selected' : '' }}>Months</option>
-                                                    <option value="years" {{$fristarl[1] ?? '' == 'years' ? 'selected' : '' }}>Years</option>
+                                                    <option value="days" {{$alertUnit == 'days' ? 'selected' : '' }}>Days</option>
+                                                    <option value="months" {{$alertUnit == 'months' ? 'selected' : '' }}>Months</option>
+                                                    <option value="years" {{$alertUnit == 'years' ? 'selected' : '' }}>Years</option>
                                                 </select>
                                             </div>
                                             <div class="col">
                                                 <select class="select2 form-select col-sm-6" name="Duration[Reminder][escalation][alertMeType_after]">
-                                                    <option value="after" {{$fristarl[2] ?? '' == 'after' ? 'selected' : '' }}>After</option>
+                                                    <option value="after" {{$alertDirection == 'after' ? 'selected' : '' }}>After</option>
                                                 </select>
                                             </div>
                                         </div>

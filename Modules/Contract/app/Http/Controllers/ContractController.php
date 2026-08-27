@@ -13,6 +13,7 @@ use Illuminate\Http\Request;
 use Illuminate\Http\Response;
 use Illuminate\Support\Facades\Session;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Database\Query\Builder as QueryBuilder;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Facades\Http;
@@ -255,15 +256,295 @@ class ContractController extends Controller
         Storage::put($outputSignedPath, file_get_contents($outputFile));
         return $outputSignedPath;
     }
-    
+
+    /**
+     * How deep the contract family tree is allowed to be walked, up or down.
+     *
+     * The seeded set is 3 deep and real renewal chains are short. The cap is here to stop a
+     * cycle: a contract whose parent chain points back at itself makes a recursive query run
+     * until MariaDB's max_recursive_iterations stops it, which on this server is millions of
+     * passes. 32 is far above any real chain and it ends a bad one at once.
+     */
+    private const FAMILY_TREE_MAX_DEPTH = 32;
+
+    /**
+     * The recursive walk up the parentcontract chain, as one SQL fragment.
+     *
+     * Both family-tree queries need it, so it lives in one place: the Parent Contracts table
+     * reads it on its own, and the Subsequent Contracts walk uses it to find the top of the
+     * tree before it walks down. The two walks differ only in which side of the join carries
+     * parentcontract, so nothing else is shared and nothing is copied.
+     *
+     * The fragment names a common table expression called ancestry with two columns, pid and
+     * depth. Row 1 is the contract's own parent, row 2 its grandparent, and so on. It takes one
+     * binding, the contract id.
+     */
+    private function ancestryCte(): string
+    {
+        return "ancestry (pid, depth) AS (
+                    SELECT c.parentcontract, 1
+                      FROM contracts c
+                     WHERE c.id = ? AND c.parentcontract > 0
+                    UNION ALL
+                    SELECT p.parentcontract, a.depth + 1
+                      FROM contracts p
+                      JOIN ancestry a ON p.id = a.pid
+                     WHERE p.parentcontract > 0 AND a.depth < " . self::FAMILY_TREE_MAX_DEPTH . "
+                )";
+    }
+
+    /**
+     * The ids of this contract's ancestors, as a query - what the Parent Contracts table on the
+     * Details tab lists.
+     *
+     * It returns a query, not an array, and that is the point: the caller passes it straight to
+     * whereIn(), so the ids stay inside the database and nothing is bound. The rule is in
+     * CLAUDE.md, "Query rules": never pass a list of ids into whereIn. On this stack a whereIn
+     * with 1,000 or more bound values returns zero rows with no error, so the Parent Contracts
+     * table would go blank on a deep tree and look like missing data.
+     *
+     * A root contract makes the query return no rows, so the caller gets an empty list.
+     */
+    private function ancestorContractIds($id): QueryBuilder
+    {
+        // fromRaw, not Eloquent, and this is the documented exception in CLAUDE.md: the query is
+        // a WITH RECURSIVE, and Eloquent has no expression for a common table expression that
+        // refers to itself. Everything around it is Eloquent - the caller is a Contract query and
+        // this is the subquery its whereIn reads.
+        //
+        // MariaDB accepts a WITH clause inside a derived table, so the recursive walk sits in the
+        // FROM of a normal one-column select. That is what lets whereIn take it.
+        //
+        // The old shape walked the table with the session variable @idlist and FIND_IN_SET. It
+        // read every row of the table and sorted them, so it cost 222-255 ms on 3,018 rows, and
+        // no index could help it. It was also wrong: see ticket 21.
+        //
+        // The one binding is this contract id.
+        return DB::query()
+            ->select('pid')
+            ->fromRaw(
+                '(WITH RECURSIVE ' . $this->ancestryCte() . ' SELECT pid FROM ancestry) AS ancestry_ids',
+                [$id]
+            );
+    }
+
+    /**
+     * The ids of every contract in this contract's family tree below the top of it - what the
+     * Subsequent Contracts table on the Details tab lists.
+     *
+     * The walk goes up the parentcontract chain to the top, then down the whole tree from
+     * there, so a contract sees its siblings and cousins as well as its own renewals. That is
+     * what the old query produced: it ran one downward walk for each ancestor, and the walk
+     * from the highest ancestor already covers every lower one.
+     *
+     * It returns a query, not an array, the same shape as ancestorContractIds() above and for
+     * the same reason: the caller passes it straight to whereIn(), so the ids stay inside the
+     * database and nothing is bound. On this stack a whereIn with 1,000 or more bound values
+     * returns zero rows with no error, so the Subsequent Contracts table would go blank on the
+     * exact contract where it matters most - a master agreement with a thousand children.
+     */
+    private function subsequentContractIds($id): QueryBuilder
+    {
+        // fromRaw, not Eloquent, and this is the documented exception in CLAUDE.md: the query
+        // is a WITH RECURSIVE. Eloquent has no expression for a common table expression that
+        // refers to itself, and a tree of unknown depth cannot be read in one query any other
+        // way. MariaDB has WITH RECURSIVE from 10.2; this server is 10.4.24.
+        //
+        // The old shape walked the tree with the session variable @pv and FIND_IN_SET. It read
+        // the whole contracts table once for every row of the table, so it cost 2.0-5.4 s on
+        // 3,018 rows and it gets slower with the square of the contract count.
+        //
+        // Both bindings are this one contract id, so no list of ids crosses the wire.
+        return DB::query()
+            ->select('id')
+            ->fromRaw(
+                '(WITH RECURSIVE ' . $this->ancestryCte() . ",
+                 descendants (id, depth) AS (
+                     SELECT c.id, 1
+                       FROM contracts c
+                      WHERE c.parentcontract = COALESCE(
+                                (SELECT pid FROM ancestry ORDER BY depth DESC LIMIT 1), ?)
+                     UNION ALL
+                     SELECT c.id, d.depth + 1
+                       FROM contracts c
+                       JOIN descendants d ON c.parentcontract = d.id
+                      WHERE d.depth < " . self::FAMILY_TREE_MAX_DEPTH . '
+                 )
+                 SELECT DISTINCT id FROM descendants) AS descendant_ids',
+                [$id, $id]
+            );
+    }
+
+    /**
+     * Build the four Related Contracts lists the Details tab shows.
+     *
+     * This code came out of viewContract(). It is one concern - the contracts that relate to this
+     * one - and only the Details tab renders it. The three queries inside scan the whole
+     * contracts table, so viewContract() calls this method only when the open tab shows the
+     * region.
+     *
+     * Returns the four lists the blade loops. Each one is empty when there is nothing to show.
+     *
+     * $id is the contract id from the URL. $contracts is the contract row the page shows.
+     */
+    private function relatedContractLists($id, $contracts): array
+    {
+        // Three columns is all this row is read for, below. It is also the guard the page needs:
+        // the global scopes make it null for a contract the user may not see, and then the block
+        // is skipped.
+        $contractsold = Contract::withoutGlobalScope('accessLevelSelect')
+            ->without('contractPartyList')
+            ->select(['catgoery_id', 'department_id', 'contract_type'])
+            ->where('id', $id)
+            ->first();
+
+        // The blade loops $contractsoldothers with no guard, so it always needs a value.
+        // Without this default a missing contract row throws the page.
+        $contractsoldothers = collect();
+
+        if ($contractsold) {
+            // Seven columns, and they are every column the Category Previous Contracts table
+            // reads (viewDetailContract.blade.php:2253). A contracts row is 9,390 bytes wide,
+            // so select * read the whole row for five printed cells.
+            //
+            // withoutGlobalScope('accessLevelSelect') is required, not tidiness: Contract::boot()
+            // adds a global scope that calls select('*') and it runs after this select(), so it
+            // overwrites it (app/Models/Contract.php:114). ContractRoledBasedScope stays - that
+            // one is the visibility rule.
+            //
+            // without('contractPartyList') drops the $with eager load. The table shows no party
+            // data, and the eager load is one more query.
+            $contractsoldothers = Contract::withoutGlobalScope('accessLevelSelect')
+                ->without('contractPartyList')
+                ->select([
+                    'id',
+                    'contract_name',
+                    'signing_date',
+                    'currency',
+                    'currency_value',
+                    'fixed_date',
+                    'contract_end_date',
+                ])
+                ->where([
+                    ['catgoery_id', $contractsold->catgoery_id],
+                    ['department_id', $contractsold->department_id],
+                    ['contract_type', $contractsold->contract_type],
+                ])->whereNot('id', $id)->get();
+        }
+
+        // The Other Contracts With Parties table: contracts that share a branch AND an external
+        // party with this one. Five queries used to build it - two plucks read this contract's
+        // branches and parties, two whereIns fanned out to every contract sharing them, and PHP
+        // intersected the two lists before a fifth query turned the intersect into rows. The
+        // party fan-out alone dragged every contract id across the wire (3,018 on this seed).
+        //
+        // One query now. The two whereIn subqueries ARE the intersect: id IN A AND id IN B.
+        // Nothing is bound, so the table cannot silently go blank when 1,000 or more contracts
+        // share a branch and a party - the whereIn 1,000-binding bug in CLAUDE.md. The subqueries
+        // are ContractPartyData, which has no global scope, so no accessLevelSelect trap here.
+        //
+        // orderBy('id') keeps the render order the bound list produced, same as the two
+        // family-tree queries below.
+        //
+        // with('contractParent'): the Other Contracts With Parties table reads
+        // $contractsoldother->contractParent once per row, to decide whether to draw the Link
+        // button (viewDetailContract.blade.php:2431). Lazy-loaded that was 55 of the 368 queries
+        // this tab ran. The blade only tests it for truth, so one child row per contract is all
+        // the eager load has to return.
+        $contractspartsList = Contract::with('contractParent')->select('*')
+            ->whereIn('id', ContractPartyData::select('custom_field_group_id')
+                ->whereIn('contract_party_location_id', ContractPartyData::select('contract_party_location_id')
+                    ->where('custom_field_group_id', $contracts->id)->where('contract_party_type', 'internal')))
+            ->whereIn('id', ContractPartyData::select('custom_field_group_id')
+                ->whereIn('contract_party_exe_id', ContractPartyData::select('contract_party_exe_id')
+                    ->where('custom_field_group_id', $contracts->id)->where('contract_party_type', 'External')))
+            ->where('id', '<>', $id)->where('status', 1)
+            ->orderBy('id')
+            ->get();
+
+        $contractspartsList = $this->availableContracts($contractspartsList, true);
+
+
+        //Get Parent Contracts
+        // whereIn reads the ancestor walk as a subquery, so no id is bound and no id crosses the
+        // wire. The rule is in CLAUDE.md: on this stack a whereIn with 1,000 or more bound values
+        // returns zero rows with no error, and this table would go blank on a deep tree.
+        //
+        // Two queries became one. The walk used to run on its own and hand its ids back to PHP.
+        //
+        // orderBy('id') is not new behaviour, it is the old behaviour written down. A whereIn on a
+        // bound list returned the rows in id order because that is the index order; the subquery
+        // makes MariaDB read the walk first, which returns the nearest parent first. The table has
+        // always printed the lowest id first, so the sort keeps the page as it is.
+        //
+        // The columns stay at select('*'). availableContracts() reads at least a dozen of them and
+        // decides by isset(), so a column left out changes the rows it returns without saying so,
+        // and the blade loops $contractsoldother->contractPartyList. Ticket 20's narrow select was
+        // safe because that query has no availableContracts() pass; this one does.
+        $contractsparentList = Contract::select('*')
+            ->whereIn('id', $this->ancestorContractIds($id))
+            ->orderBy('id')
+            ->get();
+
+        Log::debug('Contract detail page read the parent contracts', [
+            'contract_id' => $id,
+            'ancestors' => $contractsparentList->count(),
+        ]);
+
+        $contractsparentList = $this->availableContracts($contractsparentList, true);
+
+
+        //Get Susequesnt Contracts
+        // whereIn reads the family-tree walk as a subquery, the same shape as the Parent
+        // Contracts query above, so no id is bound and no id crosses the wire. orderBy('id')
+        // keeps the render order the bound list produced: a whereIn on a bound list read the
+        // primary key in ascending order, and the subquery version follows the walk instead.
+        $contractsSubseqList = Contract::select('*')
+            ->whereIn('id', $this->subsequentContractIds($id))
+            ->where('id', '<>', $id)->where('status', 1)
+            ->orderBy('id')
+            ->get();
+
+        Log::debug('Contract detail page read the subsequent contracts', [
+            'contract_id' => $id,
+            'descendants' => $contractsSubseqList->count(),
+        ]);
+
+        $contractsSubseqList = $this->availableContracts($contractsSubseqList, true);
+
+        return [
+            'contractsoldothers' => $contractsoldothers,
+            'contractsparentList' => $contractsparentList,
+            'contractsSubseqList' => $contractsSubseqList,
+            'contractspartsList' => $contractspartsList,
+        ];
+    }
+
     public function viewContract(Request $request, $id)
     {
         
         $contracts = Contract::select('*')->where('id', $id)->where('status', 1)->get();
 
+        // availableContracts() writes decrypted names, formatted dates and label text back onto
+        // the model it is given, so the row cannot be read raw again afterwards. Keep an
+        // untouched copy now. It is what the live-contract branch further down reads, instead of
+        // fetching the same row a second time. clone copies the attribute array by value, so the
+        // decrypt pass below cannot reach it.
+        $subjectContractRow = $contracts->first() ? clone $contracts->first() : null;
+
         $ContractsFinal = $this->availableContracts($contracts, true);
-        
-        
+
+        // availableContracts() returns an empty list when the user may not see this contract,
+        // and also when the contract points at a business unit that no longer exists. The line
+        // below used to read element 0 of that empty list and the page threw
+        // "Undefined array key 0". This redirect sat 122 lines further down, after the eSign
+        // block had already run, so it never got the chance. It is the first thing now.
+        if (count($ContractsFinal) == 0) {
+            Log::warning('Contract detail page cannot show this contract', ['contract_id' => $id]);
+
+            return redirect('/contracts/list')->with('message', 'Oops! Invalid Contract/Access Restricted')->with('alert-class', 'alert-danger');
+        }
+
         // ------------------------------------------------------------------
         // If contract is in Signing / Progress, look up the stored
         // eSign compose response, call getEasySignLinks to check status.
@@ -391,10 +672,6 @@ class ContractController extends Controller
                 \Log::error("Failed to Download Esigned File" . $e->getMessage()."--".$e->getLine());
                 //die;
             }
-        }        
-
-        if (count($ContractsFinal) == 0) {
-            return redirect('/contracts/list')->with('message', 'Oops! Invalid Contract/Access Restricted')->with('alert-class', 'alert-danger');
         }
 
         if (env('update_doc_vars')) {
@@ -448,11 +725,32 @@ class ContractController extends Controller
         }
 
 
-        if (isset($_GET['history']) && $_GET['history'] != "") {
-            $contracts = ContractHistory::where('history_id', $_GET['history'])->first();
-            $contractParty = ContractPartyDataHistory::where('history_id', $_GET['history'])->get();
-        } else {
-            $contracts = Contract::select('*')->where('id', $id)->first();
+        // ?history=<id> asks for a past version of this contract, and the Historical tab shows
+        // it. The row can be gone - the id comes from a link the user kept, or from the
+        // 60-minute cookie the blade writes - and then the page read contract_status off null and
+        // threw. It falls back to the live contract, the same as a load with no ?history=.
+        $contracts = null;
+        $historyId = $_GET['history'] ?? '';
+
+        if ($historyId !== '') {
+            $contracts = ContractHistory::where('history_id', $historyId)->first();
+            $contractParty = ContractPartyDataHistory::where('history_id', $historyId)->get();
+
+            if ($contracts === null) {
+                Log::warning('Contract detail page found no history snapshot', [
+                    'contract_id' => $id,
+                    'history_id' => $historyId,
+                ]);
+            }
+        }
+
+        if ($contracts === null) {
+            // The snapshot is gone, so every later read shows the live contract too.
+            $historyId = '';
+            // The untouched copy taken at the top of this method, not a second read of the same
+            // row. The query above it has already proved the row exists and has status 1,
+            // because an empty result redirects long before this line.
+            $contracts = $subjectContractRow;
             $contractParty = ContractPartyData::where('custom_field_group_id', $id)->get();
         }
 
@@ -537,10 +835,14 @@ class ContractController extends Controller
 
         $branchFirst = [];
 
+        // One read for all six entity names, instead of one query per party row. The loop below
+        // asked for the same entity twice on the test contract.
+        $entityNames = EntityMain::select('id', decrypt_data('Nameoftheentity', 'entity'))
+            ->get()
+            ->keyBy('id');
+
         foreach ($contractParty as $contractPart) {
-            $entities = EntityMain::select('id', decrypt_data('Nameoftheentity', 'entity'))
-                ->where('id', $contractPart->contract_party_id)
-                ->first();
+            $entities = $entityNames[$contractPart->contract_party_id] ?? null;
 
             if (isset($entities->Nameoftheentity)) {
                 $contractPart->Nameoftheentity = $entities->Nameoftheentity;
@@ -596,25 +898,62 @@ class ContractController extends Controller
                     $contractPart->mails = $partyMails[$externalSigned];
                 }
                 $externalSigned++;
-                $contractPart->Nameoftheentity = decryptString($contractParties[0]->company_name, 'company_name');
+
+                // ContractParties carries the PartiesRoleBasedScope global scope, so this read
+                // comes back empty for a party the user may not see, and for a party row that no
+                // longer exists. Element 0 of an empty collection threw and the page did not
+                // render, so the name is empty instead.
+                $externalParty = $contractParties->first();
+                if ($externalParty === null) {
+                    Log::warning('Contract detail page found no external party row', [
+                        'contract_id' => $contracts->id,
+                        'contract_party_exe_id' => $contractPart->contract_party_exe_id,
+                    ]);
+                }
+                $contractPart->Nameoftheentity = $externalParty === null
+                    ? ''
+                    : decryptString($externalParty->company_name, 'company_name');
             }
         }
 
+        // The three lookups below swap an id for the name the page prints. Each one threw when
+        // the row was missing, and then the page did not render at all: an id that points at a
+        // deleted category, business or contract type is enough to stop it. The id stays in the
+        // column beside it, so a missing name now shows as empty and the page still loads.
         if (isset($contracts->catgoery_id)) {
             $Categoryname = ContractCategories::where('id', $contracts->catgoery_id)->first();
             $contracts->catgoery_identity = $contracts->catgoery_id;
-            $contracts->catgoery_id = $Categoryname->name;
+            $contracts->catgoery_id = $Categoryname->name ?? '';
+            if ($Categoryname === null) {
+                Log::warning('Contract detail page found no contract category row', [
+                    'contract_id' => $contracts->id,
+                    'catgoery_id' => $contracts->catgoery_identity,
+                ]);
+            }
         }
 
         if (isset($contracts->department_id)) {
             $EntityBusinessName = EntityBusiness::where('id', $contracts->department_id)->first();
             $contracts->department_identity = $contracts->department_id;
-            $contracts->department_id = $EntityBusinessName->name;
+            $contracts->department_id = $EntityBusinessName->name ?? '';
+            if ($EntityBusinessName === null) {
+                Log::warning('Contract detail page found no entity business row', [
+                    'contract_id' => $contracts->id,
+                    'department_id' => $contracts->department_identity,
+                ]);
+            }
         }
 
         if (isset($contracts->contract_type)) {
             $contracts->contract_type_id = $contracts->contract_type;
-            $contracts->contract_type = ContractType::where('contract_type_id', $contracts->contract_type)->first()->contract_type;
+            $contractTypeRow = ContractType::where('contract_type_id', $contracts->contract_type)->first();
+            $contracts->contract_type = $contractTypeRow->contract_type ?? '';
+            if ($contractTypeRow === null) {
+                Log::warning('Contract detail page found no contract type row', [
+                    'contract_id' => $contracts->id,
+                    'contract_type_id' => $contracts->contract_type_id,
+                ]);
+            }
         }
 
         $approvalsAttach = ApprovalContracts::select('*')
@@ -661,7 +1000,9 @@ class ContractController extends Controller
             });
 
         $customFields = CustomFields::where('status', 1)->orderBy('order_id')->get();
-        $categorys = Category::where('category_group', 'contract')->get();
+        // $categorys used to be read here and handed to the view. No blade this page renders
+        // reads it; the pages that do - createfield, partyCustomField and the Contractsetup
+        // views - are fed by their own controllers.
         $contractTypes = ContractType::get();
 
         $branchs = BranchUser::select(
@@ -705,100 +1046,41 @@ class ContractController extends Controller
         $ent = EntityBusiness::select('*')->get();
 
 
-        if (isset($_GET['history'])) {
-            $ContractPartyData = ContractPartyDataHistory::where('history_id', $_GET['history'])->get();
+        if ($historyId !== '') {
+            $ContractPartyData = ContractPartyDataHistory::where('history_id', $historyId)->get();
         } else {
             $ContractPartyData = ContractPartyData::where('custom_field_group_id', $id)->get();
         }
 
 
-        $contractsold = Contract::select('*')->where('id', $id)->first();
+        // The four Related Contracts tables only render on the Details tab. Three whole-table
+        // scans fill them and they cost about 3,400 ms, so every other tab used to pay for a
+        // region it never shows. contract_detail_current_tab() and
+        // contract_detail_shows_related_contracts() hold the rule, and the blade reads the same
+        // two helpers. The empty lists keep the blade loops safe on every other tab.
+        $currentTab = contract_detail_current_tab($contracts);
 
-        if ($contractsold) {
-            $contractsoldothers = Contract::select('*')->where([
-                ['catgoery_id', $contractsold->catgoery_id],
-                ['department_id', $contractsold->department_id],
-                ['contract_type', $contractsold->contract_type],
-            ])->whereNot('id', $id)->get();
+        $relatedContracts = [
+            'contractsoldothers' => collect(),
+            'contractsparentList' => collect(),
+            'contractsSubseqList' => collect(),
+            'contractspartsList' => collect(),
+        ];
+
+        if (contract_detail_shows_related_contracts($currentTab)) {
+            $relatedContracts = $this->relatedContractLists($id, $contracts);
+        } else {
+            Log::debug('Contract detail page skips the Related Contracts queries', [
+                'contract_id' => $id,
+                'tab' => $currentTab,
+            ]);
         }
 
-        $contract_party_locations = ContractPartyData::where('custom_field_group_id', $contracts->id)->where('contract_party_type', 'internal')->pluck('contract_party_location_id');
+        $contractsoldothers = $relatedContracts['contractsoldothers'];
+        $contractsparentList = $relatedContracts['contractsparentList'];
+        $contractsSubseqList = $relatedContracts['contractsSubseqList'];
+        $contractspartsList = $relatedContracts['contractspartsList'];
 
-        $contract_party_id = ContractPartyData::where('custom_field_group_id', $contracts->id)->where('contract_party_type', 'External')->pluck('contract_party_exe_id');
-
-        $ContractPartyLocList = ContractPartyData::whereIn('contract_party_location_id', $contract_party_locations)->pluck('custom_field_group_id');
-
-        $ContractPartyDataList = ContractPartyData::whereIn('contract_party_exe_id', $contract_party_id)->pluck('custom_field_group_id');
-
-
-        $FinalContractList = $ContractPartyLocList->intersect($ContractPartyDataList);
-
-        $contractspartsList = Contract::select('*')->whereIn('id', $FinalContractList)->where('id', '<>', $id)->where('status', 1)->get();
-
-        $contractspartsList = $this->availableContracts($contractspartsList, true);
-
-
-        //Get Parent Contracts
-        $getParentContracts = "SELECT parentcontract FROM
-        (SELECT id,parentcontract,
-               CASE WHEN id in ('" . $id . "') THEN @idlist := CONCAT(IFNULL(@idlist,''),',',parentcontract)
-                    WHEN FIND_IN_SET(id,@idlist) THEN @idlist := CONCAT(@idlist,',',parentcontract)
-                    END as checkId
-        FROM contracts
-        ORDER BY id DESC)T
-        WHERE checkId IS NOT NULL";
-
-        $contractsparentListQuery = DB::select($getParentContracts);
-
-        $parentContractArr = [];
-
-        foreach ($contractsparentListQuery as $conpar) {
-            $parentContractArr[] = $conpar->parentcontract;
-        }
-
-
-        $contractsparentList = Contract::select('*')->whereIn('id', $parentContractArr)->get();
-
-        $contractsparentList = $this->availableContracts($contractsparentList, true);
-
-
-        $contractParties =  ContractParties::select('*')->get();
-
-        //Get Susequesnt Contracts
-        $childsList = NULL;
-        $finalListChild = [];
-
-
-        if (count($parentContractArr) == 1 && $parentContractArr[0] == 0) {
-            $parentContractArr[] = $id;
-        }
-
-
-
-        foreach ($parentContractArr as $parCon) {
-            if ($parCon > 0) {
-                $getSubSequesntContracts = "SELECT GROUP_CONCAT(lv SEPARATOR ',') as childList FROM (
-                                   SELECT @pv:=(SELECT GROUP_CONCAT(id SEPARATOR ',') FROM contracts 
-                                   WHERE FIND_IN_SET(parentcontract, @pv)) AS lv FROM contracts 
-                                   JOIN
-                                   (SELECT @pv:=" . $parCon . ") tmp
-                                   ) a";
-
-                $contractsSubSeqList = DB::select($getSubSequesntContracts);
-
-                foreach ($contractsSubSeqList as $conSubSeq) {
-
-                    if ($conSubSeq->childList != "" && $conSubSeq->childList !== NULL) {
-                        $childsList .= $conSubSeq->childList;
-                    }
-                }
-
-                $finalListChild = explode(",", $childsList);
-            }
-        }
-
-
-        $contractsSubseqList = Contract::whereIn('id', $finalListChild)->where('id', '<>', $id)->where('status', 1)->get();
 
         // Required fields with labels
         $reqfieldsText = [
@@ -941,14 +1223,13 @@ class ContractController extends Controller
             }
         }
 
-        $contractsSubseqList = Contract::select('*')->whereIn('id', $finalListChild)->where('id', '<>', $id)->where('status', 1)->get();
-
-        $contractsSubseqList = $this->availableContracts($contractsSubseqList, true);
 
         $ContractObligations = ContractObligations::where('contract_id', $id)->where('flag', 1)
             ->get();
             
-        $signedHistory = $this->getSignedHistory($id);
+        // $signedHistory used to be read here - getSignedHistory() runs an unindexed read of
+        // user_action_log - and handed to the view. Nothing in the repo reads the name: no
+        // blade, no PHP, no JS. getSignedHistory() itself stays; it has other callers.
         
         // Get approvals (timeline). Exclude pre-approval flow rows (shown on the
         // Pre-Approval tab) and superseded rows.
@@ -974,43 +1255,19 @@ class ContractController extends Controller
                 return $task;
             });
 
-        // Chart View shows the FULL flow including the pre-approval stages
-        // (review/negotiation/finalization) — unlike the detail timeline it does not
-        // exclude pre-approval rows. Superseded rows are still hidden.
-        $chartApprovals = ApprovalContracts::select('*')->where('contract_id', $id)->orderBy('id', 'DESC')
-            ->where('flag', '<>', -1)
-            ->where('superseded', 0)
-            ->get()
-            ->map(function ($task) {
-                $task->username = decryptString($task->username, 'username');
-                $task->status = decryptString($task->status, 'status');
-                $task->previous_status = decryptString($task->previous_status, 'previous_status');
-                $task->next_action_item = decryptString($task->next_action_item, 'next_action_item');
-                $task->next_action_description = decryptString($task->next_action_description, 'next_action_description');
-                $task->approval_status = decryptString($task->approval_status, 'approval_status');
-                $task->next_status = decryptString($task->next_status, 'next_status');
-                $userData = json_decode($task->username, true);
-                $task->approver_email = $userData['email'] ?? '';
-                $task->approver_name = $userData['name'] ?? '';
-                return $task;
-            });
+        // Chart View reads the same rows as the timeline above. The query and the
+        // decrypt loop were written out a second time here, word for word, so the
+        // page paid for both twice. Reuse the result. The two lists hold the same
+        // rows either way, and contractFlow.blade.php only reads them.
+        $chartApprovals = $approvals;
 
-        // Determine current approval for the user
-        $currentApproval = null;
-        $isCurrentApprover = false;
         $userInfo = Helpers::userInfo();
-        if ($userInfo) {
-            $userEmail = strtolower($userInfo->email ?? '');
-            foreach ($approvals as $approval) {
-                $approverEmail = strtolower($approval->approver_email ?? '');
-                if ($approval->flag == 1 && $approverEmail === $userEmail) {
-                    $currentApproval = $approval;
-                    $isCurrentApprover = true;
-                    break;
-                }
-            }
-        }
-        
+
+        // $currentApproval and $isCurrentApprover were worked out here and handed to the view.
+        // No blade this page renders reads either name. The two blades in the repo that do -
+        // contract-custom/approvals/view.blade.php - are rendered by ContractCustomController,
+        // which builds its own copy. Checked across every blade, every module and every JS file.
+
         // Locked groups: any group that has at least one approved completed member
         $lockedGroups = ApprovalContracts::select('*')->where('contract_id', $id)->get()->filter(function($a){
             try {
@@ -1020,12 +1277,16 @@ class ContractController extends Controller
             }
         })->pluck('approver_type_row')->unique()->values()->toArray();        
 
-        $attachmentUrl = null;
-        if (!empty($contracts->contract_attachment)) {
-            $attachmentUrl = asset('storage/' . $contracts->contract_attachment);
-        }        
+        // $attachmentUrl was built here and handed to the view. No blade this page renders reads
+        // it. The three that do - contract-custom/approvals/view, contracts/negotiationReview and
+        // legal-review/show - are rendered by other controllers, which build their own.
 
         $userCanGate = $this->approvalActorIsOwnerOrAdmin($contracts);
+
+        // The list is worked out exactly as before and only its count is read. It is no longer
+        // handed to the view as $waitingGateGroupIds, because no blade reads that name. The
+        // query is left alone on purpose: it is one query either way, so rewriting it as an
+        // exists() would buy nothing and could change which rows count.
         $waitingGateGroupIds = ApprovalContracts::where('contract_id', $id)
             ->where('awaiting_owner_trigger', 1)
             ->pluck('unique_id')
@@ -1069,15 +1330,13 @@ class ContractController extends Controller
                 return $step;
             });
 
-        return view('contract::contract.viewDetailContract', compact('branchFirst', 'reqfieldsVal', 'reqfieldsText', 'reqfieldsVals', 'reqfieldsInpType', 'reqfieldsInpField', 'reqFieldsOptions', 'reqfieldsInpEdit', 'contractHistory', 'approvalsAttach', 'contractParties', 'contractspartsList', 'contractsparentList', 'contractsSubseqList', 'contractsoldothers', 'ent', 'catego', 'contractParties', 'entities', 'branchs', 'branchsAll', 'customFields', 'categorys', 'contractTypes', 'users', 'usersSel','approvals', 'chartApprovals', 'currentApproval', 'isCurrentApprover', 'attachmentUrl', 'userInfo', 'lockedGroups', 'legalAdvisors', 'preApprovalSteps'))->with('contractPartys', $ContractPartyData)
+        return view('contract::contract.viewDetailContract', compact('branchFirst', 'reqfieldsVal', 'reqfieldsText', 'reqfieldsVals', 'reqfieldsInpType', 'reqfieldsInpField', 'reqFieldsOptions', 'reqfieldsInpEdit', 'contractHistory', 'approvalsAttach', 'contractParties', 'contractspartsList', 'contractsparentList', 'contractsSubseqList', 'contractsoldothers', 'ent', 'catego', 'contractParties', 'entities', 'branchs', 'branchsAll', 'customFields', 'contractTypes', 'users', 'usersSel','approvals', 'chartApprovals', 'userInfo', 'lockedGroups', 'legalAdvisors', 'preApprovalSteps'))->with('contractPartys', $ContractPartyData)
             ->with('contract', $contracts)
             ->with('contractPartyData', $contractParty)
-            ->with('signedHistory', $signedHistory)
             ->with('approvalsArr', $approvalsArr)
             ->with('approvalsHistory', $approvalsHistory)
             ->with('ContractObligations', $ContractObligations)
             ->with('userCanGate', $userCanGate)
-            ->with('waitingGateGroupIds', $waitingGateGroupIds)
             ->with('canAdvanceNext', $canAdvanceNext)
             ->with('externalRepresentativeOptions', $externalRepresentativeOptions)
             ->with('dynamicApproverOptions', $dynamicApproverOptions);
