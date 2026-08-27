@@ -2,7 +2,7 @@
 
 Type: `wayfinder:task` (AFK)
 Blocked by: 02, 03
-Assignee: —
+Assignee: claude subagent (session 2026-08-28)
 Status: OPEN
 
 ## Question
