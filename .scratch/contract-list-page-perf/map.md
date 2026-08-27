@@ -142,6 +142,13 @@ protocol, filtering done in PHP, no LIMIT anywhere). View is
   only `username` is decrypted, once per pending row. "My contracts" returns rows again on the
   seeded set; id sets proven equal to the old logic in tinker (302/302, threshold off). Still 13
   AJAX queries default, 14 with the cookie.
+- [08 server-side pagination, reusable pattern](issues/08-server-side-pagination.md) — the list
+  AJAX pages in SQL now: `ContractVisibilityQuery` + status/filters in the query, counters from
+  one GROUP BY, one page of 14-field rows through the new `App\Support\ServerSideDataTable`
+  (DataTables `serverSide: true`). Default AJAX 474 ms / 5.8 KB (was 5.6 s / 5.5 MB);
+  `status=all` 555 ms / 5.8 KB (was 5.8 s / 34.2 MB); table draw ~75 ms after the response.
+  15 queries default (13 before: one giant fetch became counters + count + page). Search covers
+  the same columns, name via one decrypt pass per request. Every tab count equals the 02/06 truth.
 
 ## Order of work
 
