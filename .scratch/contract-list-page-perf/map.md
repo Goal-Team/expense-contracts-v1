@@ -137,6 +137,11 @@ protocol, filtering done in PHP, no LIMIT anywhere). View is
   05). No duplicates — the detail-effort request caches absorb them all. New: the JSON rows carry
   all 119 contract columns (the `accessLevelSelect` `select *`) and the party rows twice — most of
   the 5.5/34.2 MB body; feeds ticket 08.
+- [05 stop binding id lists](issues/05-stop-binding-id-lists.md) — the `myFilterStatus` approvals
+  `whereIn` now takes queries (pending unique_ids + live-contract subquery), zero bound ids, and
+  only `username` is decrypted, once per pending row. "My contracts" returns rows again on the
+  seeded set; id sets proven equal to the old logic in tinker (302/302, threshold off). Still 13
+  AJAX queries default, 14 with the cookie.
 
 ## Order of work
 
