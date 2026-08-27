@@ -2,7 +2,7 @@
 
 Type: `wayfinder:task` (AFK, subagent)
 Blocked by: 08 — the inventory names the sites and their line numbers
-Status: PART DONE - the Parent Contracts site is closed, four sites stay open. See the Resolution.
+Status: CLOSED 2026-08-27 - all five sites done. See the Resolution and the second Resolution at the end.
 
 ## Question
 
@@ -257,3 +257,51 @@ and the Drive cache-hit lines. Browser console on `1?tab=timelineedit`: the same
 longer come back to PHP, so nothing can count them. `read the parent contracts` replaced it and logs
 the number of rows the page shows, which is the more useful number anyway - it is after the visibility
 scope, not before it.
+
+## Resolution 2, 2026-08-27 - the last four sites
+
+Status: **CLOSED.** Every whereIn on this page reads a query now, not a list. Commits `210ce5b`
+(child site) and `ecaffe1` (party chain), report rows 30 and 31.
+
+### The child site (old line 492)
+
+`subsequentContractIds()` returned an array; it returns the query now, the same derived-table shape
+as `ancestorContractIds()` one function up. The caller passes it to `whereIn`, with `orderBy('id')`
+to keep the render order the bound list produced. Two queries became one, and the walk's ids never
+reach PHP. The `walked the contract family tree` debug line became `read the subsequent contracts`
+for the same reason the parent fix renamed its line: the ids cannot be counted before the visibility
+scope any more, so it logs the rows the page shows.
+
+### The party chain (old lines 439-455)
+
+Five queries became one. The two whereIn subqueries are the intersect - `id IN A AND id IN B` - so
+the PHP `intersect()` and both plucks are gone, and the party fan-out's ids stop crossing the wire.
+That fan-out returned **3,018 ids on every Details load of this seed**, because every seeded contract
+shares external party 1. The subqueries are `ContractPartyData`, which has no global scope, so the
+`accessLevelSelect` trap does not apply; the outer query is the same `Contract` query as before.
+
+### The proof
+
+Old and new shapes ran side by side on the same connection, ten contracts
+(1, 2, 3, 16, 100479, 100901, 100904, 101101, 101102, 101143). **20 of 20 row lists match, ids and
+order both**, the empty cases included - roots with no descendants, and contract 16, which has no
+external party row at all. In the browser the four Related Contracts tables render identical on six
+contracts before and after each commit, all 13 tab values return 200 on `100479` and `101101`, and
+laravel.log holds no error and no warning across the runs.
+
+### The numbers
+
+Five queries less per Details load. `100479?tab=details` is at **65**, from 70 when this Resolution
+started; `101101` at 66, `1` at 66, `16` at 63, `101143` at 68, `100901` at 66 - the drop is 5
+everywhere. Time sits inside the run-to-run swing, as expected: the win is the count, the wire, and
+that neither table can silently go blank.
+
+### The same pattern lives elsewhere, and this ticket leaves it
+
+Not this page's, written down for a later effort:
+
+- [ContractController.php:10930](../../../Modules/Contract/app/Http/Controllers/ContractController.php) and
+  `:11067` - another method builds `$finalListChild` by exploding a comma string and binds it.
+- `ContractController.php:4600` - `relatedContractsparties()` has the same pluck-feeds-whereIn shape.
+- [ContractCustomController.php:1136](../../../Modules/Contract/app/Http/Controllers/ContractCustomController.php) -
+  same shape again.
