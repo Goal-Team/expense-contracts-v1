@@ -432,23 +432,35 @@ class ContractController extends Controller
                 ])->whereNot('id', $id)->get();
         }
 
-        $contract_party_locations = ContractPartyData::where('custom_field_group_id', $contracts->id)->where('contract_party_type', 'internal')->pluck('contract_party_location_id');
-
-        $contract_party_id = ContractPartyData::where('custom_field_group_id', $contracts->id)->where('contract_party_type', 'External')->pluck('contract_party_exe_id');
-
-        $ContractPartyLocList = ContractPartyData::whereIn('contract_party_location_id', $contract_party_locations)->pluck('custom_field_group_id');
-
-        $ContractPartyDataList = ContractPartyData::whereIn('contract_party_exe_id', $contract_party_id)->pluck('custom_field_group_id');
-
-
-        $FinalContractList = $ContractPartyLocList->intersect($ContractPartyDataList);
-
+        // The Other Contracts With Parties table: contracts that share a branch AND an external
+        // party with this one. Five queries used to build it - two plucks read this contract's
+        // branches and parties, two whereIns fanned out to every contract sharing them, and PHP
+        // intersected the two lists before a fifth query turned the intersect into rows. The
+        // party fan-out alone dragged every contract id across the wire (3,018 on this seed).
+        //
+        // One query now. The two whereIn subqueries ARE the intersect: id IN A AND id IN B.
+        // Nothing is bound, so the table cannot silently go blank when 1,000 or more contracts
+        // share a branch and a party - the whereIn 1,000-binding bug in CLAUDE.md. The subqueries
+        // are ContractPartyData, which has no global scope, so no accessLevelSelect trap here.
+        //
+        // orderBy('id') keeps the render order the bound list produced, same as the two
+        // family-tree queries below.
+        //
         // with('contractParent'): the Other Contracts With Parties table reads
         // $contractsoldother->contractParent once per row, to decide whether to draw the Link
         // button (viewDetailContract.blade.php:2431). Lazy-loaded that was 55 of the 368 queries
         // this tab ran. The blade only tests it for truth, so one child row per contract is all
         // the eager load has to return.
-        $contractspartsList = Contract::with('contractParent')->select('*')->whereIn('id', $FinalContractList)->where('id', '<>', $id)->where('status', 1)->get();
+        $contractspartsList = Contract::with('contractParent')->select('*')
+            ->whereIn('id', ContractPartyData::select('custom_field_group_id')
+                ->whereIn('contract_party_location_id', ContractPartyData::select('contract_party_location_id')
+                    ->where('custom_field_group_id', $contracts->id)->where('contract_party_type', 'internal')))
+            ->whereIn('id', ContractPartyData::select('custom_field_group_id')
+                ->whereIn('contract_party_exe_id', ContractPartyData::select('contract_party_exe_id')
+                    ->where('custom_field_group_id', $contracts->id)->where('contract_party_type', 'External')))
+            ->where('id', '<>', $id)->where('status', 1)
+            ->orderBy('id')
+            ->get();
 
         $contractspartsList = $this->availableContracts($contractspartsList, true);
 
