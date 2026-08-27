@@ -2239,36 +2239,34 @@ class ContractController extends Controller
         $perfT = microtime(true);
         if (isset($_COOKIE['myFilterStatus'])) {
             $checkMyContracts = 1;
-            foreach ($ContractsFinal as $contract) {
-                $contractIds[] = $contract->id;
-            }
 
-            $approvalsArr = ApprovalContracts::select('*')
-                ->whereIn('contract_id', $contractIds)
+            // Both whereIn calls take a query, never a list of ids. A list with 1,000 or more
+            // bound ids silently returns zero rows on this stack
+            // (.scratch/wherein-1000-bug/spec.md) - the old code bound ~2,508 ids here and
+            // "My contracts" came back empty. Contracts the user cannot see are dropped by the
+            // in_array($contract->id, $contractIds) test in the loop below, same as before.
+            //
+            // approval_status is plain text now, so the unique_id subquery keeps only the
+            // groups that hold a pending row. Every row of those groups is fetched so the
+            // group's leading row (highest id) still names the contract, as the old walk did.
+            $approvalsArr = ApprovalContracts::select('id', 'unique_id', 'contract_id', 'username', 'approval_status')
+                ->whereIn('unique_id', ApprovalContracts::select('unique_id')->where('approval_status', 'pending'))
+                ->whereIn('contract_id', Contract::withoutGlobalScope('accessLevelSelect')->select('id')->where('status', 1))
                 ->orderBy('id', 'DESC')
                 ->get()
-                ->map(function ($task) {
-                    $task->username = decryptString($task->username, 'username');
-                    $task->status = decryptString($task->status, 'status');
-                    $task->previous_status = decryptString($task->previous_status, 'previous_status');
-                    $task->next_action_item = decryptString($task->next_action_item, 'next_action_item');
-                    $task->next_action_description = decryptString($task->next_action_description, 'next_action_description');
-                    $task->approval_status = decryptString($task->approval_status, 'approval_status');
-                    return $task;
-                })
-                ->groupBy('unique_id')
-                ->reverse();
-
+                ->groupBy('unique_id');
 
             $contractIds = [];
             foreach ($approvalsArr as $appr) {
-                if (count($appr) == 1 && $appr[0]->approval_status == 'pending' && Helpers::accessInfo(json_decode($appr[0]->username)->email ?? '', false)) {
-                    $contractIds[] = $appr[0]->contract_id;
-                } else {
-                    foreach ($appr as $appr_) {
-                        if ($appr_->approval_status == 'pending' && Helpers::accessInfo(json_decode($appr_->username)->email ?? '', false)) {
-                            $contractIds[] = $appr[0]->contract_id;
-                        }
+                foreach ($appr as $appr_) {
+                    if ($appr_->approval_status != 'pending') {
+                        continue;
+                    }
+                    // username stays encrypted (dev call 2026-08-21). Decrypt it only for
+                    // pending rows; nothing reads the other four encrypted columns here.
+                    $email = json_decode(decryptString($appr_->username, 'username'))->email ?? '';
+                    if (Helpers::accessInfo($email, false)) {
+                        $contractIds[] = $appr[0]->contract_id;
                     }
                 }
             }
