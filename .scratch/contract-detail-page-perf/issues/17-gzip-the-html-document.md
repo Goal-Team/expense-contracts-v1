@@ -263,7 +263,8 @@ wasted effort - but there is no reason to run both.
 
 ### Left alone, per "Staying on a performance task"
 
-**An unknown query parameter on the edit tab costs 10 extra queries.**
+**An unknown query parameter on the edit tab costs 10 extra queries.** **WRONG - see the correction
+at the end of this file, 2026-08-27. It costs nothing.**
 `100479?tab=edit` runs **86** queries. `100479?tab=edit&_n=<anything>` runs **96**, and the count is
 the same with compression on and off, so it is not this change. Both numbers come out of
 `storage/logs/perf-2026-08-22.log` on 2026-08-22 between 02:42 and 02:44. This is worth a look -
@@ -307,3 +308,36 @@ covered, and appends otherwise. Case-insensitive, because header field names are
 
 Verified in the browser on `100479?tab=edit`: `vary: Accept-Encoding`, `content-encoding: gzip`,
 `content-length: 35434` against a decoded 326,254. Four warm fetches: 767, 586, 505, 469 ms.
+
+## Correction 2026-08-27 - `_n` costs nothing
+
+The line above is wrong, and the map's "Not yet specified" entry that grew out of it is withdrawn.
+
+**`_n` is not this app's parameter.** Nothing writes it into a link and nothing reads it. `grep` for
+`_n=` over every `.php`, `.blade.php` and `.js` outside `vendor` finds nothing, and the only two reads
+of the query string on this page are `$_GET['tab']`
+([helpers.php:654](../../../app/helpers.php:654)) and `$_GET['history']`
+([ContractController.php:714](../../../Modules/Contract/app/Http/Controllers/ContractController.php:714)).
+It was a cache-buster typed by hand while measuring.
+
+**Measured again on the logged-in session**, four loads of `100479?tab=edit` alternating with and
+without the parameter, each in its own tab, each read back from `perf-2026-08-27.log`:
+
+| URL | queries | distinct shapes |
+|---|---|---|
+| `?tab=edit` | 56 | 43 |
+| `?tab=edit&_n=11111` | **56** | **43** |
+| `?tab=edit` | 56 | 43 |
+| `?tab=edit&_n=22222&zz=hello` | **56** | **43** |
+
+Same count, same shapes, two different unknown parameters.
+
+**Why the old pair read 86 against 96 is not worth chasing.** That page no longer exists. Tickets 12
+and 13 took the edit tab from 86 queries to 56 by reading the access lists, the admin settings and the
+subject contract once per request instead of once per call site (report rows 19-27). Those were the
+repeats that could differ between two loads. The honest reading is that the two old numbers came from
+two page states, not from the parameter.
+
+**One real URL behaviour stays, and it is deliberate.** `?tab=<unknown>` serves the Details body, so an
+unknown tab pays the Details cost. `contract_detail_shows_related_contracts()` mirrors the blade's last
+`@else` branch on purpose, so the controller and the view cannot disagree. Ticket 18 records it.

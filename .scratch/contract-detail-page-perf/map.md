@@ -532,15 +532,14 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 
 ## Not yet specified
 
-- **The Details tab is still the slowest tab, and no single query holds it any more.** 686-785 ms and
-  369 queries on `100479`, against 306-514 ms and 83-98 on every tab but `attachment`. Tickets 15 and
-  21 closed both walks, and the slowest query on the page is now 7-11 ms. What is left is the **count**:
-  the `availableContracts()` loops, about 280 of the 369 queries
-  ([ticket 13](issues/13-visible-to-scope.md)).
-- **The query count on the Details tab now grows with the family tree.** 369 on `100479` (one child),
-  426 on contract `1`, **619 on `101101`** (a 12-child fan-out). The blade lazy-loads
-  `select * from contracts where parentcontract = ? limit 1` for every related contract, and the four
-  `availableContracts()` loops walk every row. Ticket 13's, and the seeded chains make it visible.
+- ~~**The Details tab is still the slowest tab.**~~ **ANSWERED 2026-08-24 by tickets 13 and 12.** It
+  is not the slowest tab any more and the gap is closed. `100479?tab=details` runs **70** queries, from
+  369 when this line was written, and the other tabs run 46-56. Report rows 19-27.
+- ~~**The query count on the Details tab grows with the family tree.**~~ **ANSWERED 2026-08-22 by
+  ticket 13.** It does not grow any more. The four `availableContracts()` loops read their access lists
+  once per request instead of once per row, and the blade stops lazy-loading a child per related
+  contract. The count is flat across the tree: **70** on `100479` (one child), 71 on contract `1`, 71 on
+  `101101` (the 12-child fan-out), 68 on `16`. Report row 27.
 - ~~**Should the Historical tab load a snapshot from its cookie?**~~ **SETTLED 2026-08-22. The cookie
   stays, and nothing changed.** The dev asked to try deleting it - keep the deletion if everything still
   works, put it back if not. It does not work: the cookie is the only thing that keeps the **Historical
@@ -562,18 +561,28 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
   it. Three arrays hold three different meanings of missing (`$reqfieldsText`, `$reqfieldsVals`,
   `$reqfieldsVal`), so the choice of test needs the dev. Written up in
   [ticket 03](issues/03-find-remaining-breaks.md).
-- **This page reacts to URL shapes nobody has mapped.** `?tab=edit` runs 86 queries;
-  `?tab=edit&_n=<anything>` runs **96**. Same with compression on and off, so it is not that change.
-  Ticket 03 already found `?tab=<unknown>` serves the Details body. Something reads the query string in a
-  way no ticket has accounted for. Cheap to find, nobody has looked.
-- Why `SHOW TABLES` runs twice on every page view. Something asks the schema on a page load. Noticed by
-  the baseline, cheap, unexplained.
+- ~~**This page reacts to URL shapes nobody has mapped.**~~ **ANSWERED 2026-08-27. `_n` is not this
+  app's parameter and it costs nothing.** Nothing in the repo writes `_n` into a link and nothing reads
+  it - `grep` over every `.php`, `.blade.php` and `.js` outside `vendor` finds no `_n=`. It is a
+  cache-buster a measuring session typed by hand. Measured again today on the logged-in session, four
+  loads of `100479?tab=edit`, alternating with and without the parameter: **56 queries and 43 distinct
+  shapes every time**, `&_n=22222&zz=hello` included. The 86-against-96 pair in
+  [ticket 17](issues/17-gzip-the-html-document.md) does not reproduce, and the page it was taken on no
+  longer exists - tickets 12 and 13 took the edit tab from 86 queries to 56 by collapsing the repeated
+  per-request lookups. The safe reading is that the two old numbers came from two page states, not from
+  the parameter. **One real URL behaviour stays, and it is deliberate:** `?tab=<unknown>` serves the
+  Details body, so it pays the Details cost. `contract_detail_shows_related_contracts()`
+  ([helpers.php:681](../../app/helpers.php:681)) mirrors the blade's last `@else` branch on purpose, and
+  ticket 18's Resolution records it.
+- ~~**Why `SHOW TABLES` runs twice on every page view.**~~ **ANSWERED 2026-08-24 by ticket 12.**
+  `checkTablesConfiguration()` ran it, against an empty required-table list, so it always returned
+  `true`. The call is gone. Report row 24.
 
 <!-- The unreachable-blade question is ANSWERED 2026-08-22 by ticket 16: the region renders on
      ?tab=details. Nothing was deleted. -->
-- What `viewContract` should become. It is ~820 lines doing contract load, eSign polling and status
-  update, history, parties, approvals, obligations and four `availableContracts()` passes. Splitting
-  it is clearly coming, but the seams only become visible once the baseline says where the time goes.
+<!-- The viewContract-split question went OUT OF SCOPE 2026-08-22 on the dev's call, "enough for
+     now". Four methods left the function while optimising; the rest is readability with no load-time
+     effect. See the Out of scope section and [ticket 05](issues/05-query-layer-decision.md). -->
 <!-- The index question GRADUATED 2026-08-21: ticket 08 named the six missing indexes, so it is now
      [ticket 11](issues/11-missing-indexes.md). -->
 <!-- The availableContracts question GRADUATED 2026-08-21: the dev chose the Eloquent scope, so it is
