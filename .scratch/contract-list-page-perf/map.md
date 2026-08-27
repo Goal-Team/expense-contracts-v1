@@ -149,6 +149,11 @@ protocol, filtering done in PHP, no LIMIT anywhere). View is
   `status=all` 555 ms / 5.8 KB (was 5.8 s / 34.2 MB); table draw ~75 ms after the response.
   15 queries default (13 before: one giant fetch became counters + count + page). Search covers
   the same columns, name via one decrypt pass per request. Every tab count equals the 02/06 truth.
+- [07 move filters off cookies](issues/07-filters-off-cookies.md) — the filter state is the URL
+  query string now (`?status=..&contype=[..]&concates=[..]&locations=[..]&my=1`), shareable and
+  read per draw; the server reads and writes no filter cookie, stale ones are ignored and deleted
+  on load. `filterStatus`/`filterSet` stay write-only for the bulk-export page's form prefill.
+  Dashboard handoff travels on the navigation URL. No regression: 15 queries, 5,767 bytes.
 
 ## Order of work
 
