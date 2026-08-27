@@ -125,6 +125,9 @@ protocol, filtering done in PHP, no LIMIT anywhere). View is
   queries; default AJAX ~5.6 s TTFB / 13 queries / 5.5 MB (34.2 MB at `status=all`); table
   last render ~14.7 s. 58% of the AJAX time is `availableContracts()` PHP loops, DB only
   ~0.7 s; the `accessLevelSelect` scope turns both list queries into `select *`.
+- [04 delete the dead all-contracts query on GET](issues/04-dead-get-query.md) — dead query,
+  its `filterConType` guard and the commented consumer deleted. GET is now ~340 ms / 11
+  queries / ~30-47 ms database (was ~2.8 s / 14 / 1.2-1.8 s). AJAX unchanged at 13 queries.
 
 ## Order of work
 
