@@ -2,8 +2,8 @@
 
 Type: `wayfinder:task` (AFK)
 Blocked by: 02
-Assignee: —
-Status: OPEN
+Assignee: claude subagent (session 2026-08-27)
+Status: CLOSED 2026-08-27
 
 ## Question
 
@@ -21,4 +21,29 @@ waits on ticket 02.
 
 ## Resolution
 
-_Open._
+Fixed in [ContractController.php:2328](../../../Modules/Contract/app/Http/Controllers/ContractController.php:2328).
+Two changes on the one line:
+
+- The status compare now uses `contractStatusKey($contract->contract_status) == 'executed'`.
+  The helper lowercases, so `Executed` in the DB matches.
+- The substatus token from `explode('_', $_POST['status'])[1]` is now lowercased too. The blade
+  sends `executed_Terminated` with a capital T, and the left side of the compare is already
+  lowercased, so the token had to be lowercased as well.
+
+Verified in the logged-in browser, filter cookies cleared, POST to `contracts/data`:
+
+| key | rows before | rows after | raw DB rows |
+|---|---|---|---|
+| executed_active | 0 | 332 | 400 |
+| executed_expired | 0 | 128 | 150 |
+| executed_pending | 0 | 83 | 100 |
+| executed_renewed | 0 | 74 | 90 |
+| executed_Terminated | 0 | 74 | 90 |
+| executed_completed | 0 | 56 | 70 |
+| executed_amended | 0 | 0 | 0 |
+| executed | 747 | 747 | 900 |
+| draft | 406 | 406 | — |
+
+The six substatus counts sum to 747, the same as the `executed` tab. The after counts are ~83%
+of the raw DB counts, which matches the visibility scope (~2,508 of 3,018 rows visible). Every
+call ran 13 queries (perf log), same as baseline.

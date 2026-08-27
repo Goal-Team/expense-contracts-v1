@@ -128,6 +128,10 @@ protocol, filtering done in PHP, no LIMIT anywhere). View is
 - [04 delete the dead all-contracts query on GET](issues/04-dead-get-query.md) — dead query,
   its `filterConType` guard and the commented consumer deleted. GET is now ~340 ms / 11
   queries / ~30-47 ms database (was ~2.8 s / 14 / 1.2-1.8 s). AJAX unchanged at 13 queries.
+- [06 fix the `executed_*` filter case](issues/06-executed-substatus-filter-case.md) — the status
+  compare now goes through `contractStatusKey()` and the substatus token is lowercased. The six
+  tabs return rows again (332/128/83/74/74/56; amended 0, no seed rows). `executed` and `draft`
+  unchanged. Still 13 AJAX queries.
 
 ## Order of work
 
