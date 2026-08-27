@@ -337,46 +337,42 @@ class ContractController extends Controller
      * what the old query produced: it ran one downward walk for each ancestor, and the walk
      * from the highest ancestor already covers every lower one.
      *
-     * It returns ids. The old code returned one comma-joined string and the caller exploded
-     * it, which gave [''] when the walk found nothing - the bug ticket 01 fixed elsewhere.
+     * It returns a query, not an array, the same shape as ancestorContractIds() above and for
+     * the same reason: the caller passes it straight to whereIn(), so the ids stay inside the
+     * database and nothing is bound. On this stack a whereIn with 1,000 or more bound values
+     * returns zero rows with no error, so the Subsequent Contracts table would go blank on the
+     * exact contract where it matters most - a master agreement with a thousand children.
      */
-    private function subsequentContractIds($id): array
+    private function subsequentContractIds($id): QueryBuilder
     {
-        // DB::select, not Eloquent, and this is the documented exception in CLAUDE.md: the
-        // query is a WITH RECURSIVE. Eloquent has no expression for a common table expression
-        // that refers to itself, and a tree of unknown depth cannot be read in one query any
-        // other way. MariaDB has WITH RECURSIVE from 10.2; this server is 10.4.24.
+        // fromRaw, not Eloquent, and this is the documented exception in CLAUDE.md: the query
+        // is a WITH RECURSIVE. Eloquent has no expression for a common table expression that
+        // refers to itself, and a tree of unknown depth cannot be read in one query any other
+        // way. MariaDB has WITH RECURSIVE from 10.2; this server is 10.4.24.
         //
         // The old shape walked the tree with the session variable @pv and FIND_IN_SET. It read
         // the whole contracts table once for every row of the table, so it cost 2.0-5.4 s on
         // 3,018 rows and it gets slower with the square of the contract count.
         //
         // Both bindings are this one contract id, so no list of ids crosses the wire.
-        $rows = DB::select(
-            "WITH RECURSIVE " . $this->ancestryCte() . ",
-             descendants (id, depth) AS (
-                 SELECT c.id, 1
-                   FROM contracts c
-                  WHERE c.parentcontract = COALESCE(
-                            (SELECT pid FROM ancestry ORDER BY depth DESC LIMIT 1), ?)
-                 UNION ALL
-                 SELECT c.id, d.depth + 1
-                   FROM contracts c
-                   JOIN descendants d ON c.parentcontract = d.id
-                  WHERE d.depth < " . self::FAMILY_TREE_MAX_DEPTH . "
-             )
-             SELECT DISTINCT id FROM descendants",
-            [$id, $id]
-        );
-
-        $ids = array_map(static fn ($row) => (int) $row->id, $rows);
-
-        Log::debug('Contract detail page walked the contract family tree', [
-            'contract_id' => $id,
-            'descendants' => count($ids),
-        ]);
-
-        return $ids;
+        return DB::query()
+            ->select('id')
+            ->fromRaw(
+                '(WITH RECURSIVE ' . $this->ancestryCte() . ",
+                 descendants (id, depth) AS (
+                     SELECT c.id, 1
+                       FROM contracts c
+                      WHERE c.parentcontract = COALESCE(
+                                (SELECT pid FROM ancestry ORDER BY depth DESC LIMIT 1), ?)
+                     UNION ALL
+                     SELECT c.id, d.depth + 1
+                       FROM contracts c
+                       JOIN descendants d ON c.parentcontract = d.id
+                      WHERE d.depth < " . self::FAMILY_TREE_MAX_DEPTH . '
+                 )
+                 SELECT DISTINCT id FROM descendants) AS descendant_ids',
+                [$id, $id]
+            );
     }
 
     /**
@@ -487,9 +483,20 @@ class ContractController extends Controller
 
 
         //Get Susequesnt Contracts
-        $finalListChild = $this->subsequentContractIds($id);
+        // whereIn reads the family-tree walk as a subquery, the same shape as the Parent
+        // Contracts query above, so no id is bound and no id crosses the wire. orderBy('id')
+        // keeps the render order the bound list produced: a whereIn on a bound list read the
+        // primary key in ascending order, and the subquery version follows the walk instead.
+        $contractsSubseqList = Contract::select('*')
+            ->whereIn('id', $this->subsequentContractIds($id))
+            ->where('id', '<>', $id)->where('status', 1)
+            ->orderBy('id')
+            ->get();
 
-        $contractsSubseqList = Contract::select('*')->whereIn('id', $finalListChild)->where('id', '<>', $id)->where('status', 1)->get();
+        Log::debug('Contract detail page read the subsequent contracts', [
+            'contract_id' => $id,
+            'descendants' => $contractsSubseqList->count(),
+        ]);
 
         $contractsSubseqList = $this->availableContracts($contractsSubseqList, true);
 
