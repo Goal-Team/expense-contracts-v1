@@ -174,22 +174,24 @@ claimed it (Assignee line).
 
 ## Not yet specified
 
-- **`availableContracts()` per-row work at list scale.** At 58 rows it stopped mattering on the
-  detail page; at 3,018 it may be the whole request. Attribution first (ticket 02), then decide
-  what of the decorate/decrypt pass the list actually reads.
-- **The counter fold in PHP.** The dashboard solved the same problem in SQL. Whether its helpers
-  (`statusCountRows()` / `foldStatusCounters()`) already fit this page's grouping (substatus
-  splits, `contractStatusKey()` mapping) is checkable once the inventory exists.
-- **The `myFilterStatus` path re-implements "my pending approvals" in PHP** — plucked ids, per-row
-  `accessInfo()` calls, JSON-decoding `username` per approval row. The dashboard's
-  `actionableItemCounts()` answers nearly the same question in SQL now that `approval_status` is
-  plain. Possible big win, needs the inventory first.
-- **Client-side cost.** 1,277 lines of list JS rendering thousands of DataTables rows; first and
-  last render on the seeded set are unmeasured. May also expose asset-weight work (the dashboard
-  effort's ticket 22 took page weight down; check what carried over to this layout).
-- **The seeded data may be too thin for the party filter.** `contract_parties` has few rows per
-  contract on the seed; the party filter path (:2264–2276) and location filter loop over
-  `contract->contractParty`. Check whether the seed exercises them before trusting the numbers.
+_Empty — the fog is cleared. 2026-08-28._ Every patch graduated and resolved:
+`availableContracts()` per-row work now runs on one page of rows (ticket 08); the counter fold
+is one SQL GROUP BY (ticket 08 — the dashboard helpers did not fit, this page's fold counts
+keys the dashboard does not); the `myFilterStatus` path binds no ids and decrypts one column
+(ticket 05); client-side cost measured and cut (last render ~14 s → ~1.3–3.5 s, ticket 08);
+the party and location filters were exercised live on the seed (tickets 01 and 08).
+
+**No ticket is open. The destination test passes**: the page loads with no error on every
+filter shape, the numbers are in [measurements/report.md](measurements/report.md), and the
+work is committed on this branch. Two questions wait on the dev before the effort is called
+finished:
+
+1. The export buttons (CSV/Excel/PDF/print) export the current page only now — with
+   server-side paging the client never holds more than one page. Old behaviour needs a
+   server-side export if wanted (ticket 08, written down).
+2. Killing the last two write-only cookies (`filterSet`, `filterStatus`) means putting the
+   bulk-export handoff on the export link's URL — touches the export page, a shared surface
+   (ticket 07, left for a later effort).
 
 ## Out of scope
 
