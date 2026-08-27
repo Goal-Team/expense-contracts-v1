@@ -132,6 +132,11 @@ protocol, filtering done in PHP, no LIMIT anywhere). View is
   compare now goes through `contractStatusKey()` and the substatus token is lowercased. The six
   tabs return rows again (332/128/83/74/74/56; amended 0, no seed rows). `executed` and `draft`
   unchanged. Still 13 AJAX queries.
+- [03 query inventory](issues/03-query-inventory.md) — every query traced with callers: GET 11,
+  default AJAX 13, +1 with `myFilterStatus` (the 2,508-binding `ApprovalContracts` whereIn, ticket
+  05). No duplicates — the detail-effort request caches absorb them all. New: the JSON rows carry
+  all 119 contract columns (the `accessLevelSelect` `select *`) and the party rows twice — most of
+  the 5.5/34.2 MB body; feeds ticket 08.
 
 ## Order of work
 
