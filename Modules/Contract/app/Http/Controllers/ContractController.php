@@ -2182,6 +2182,14 @@ class ContractController extends Controller
             $contracts_query = Contract::select('contract_name', 'id', 'currency', 'currency_value', 'end_contract_type', 'contract_status', 'substatus', 'fixed_date', 'onetime_end_date', 'contract_end_date', 'contract_type', 'catgoery_id');
         }
         
+        // Block timers for the perf log (local only; see App\Perf\PerfRecorder).
+        $perfProbe = function (string $name, float $sinceUs) {
+            if (class_exists(\App\Perf\PerfRecorder::class)) {
+                \App\Perf\PerfRecorder::probe($name, round((microtime(true) - $sinceUs) * 1000, 2));
+            }
+        };
+        $perfT = microtime(true);
+
         if(!empty($contracts_query)){
             $contracts_query->where('status', 1);
             $contracts_query->orderBy('id', 'desc');
@@ -2195,15 +2203,17 @@ class ContractController extends Controller
             }
 
             $contracts = $contracts_query->get();
-            
+
         }
+        $perfProbe('list_fetch_ms', $perfT);
 
         if (isset($_POST['status'])) {
             setcookie('filterStatus', $_POST['status'], time() + (86400 * 30), "/");
         }
 
+        $perfT = microtime(true);
         $ContractsFinal = $this->availableContracts($contracts, true);
-
+        $perfProbe('list_available_contracts_ms', $perfT);
 
         $contract_all_total                = 0;
         $contract_draft_total              = 0;
@@ -2226,6 +2236,7 @@ class ContractController extends Controller
         
         $contractIds = [];
         $checkMyContracts = 0;
+        $perfT = microtime(true);
         if (isset($_COOKIE['myFilterStatus'])) {
             $checkMyContracts = 1;
             foreach ($ContractsFinal as $contract) {
@@ -2262,7 +2273,9 @@ class ContractController extends Controller
                 }
             }
         }
-        
+        $perfProbe('list_my_approvals_ms', $perfT);
+
+        $perfT = microtime(true);
         $finalFilteredResult = [];
         foreach ($ContractsFinal as $contract) {
             if ($partyIdFilter > 0) {
@@ -2430,13 +2443,21 @@ class ContractController extends Controller
             'initial_draft' => $initial_draft_total
         );
 
-        return response()->json([
+        $perfProbe('list_filter_count_loop_ms', $perfT);
+
+        $perfT = microtime(true);
+        // json_encode of the whole row set happens inside the JsonResponse
+        // constructor, so this timer covers the serialisation.
+        $response = response()->json([
             'data' => $finalFilteredResult,
             'draw' => $request->input('draw') ?? 1,
             'recordsTotal' => count($finalFilteredResult),
             'recordsFiltered' => count($finalFilteredResult),
             'counts'=>$stus
         ]);
+        $perfProbe('list_json_encode_ms', $perfT);
+
+        return $response;
     }
 
     public function listContract(Request $request)
