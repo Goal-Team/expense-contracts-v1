@@ -72,6 +72,13 @@ protocol, filtering done in PHP, no LIMIT anywhere). View is
 - **Verify in the browser** — the CDP debug profile; ask the dev to log in once if the session is
   gone.
 - **Plain words to the dev, caveman English for questions, no summary unless asked.**
+- **Remove unnecessary cookies; prefer query parameters.** Dev rule 2026-08-27. Not for
+  performance — for testing, security, state, and sharing. Ticket 07.
+- **Prefer server-side pagination for the heavy AJAX calls**, via a standard Laravel pattern and
+  one reusable abstraction (filters + search + paging), not per-endpoint copies. Dev rule
+  2026-08-27, with a qualifier the same day: **only convert the calls where it makes sense** —
+  data that grows organically. Small stable lists (the earlier efforts' dropdowns) keep the
+  whole-list pattern. Ticket 08.
 
 **Facts established while charting, 2026-08-27:**
 
@@ -109,7 +116,11 @@ protocol, filtering done in PHP, no LIMIT anywhere). View is
 
 <!-- one line per closed ticket, newest last -->
 
-_None yet._
+- [01 walk the page, find and fix breaks](issues/01-walk-page-find-breaks.md) — page renders on
+  every filter shape after four throw fixes (malformed `filterConType`, scalar `contype`/`concates`,
+  missing `status`, malformed `filterSet`). Wrong results written down: all `executed_*` tabs
+  empty (case bug → ticket 06), `myFilterStatus` empty on the seeded set (1,000-binding bug →
+  ticket 05). `status=all` AJAX is 2,508 rows / 34.2 MB decoded JSON.
 
 ## Order of work
 
@@ -123,15 +134,13 @@ claimed it (Assignee line).
 | [02 baseline and attribution](issues/02-baseline-attribution.md) | 01 | Row 0 of the report. GET and AJAX both, server and browser both. |
 | [03 query inventory](issues/03-query-inventory.md) | 01 | Name every query site in `listContract` + `listContractData` before rewriting any. |
 | [04 delete the dead all-contracts query on GET](issues/04-dead-get-query.md) | 02 | Known win, measured against row 0. |
-| [05 stop binding id lists](issues/05-stop-binding-id-lists.md) | 02, 03 | The approvals `whereIn` takes 3,018 bound ids on the seeded set — over the 1,000 silent-zero line. |
+| [05 stop binding id lists](issues/05-stop-binding-id-lists.md) | 02, 03 | The approvals `whereIn` takes 2,508 bound ids on the seeded set — over the 1,000 silent-zero line. Confirmed live by ticket 01. |
+| [06 fix the executed_* filter case bug](issues/06-executed-substatus-filter-case.md) | 02 | All six executed tabs show an empty list; row counts change, so baseline first. |
+| [08 server-side pagination, reusable pattern](issues/08-server-side-pagination.md) | 02, 03 | Dev rule 2026-08-27. The 34.2 MB list call is the candidate; numbers and inventory decide the shape. |
+| [07 move filters off cookies](issues/07-filters-off-cookies.md) | 03, 08 | Dev rule 2026-08-27. Lands in the same AJAX-contract rewrite as 08, not twice. |
 
 ## Not yet specified
 
-- **The AJAX returns the whole list as one JSON document.** No LIMIT, no server-side page.
-  DataTables gets every row and pages client-side. What that costs (bytes, decrypt time, browser
-  render) is ticket 02's to measure; what the safe cut is — server-side paging, narrower JSON,
-  or leave it — is a decision after the numbers exist. The detail-page dropdown precedent says
-  the dev weighs UX risk against measured cost, so bring numbers, not a design.
 - **`availableContracts()` per-row work at list scale.** At 58 rows it stopped mattering on the
   detail page; at 3,018 it may be the whole request. Attribution first (ticket 02), then decide
   what of the decorate/decrypt pass the list actually reads.
@@ -148,9 +157,6 @@ claimed it (Assignee line).
 - **The seeded data may be too thin for the party filter.** `contract_parties` has few rows per
   contract on the seed; the party filter path (:2264–2276) and location filter loop over
   `contract->contractParty`. Check whether the seed exercises them before trusting the numbers.
-- **Cookie/POST filter matrix.** `getFilterSetData()` overwrites `$_POST` from the `filterSet`
-  cookie; `filterStatus`, `filterConType`, `myFilterStatus` change the query shape. The walk
-  (ticket 01) charts which shapes exist; later tickets measure the expensive ones.
 
 ## Out of scope
 
