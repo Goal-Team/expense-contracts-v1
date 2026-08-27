@@ -2325,7 +2325,7 @@ class ContractController extends Controller
 
                 if (isset($_POST['status']) && $_POST['status'] !== 'all') {
                     
-                    if (str_contains($_POST['status'], 'executed_') && $contract->contract_status == 'executed' && strtolower($contract->substatus) == explode('_', $_POST['status'])[1]) {
+                    if (str_contains($_POST['status'], 'executed_') && contractStatusKey($contract->contract_status) == 'executed' && strtolower($contract->substatus) == strtolower(explode('_', $_POST['status'])[1])) {
                         $finalFilteredResult[] = $contract;
                     } else if (str_contains($_POST['status'], 'draft_initial') && $contract->contract_status == 'Draft' && $contract->substatus == 'Initial Draft') {
                         $finalFilteredResult[] = $contract;
