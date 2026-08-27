@@ -2185,18 +2185,22 @@ class ContractController extends Controller
         if(!empty($contracts_query)){
             $contracts_query->where('status', 1);
             $contracts_query->orderBy('id', 'desc');
-            if (isset($_POST['contype']) && $_POST['contype'] != 0 && !empty(json_decode($_POST['contype']))) {
-                $contracts_query->whereIn('contract_type', json_decode($_POST['contype']));
-            }        
-            if (isset($_POST['concates']) && !empty(json_decode($_POST['concates']))) {
-                $contracts_query->whereIn('catgoery_id', json_decode($_POST['concates']));
-            }        
+            $contypes = isset($_POST['contype']) ? json_decode($_POST['contype']) : null;
+            if (is_array($contypes) && count($contypes) > 0) {
+                $contracts_query->whereIn('contract_type', $contypes);
+            }
+            $concates = isset($_POST['concates']) ? json_decode($_POST['concates']) : null;
+            if (is_array($concates) && count($concates) > 0) {
+                $contracts_query->whereIn('catgoery_id', $concates);
+            }
 
             $contracts = $contracts_query->get();
             
         }
 
-        setcookie('filterStatus', $_POST['status'], time() + (86400 * 30), "/");
+        if (isset($_POST['status'])) {
+            setcookie('filterStatus', $_POST['status'], time() + (86400 * 30), "/");
+        }
 
         $ContractsFinal = $this->availableContracts($contracts, true);
 
@@ -2535,7 +2539,9 @@ class ContractController extends Controller
         
         if(isset($_COOKIE['filterSet'])){
             $allFilters = json_decode($_COOKIE['filterSet']);
-            
+            if (!is_object($allFilters) && !is_array($allFilters)) {
+                return;
+            }
             foreach($allFilters as $allFilt => $allFiltVal){
                 //$field = explode('_', $allFilt);
                 $field = $allFilt;
