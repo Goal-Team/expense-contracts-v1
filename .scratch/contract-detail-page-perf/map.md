@@ -18,6 +18,33 @@ request (ticket 08).
 The effort is finished when the page is correct, the numbers are in
 [measurements/report.md](measurements/report.md), and no ticket is open.
 
+### Reached 2026-08-27
+
+**Every ticket is closed.** 23 of the 24 are done or ruled out of scope; ticket 24 is open on purpose
+and is functional work, not load-time work - see [Out of scope](#out-of-scope).
+
+The numbers against row 0 of the report, measured warm on the same seeded 3,018-contract set, three
+runs per page, `DEBUGBAR_ENABLED=false`:
+
+| page | baseline | now |
+|---|---|---|
+| `100479?tab=edit`, queries | 253 | **56** |
+| `100479?tab=edit`, server `total_ms` | 4,137-4,774 | **992-1,302** |
+| `100479?tab=details`, queries | 368 | **65** |
+| `100479?tab=details`, server `total_ms` | 4,088-5,233 | **610-861** |
+| `100479?tab=attachment`, server `total_ms` | 2,171-2,428 | **1,575-2,931** |
+| document bytes | 326,254 | **35,432** |
+
+The Details tab count no longer grows with the family tree: 65 on `100479`, 66 on contract `1`, 66 on
+`101101` (the 12-child fan-out), 63 on `16`.
+
+**No `whereIn` on this page binds a list of ids any more** ([ticket 09](issues/09-replace-wherein-with-joins.md)),
+so no table on it can silently go blank when the data crosses 1,000 rows.
+
+One question is still the dev's, and it is correctness, not speed: which of the three "missing" arrays
+the required-fields test should read. It is written up in [ticket 03](issues/03-find-remaining-breaks.md)
+and in [Not yet specified](#not-yet-specified).
+
 ## Notes
 
 **Domain.** Same stack as the dashboard effort: **Laravel 10.48.29** + nwidart/laravel-modules +
@@ -500,15 +527,14 @@ A ticket is takeable when every ticket in its "Blocked by" line is closed.
 |---|---|---|
 | ~~[01 reminder crash](issues/01-fix-null-reminder-crash.md)~~ | **CLOSED** | The page did not render at all. |
 | ~~[08 query inventory](issues/08-query-inventory.md)~~ | **CLOSED** | Read-only. Everything below leans on it. |
-| [02 realistic seeded rows](issues/02-seed-realistic-contract-rows.md) | now | A baseline on rows that are 60 columns of NULL measures the wrong page. |
-| [14 breakage and one duplicate](issues/14-correctness-bugs.md) | now | Narrowed 2026-08-21 to what throws or costs time. The rest is out of scope. |
+| ~~[02 realistic seeded rows](issues/02-seed-realistic-contract-rows.md)~~ | **CLOSED** | The seed writes all 60 columns the page reads, not 40. The render break it uncovered was not the seed - it was the child-contract walk, and [ticket 15](issues/15-recursive-child-walk.md) closed that. |
+| ~~[14 breakage and one duplicate](issues/14-correctness-bugs.md)~~ | **CLOSED** | Narrowed 2026-08-21 to what throws or costs time. Three commits landed; items 1, 2, 5, 6 and 7 are out of scope and written up in the ticket. |
 | ~~[03 find remaining breaks](issues/03-find-remaining-breaks.md)~~ | **CLOSED** | **Nine breaks, not four. Every tab returns 200.** Two of them nobody had tried: `?attachment=` and `?tab=timelineedit`. |
-| [04 baseline](issues/04-baseline-attribution.md) | after 03 | Every row in the report sits under this one. |
+| ~~[04 baseline](issues/04-baseline-attribution.md)~~ | **CLOSED** | Row 0 of the report. Every row since sits under it. |
 | ~~[16 is Related Contracts dead?](issues/16-unreachable-blade-region.md)~~ | **CLOSED** | It is not dead. `?tab=details` renders it. Nothing deleted. But it found ticket 18. |
 | ~~[18 guard the scans by tab](issues/18-guard-the-scans-by-tab.md)~~ | **CLOSED** | **Edit tab 4,208-4,589 ms to 455 ms, 258 queries to 86.** The biggest win on this map. |
 | ~~[20 `$contractsoldothers` scan](issues/20-contractsoldothers-scan.md)~~ | **CLOSED** | Details tab **4,088-5,233 ms to 2,997-3,576 ms**. The query itself 928-1,823 ms to under 5 ms. |
 | ~~[19 attachment tab, 2.1-2.2 s outside the database](issues/19-attachment-tab-slow-outside-db.md)~~ | **CLOSED** | **2,171-2,428 ms to 1,327-1,384 ms.** The time was in the blade, not the database: two identical Google Drive calls. |
-| ~~[22 cache the Drive token](issues/22-cache-the-drive-token.md)~~ | **CLOSED** | Attachment tab **1,327-1,384 ms to 1,066-1,212 ms**. One refresh per hour instead of one per call. |
 | ~~[22 cache the Drive access token](issues/22-cache-the-drive-token.md)~~ | **CLOSED** | **One refresh, then none.** `100479?tab=attachment` 1,327-1,384 ms to **1,066-1,212 ms**; contract `4` to 1,194-1,256 ms. The refresh cost 230 ms today, not the 494-582 ms ticket 19 saw. |
 | ~~[15 recursive child walk](issues/15-recursive-child-walk.md)~~ | **CLOSED** | Details tab **3,235-7,109 ms to 1,198-2,207 ms**. The old query was also **wrong**, on 202 of 3,018 contracts. |
 | ~~[21 parent walk](issues/21-parent-walk.md)~~ | **CLOSED** | Details tab **1,198-2,207 ms to 686-785 ms**. The slowest query on that tab is now **7-11 ms**. |
