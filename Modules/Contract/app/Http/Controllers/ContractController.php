@@ -2442,7 +2442,10 @@ class ContractController extends Controller
         
         $contracts_query = Contract::select('contract_name', 'id', 'currency', 'currency_value', 'end_contract_type', 'contract_status', 'substatus', 'fixed_date', 'onetime_end_date', 'contract_type')->orderBy('id', 'desc')->where('status', 1);
         if (isset($_COOKIE['filterConType']) && $_COOKIE['filterConType'] != 0) {
-            $contracts_query->whereIn('contract_type', json_decode($_COOKIE['filterConType']));
+            $filterConTypes = json_decode($_COOKIE['filterConType']);
+            if (is_array($filterConTypes) && count($filterConTypes) > 0) {
+                $contracts_query->whereIn('contract_type', $filterConTypes);
+            }
         }
         $contracts = $contracts_query->get();
 
