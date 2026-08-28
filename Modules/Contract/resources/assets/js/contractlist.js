@@ -338,8 +338,6 @@ $(document).on('click', '#btnTermination', function(e){
              d.concates = params.get('concates') ?? 0;
              d.locations = params.get('locations') ?? 0;
              d.party_id = partyIdFilter;
-             // The bulk-export page still prefills its form from these two cookies.
-             _syncExportCookies(d.status);
           },
           'method': 'post',
             headers: {
@@ -1075,13 +1073,16 @@ $(document).ready(function() {
     }
     _toggleClearFilters();
 
-    // One-transition cleanup: the server ignores the old filter cookies now, and a
-    // stale value must not linger for another page to trip on. filterStatus and
-    // filterSet stay - the bulk-export page still reads them (see _syncExportCookies).
+    // One-transition cleanup: nothing reads the filter cookies any more - the
+    // filter state is the URL, and the bulk-export handoff is the export button's
+    // URL too (ticket 10). A stale value must not linger for another page to
+    // trip on, so every old filter cookie is deleted on load.
     _deleteCookie('myFilterStatus');
     _deleteCookie('filterConType');
     _deleteCookie('filterConLoc');
     _deleteCookie('filterApplied');
+    _deleteCookie('filterStatus');
+    _deleteCookie('filterSet');
 
     // ================= Onclick Status action ends ====================//
        
@@ -1286,31 +1287,6 @@ $(document).ready(function() {
             $('#clearAllFilters').addClass('d-none');
         }
     }
-
-    // The bulk-export page (contractBuilkExport.blade.php) prefills its download
-    // form from the filterStatus and filterSet cookies. Those two cookies stay,
-    // as the list-to-export handoff only, and mirror the URL on every draw.
-    // Nothing on this page reads them back.
-    function _syncExportCookies(status) {
-        _setCookie('filterStatus', status, 1);
-        var params = _listParams();
-        var filterSet = {};
-        // The URL carries comma-separated ints (contype=1,2); the export page
-        // still wants arrays inside its filterSet cookie.
-        var toList = function (raw) {
-            if (!raw) return [];
-            return raw.split(',').filter(function (v) { return v.trim() !== ''; });
-        };
-        if (toList(params.get('contype')).length) filterSet['contracttype'] = toList(params.get('contype'));
-        if (toList(params.get('concates')).length) filterSet['contractcates'] = toList(params.get('concates'));
-        if (toList(params.get('locations')).length) filterSet['contractlocs'] = toList(params.get('locations'));
-        if (Object.keys(filterSet).length > 0) {
-            _setCookie('filterSet', JSON.stringify(filterSet), 1);
-        } else {
-            _deleteCookie('filterSet');
-        }
-    }
-
 
     function _setCookie(name, value, daysToExpire, path = '/', domain = '') {
     const cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}`
