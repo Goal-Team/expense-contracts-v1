@@ -67,7 +67,7 @@ use App\Models\AiResponse;
 use App\Models\LegalAdvisor;
 use App\Helpers\Helpers;
 use App\Support\ServerSideDataTable;
-use Modules\Contract\Services\ContractVisibilityQuery;
+use Modules\Contract\Services\ContractListFilters;
 use LaravelFileViewer;
 use PhpOffice\PhpWord\IOFactory as PhpWordIOFactory;
 use PhpOffice\PhpWord\PhpWord;
@@ -2183,80 +2183,22 @@ class ContractController extends Controller
             }
         };
 
-        // Who may see which contracts, in SQL. ContractVisibilityQuery is the query form of
-        // the branch, department and role checks availableContracts() ran row by row in PHP -
-        // the dashboard effort proved the two agree. With the drop rule in the query, LIMIT
-        // and COUNT are safe, so the page and the counters no longer need every row in PHP.
-        $visibility = new ContractVisibilityQuery();
-        $base = $visibility->visibleContracts();
-
-        // The filter fields arrive as comma-separated ints (contype=1,2 - dev
-        // call 2026-08-28, no JSON). parseIdList drops junk tokens, so a
-        // malformed value filters down to the valid ints and never throws.
-        $contypes = $this->parseIdList($_POST['contype'] ?? null);
-        if (count($contypes) > 0) {
-            $base->whereIn('contracts.contract_type', $contypes);
-        }
-        $concates = $this->parseIdList($_POST['concates'] ?? null);
-        if (count($concates) > 0) {
-            $base->whereIn('contracts.catgoery_id', $concates);
-        }
-        $locations = $this->parseIdList($_POST['locations'] ?? null);
-        if (count($locations) > 0) {
-            $visibility->applyPartyLocationFilter($base, 'contracts', $locations);
-        }
-        if ($partyIdFilter > 0) {
-            $base->whereExists(function ($sub) use ($partyIdFilter) {
-                $sub->select(DB::raw(1))
-                    ->from('contract_party_data')
-                    ->whereColumn('contract_party_data.custom_field_group_id', 'contracts.id')
-                    ->where('contract_party_data.contract_party_exe_id', $partyIdFilter);
-            });
-        }
-
-        $perfT = microtime(true);
+        // One shared filter assembly for the list and the bulk export
+        // (Modules\Contract\Services\ContractListFilters, ticket 10). The export
+        // builds the same query from the same URL values, so the two cannot drift.
         // "My contracts" arrives as the userData field, from the URL's my parameter.
         // '0' means off, same as the old missing-cookie case.
-        if ($request->input('userData')) {
+        $filters = new ContractListFilters();
 
-            // Both whereIn calls take a query, never a list of ids. A list with 1,000 or more
-            // bound ids silently returns zero rows on this stack
-            // (.scratch/wherein-1000-bug/spec.md) - the old code bound ~2,508 ids here and
-            // "My contracts" came back empty.
-            //
-            // approval_status is plain text now, so the unique_id subquery keeps only the
-            // groups that hold a pending row. Every row of those groups is fetched so the
-            // group's leading row (highest id) still names the contract, as the old walk did.
-            $approvalsArr = ApprovalContracts::select('id', 'unique_id', 'contract_id', 'username', 'approval_status')
-                ->whereIn('unique_id', ApprovalContracts::select('unique_id')->where('approval_status', 'pending'))
-                ->whereIn('contract_id', Contract::withoutGlobalScope('accessLevelSelect')->select('id')->where('status', 1))
-                ->orderBy('id', 'DESC')
-                ->get()
-                ->groupBy('unique_id');
-
-            $contractIds = [];
-            foreach ($approvalsArr as $appr) {
-                foreach ($appr as $appr_) {
-                    if ($appr_->approval_status != 'pending') {
-                        continue;
-                    }
-                    // username stays encrypted (dev call 2026-08-21). Decrypt it only for
-                    // pending rows; nothing reads the other four encrypted columns here.
-                    $email = json_decode(decryptString($appr_->username, 'username'))->email ?? '';
-                    if (Helpers::accessInfo($email, false)) {
-                        $contractIds[] = $appr[0]->contract_id;
-                    }
-                }
-            }
-
-            // This id list cannot become a subquery: it is the result of accessInfo() over
-            // decrypted usernames, a check only PHP can run. whereIntegerInRaw inlines the
-            // integers into the SQL text - zero bound values - so the 1,000-binding bug
-            // (.scratch/wherein-1000-bug/spec.md) does not apply, same as the framework's
-            // own eager-load queries.
-            $base->whereIntegerInRaw('contracts.id', array_values(array_unique(array_map('intval', $contractIds))));
-        }
-        $perfProbe('list_my_approvals_ms', $perfT);
+        $perfT = microtime(true);
+        $base = $filters->filtered([
+            'contype' => $_POST['contype'] ?? null,
+            'concates' => $_POST['concates'] ?? null,
+            'locations' => $_POST['locations'] ?? null,
+            'party_id' => $partyIdFilter,
+            'my' => $request->input('userData'),
+        ]);
+        $perfProbe('list_filters_ms', $perfT);
 
         // Counters for the tabs, before the status tab narrows the query: the tab counts
         // always show the whole filtered set, whatever page or tab is on screen. One GROUP BY
@@ -2276,7 +2218,7 @@ class ContractController extends Controller
         $counts = $this->foldListStatusCounters($counterRows);
         $perfProbe('list_counters_ms', $perfT);
 
-        $this->applyListStatusFilter($base, $status);
+        $filters->applyStatus($base, $status);
 
         // Only the columns the table's row transform reads. The query builder carries no
         // accessLevelSelect scope, so this select is what actually runs - no select('*')
@@ -2301,8 +2243,8 @@ class ContractController extends Controller
             // Column 6, End Date, is the one sortable visible column in contractlist.js.
             ->orderColumns([6 => 'contracts.contract_end_date'])
             ->defaultOrder('contracts.id', 'desc')
-            ->searchWith(function ($query, string $term) {
-                $this->applyListSearch($query, $term);
+            ->searchWith(function ($query, string $term) use ($filters) {
+                $filters->applySearch($query, $term);
             })
             ->transformPageWith(function ($rows) {
                 return $this->listContractRows($rows);
@@ -2312,100 +2254,6 @@ class ContractController extends Controller
         $perfProbe('list_respond_ms', $perfT);
 
         return $response;
-    }
-
-    /**
-     * The status-tab filter, in SQL. Mirrors the PHP compare the old row loop ran:
-     * contractStatusKey() lowercases and the table collation compares case-insensitively,
-     * so plain where() calls match the same rows.
-     */
-    private function applyListStatusFilter($query, string $status): void
-    {
-        if ($status === 'all') {
-            return;
-        }
-
-        if (str_contains($status, 'executed_')) {
-            $query->where('contracts.contract_status', 'executed')
-                ->where('contracts.substatus', explode('_', $status)[1]);
-
-            return;
-        }
-
-        if (str_contains($status, 'draft_initial')) {
-            $query->where('contracts.contract_status', 'Draft')
-                ->where('contracts.substatus', 'Initial Draft');
-
-            return;
-        }
-
-        if (str_contains($status, 'draft_under_revision')) {
-            $query->where('contracts.contract_status', 'Draft')
-                ->where('contracts.substatus', 'Under Revision');
-
-            return;
-        }
-
-        if ($status === 'review') {
-            // contractStatusKey() groups the internal 'Pre-Approval' status under 'review',
-            // so the Review tab also returns pre-approval contracts.
-            $query->whereIn('contracts.contract_status', ['Review', 'Pre-Approval', 'PreApproval', 'Pre Approval']);
-
-            return;
-        }
-
-        $query->where('contracts.contract_status', $status);
-    }
-
-    /**
-     * The search box, over the same columns the table renders. Plain columns match in SQL.
-     * contract_name is encrypted by PHP (random IV per value), so SQL cannot see it: the one
-     * column is decrypted over the current tab's id list and the matching ids join the WHERE.
-     * Not searched any more (they were only reachable through the old client-side search):
-     * the formatted currency value - matching it would decrypt every contract's value on
-     * every keystroke - and the S.No column, which is a row number.
-     */
-    private function applyListSearch($query, string $term): void
-    {
-        $nameIds = [];
-        foreach ((clone $query)->select('contracts.id', 'contracts.contract_name')->get() as $row) {
-            if (stripos((string) decryptString($row->contract_name, 'contract_name'), $term) !== false) {
-                $nameIds[] = (int) $row->id;
-            }
-        }
-
-        // Branch names decrypt in SQL (legacy key), but through BranchUser so BranchScope
-        // still limits the rows. A short list of branch ids, bounded by the branch table.
-        $branchIds = BranchUser::where(decrypt_datas('BranchName', 'branch'), 'like', '%' . $term . '%')
-            ->pluck('id')
-            ->all();
-
-        $like = '%' . $term . '%';
-
-        $query->where(function ($w) use ($like, $nameIds, $branchIds) {
-            // Inline integers, zero bound values - the 1,000-binding bug does not apply.
-            $w->whereIntegerInRaw('contracts.id', $nameIds)
-                ->orWhere('contracts.substatus', 'like', $like)
-                ->orWhere('contracts.contract_status', 'like', $like)
-                ->orWhere('contracts.contract_priority', 'like', $like)
-                ->orWhere('contracts.contract_attachment_filename', 'like', $like)
-                // The table renders dates as d-m-Y; DATE_FORMAT is the only way to match
-                // what the user sees, and Eloquent has no date-format operator.
-                ->orWhereRaw("DATE_FORMAT(contracts.fixed_date, '%d-%m-%Y') LIKE ?", [$like])
-                ->orWhereRaw("DATE_FORMAT(contracts.contract_end_date, '%d-%m-%Y') LIKE ?", [$like])
-                ->orWhereIn('contracts.contract_type', ContractType::select('contract_type_id')->where('contract_type', 'like', $like))
-                ->orWhereIn('contracts.catgoery_id', ContractCategories::select('id')->where('name', 'like', $like));
-
-            if (!empty($branchIds)) {
-                $w->orWhereExists(function ($sub) use ($branchIds) {
-                    $sub->select(DB::raw(1))
-                        ->from('contract_party_data')
-                        ->whereColumn('contract_party_data.custom_field_group_id', 'contracts.id')
-                        ->where('contract_party_data.contract_party_type', 'Internal')
-                        ->whereIn('contract_party_data.contract_party_location_id', array_map('strval', $branchIds));
-                });
-            }
-        });
     }
 
     /**
@@ -2606,27 +2454,6 @@ class ContractController extends Controller
         ];
     }
 
-    /**
-     * Parse a comma-separated id list ("1,2") from a URL parameter or POST
-     * field into an array of positive ints. Junk tokens (contype=abc,
-     * contype=1,,x) are dropped, never thrown on. Absent, empty and '0' all
-     * mean no filter and return []. Dev call 2026-08-28: no JSON in the URL.
-     */
-    private function parseIdList($raw): array
-    {
-        if (!is_string($raw) && !is_numeric($raw)) {
-            return [];
-        }
-        $ids = [];
-        foreach (explode(',', (string) $raw) as $token) {
-            $token = trim($token);
-            if ($token !== '' && ctype_digit($token) && (int) $token > 0) {
-                $ids[] = (int) $token;
-            }
-        }
-        return $ids;
-    }
-
     public function listContract(Request $request)
     {
 
@@ -2701,10 +2528,10 @@ class ContractController extends Controller
         );
 
         return view('contract::contract.contractList', compact('branchs', 'contractTypes', 'ContractCategories', 'contractStatus'))->with('counts', $stus)
-        ->with('sellocal', $this->parseIdList($request->input('locations')))
-        ->with('selcate', $this->parseIdList($request->input('concates')))
+        ->with('sellocal', ContractListFilters::parseIdList($request->input('locations')))
+        ->with('selcate', ContractListFilters::parseIdList($request->input('concates')))
         ->with('selstatus', $request->input('status') ?? '')
-        ->with('selcontype', $this->parseIdList($request->input('contype')));
+        ->with('selcontype', ContractListFilters::parseIdList($request->input('contype')));
     }
 
     public function storeContract(Request $request)
