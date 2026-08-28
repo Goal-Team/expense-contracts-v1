@@ -1049,6 +1049,26 @@ $(document).ready(function() {
       window.location.href = _listUrl(params);
     });
 
+    // The green Contract Export button carries the list's filter state on its
+    // URL (ticket 10): the current query string, plus the search box value as
+    // the search parameter. Search is not part of the list URL itself (dev
+    // call 2026-08-28), so it is added here, at click time only.
+    $(document).on("click", "#contractExportBtn", function (e) {
+      e.preventDefault();
+      var params = _listParams();
+      if (!params.get('status')) {
+        params.set('status', $('#status').val());
+      }
+      var search = dt_filter ? dt_filter.search() : '';
+      if (search) {
+        params.set('search', search);
+      } else {
+        params.delete('search');
+      }
+      var qs = params.toString().replace(/%2C/g, ',');
+      window.location.href = APP_URL + '/contracts/builk-export' + (qs ? '?' + qs : '');
+    });
+
     var loadParams = _listParams();
     if(loadParams.get('status')){
         $(`#status_${loadParams.get('status')}`).addClass("act");

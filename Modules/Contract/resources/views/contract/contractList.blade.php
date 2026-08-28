@@ -540,7 +540,9 @@ table.dataTable.table-striped>tbody>tr:nth-of-type(odd)>* {
               <a href="{{url('/')}}/contracts/builk-import" class="me-2 btn btn-sm btn-warning float-end">
              <i class="ti ti-table-down me-1"></i> Contract Import </a>
 
-             <a href="{{url('/')}}/contracts/builk-export" class="me-2 btn btn-sm btn-success float-end">
+             {{-- The click handler in contractlist.js rewrites this href with the list's
+                  current filter query string plus the search box value (ticket 10). --}}
+             <a href="{{url('/')}}/contracts/builk-export" id="contractExportBtn" class="me-2 btn btn-sm btn-success float-end">
             <i class="ti ti-table-import me-1"></i> Contract Export </a>
             
             
