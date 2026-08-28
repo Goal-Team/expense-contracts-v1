@@ -732,9 +732,9 @@ $(document).on('click', '#btnTermination', function(e){
         // three redraw the table in place, same as before - only the address bar
         // changes, so the current view can be copied and sent to a colleague.
         var params = _listParams();
-        _setJsonParam(params, 'contype', $('#contracttype').val());
-        _setJsonParam(params, 'concates', $('#contractcates').val());
-        _setJsonParam(params, 'locations', $('#contractlocs').val());
+        _setCommaParam(params, 'contype', $('#contracttype').val());
+        _setCommaParam(params, 'concates', $('#contractcates').val());
+        _setCommaParam(params, 'locations', $('#contractlocs').val());
         if($(this).attr('name') != 'contractstats'){
             history.replaceState(null, '', _listUrl(params));
             _toggleClearFilters();
@@ -1239,15 +1239,19 @@ $(document).ready(function() {
     }
 
     function _listUrl(params) {
-        var qs = params.toString();
+        // URLSearchParams encodes a comma as %2C. A comma is legal unencoded in
+        // a query string (RFC 3986), and the dev wants the URL readable, so put
+        // the literal comma back.
+        var qs = params.toString().replace(/%2C/g, ',');
         return APP_URL + '/contracts/list' + (qs ? '?' + qs : '');
     }
 
-    // A multi-select's value goes into the URL as a JSON array; an empty
+    // A multi-select's value goes into the URL as comma-separated ints
+    // (contype=1,2 - dev call 2026-08-28, no JSON in the URL); an empty
     // selection removes the parameter.
-    function _setJsonParam(params, name, val) {
+    function _setCommaParam(params, name, val) {
         if (Array.isArray(val) && val.length > 0) {
-            params.set(name, JSON.stringify(val));
+            params.set(name, val.join(','));
         } else {
             params.delete(name);
         }
@@ -1271,13 +1275,15 @@ $(document).ready(function() {
         _setCookie('filterStatus', status, 1);
         var params = _listParams();
         var filterSet = {};
-        try {
-            if (params.get('contype')) filterSet['contracttype'] = JSON.parse(params.get('contype'));
-            if (params.get('concates')) filterSet['contractcates'] = JSON.parse(params.get('concates'));
-            if (params.get('locations')) filterSet['contractlocs'] = JSON.parse(params.get('locations'));
-        } catch (e) {
-            filterSet = {};
-        }
+        // The URL carries comma-separated ints (contype=1,2); the export page
+        // still wants arrays inside its filterSet cookie.
+        var toList = function (raw) {
+            if (!raw) return [];
+            return raw.split(',').filter(function (v) { return v.trim() !== ''; });
+        };
+        if (toList(params.get('contype')).length) filterSet['contracttype'] = toList(params.get('contype'));
+        if (toList(params.get('concates')).length) filterSet['contractcates'] = toList(params.get('concates'));
+        if (toList(params.get('locations')).length) filterSet['contractlocs'] = toList(params.get('locations'));
         if (Object.keys(filterSet).length > 0) {
             _setCookie('filterSet', JSON.stringify(filterSet), 1);
         } else {

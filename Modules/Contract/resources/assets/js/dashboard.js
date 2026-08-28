@@ -46,13 +46,16 @@ function listFilterQuery(status, myOnly){
     }
     let contractType = $('#contracttype').val();
     let contractLocs = $('#contractlocs').val();
+    // Comma-separated ints (contype=1,2 - dev call 2026-08-28, no JSON in the
+    // URL). URLSearchParams encodes a comma as %2C; a comma is legal unencoded
+    // in a query string (RFC 3986), so put the literal comma back.
     if(Array.isArray(contractType) && contractType.length > 0){
-        params.set('contype', JSON.stringify(contractType));
+        params.set('contype', contractType.join(','));
     }
     if(Array.isArray(contractLocs) && contractLocs.length > 0){
-        params.set('locations', JSON.stringify(contractLocs));
+        params.set('locations', contractLocs.join(','));
     }
-    return params.toString();
+    return params.toString().replace(/%2C/g, ',');
 }
 
 function setCookie(name,value,days) {

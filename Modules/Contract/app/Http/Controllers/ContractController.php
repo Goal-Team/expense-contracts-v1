@@ -2190,19 +2190,20 @@ class ContractController extends Controller
         $visibility = new ContractVisibilityQuery();
         $base = $visibility->visibleContracts();
 
-        $contypes = isset($_POST['contype']) ? json_decode($_POST['contype']) : null;
-        if (is_array($contypes) && count($contypes) > 0) {
+        // The filter fields arrive as comma-separated ints (contype=1,2 - dev
+        // call 2026-08-28, no JSON). parseIdList drops junk tokens, so a
+        // malformed value filters down to the valid ints and never throws.
+        $contypes = $this->parseIdList($_POST['contype'] ?? null);
+        if (count($contypes) > 0) {
             $base->whereIn('contracts.contract_type', $contypes);
         }
-        $concates = isset($_POST['concates']) ? json_decode($_POST['concates']) : null;
-        if (is_array($concates) && count($concates) > 0) {
+        $concates = $this->parseIdList($_POST['concates'] ?? null);
+        if (count($concates) > 0) {
             $base->whereIn('contracts.catgoery_id', $concates);
         }
-        if (isset($_POST['locations']) && $_POST['locations'] != 0) {
-            $locations = json_decode($_POST['locations']);
-            if (is_array($locations) && !empty($locations)) {
-                $visibility->applyPartyLocationFilter($base, 'contracts', $locations);
-            }
+        $locations = $this->parseIdList($_POST['locations'] ?? null);
+        if (count($locations) > 0) {
+            $visibility->applyPartyLocationFilter($base, 'contracts', $locations);
         }
         if ($partyIdFilter > 0) {
             $base->whereExists(function ($sub) use ($partyIdFilter) {
@@ -2605,11 +2606,32 @@ class ContractController extends Controller
         ];
     }
 
+    /**
+     * Parse a comma-separated id list ("1,2") from a URL parameter or POST
+     * field into an array of positive ints. Junk tokens (contype=abc,
+     * contype=1,,x) are dropped, never thrown on. Absent, empty and '0' all
+     * mean no filter and return []. Dev call 2026-08-28: no JSON in the URL.
+     */
+    private function parseIdList($raw): array
+    {
+        if (!is_string($raw) && !is_numeric($raw)) {
+            return [];
+        }
+        $ids = [];
+        foreach (explode(',', (string) $raw) as $token) {
+            $token = trim($token);
+            if ($token !== '' && ctype_digit($token) && (int) $token > 0) {
+                $ids[] = (int) $token;
+            }
+        }
+        return $ids;
+    }
+
     public function listContract(Request $request)
     {
 
         // The filter state lives in the URL query string (dev rule 2026-08-27):
-        // ?status=...&contype=[..]&concates=[..]&locations=[..]&my=1. A link with the
+        // ?status=...&contype=1,2&concates=3&locations=2&my=1. A link with the
         // filters in it can be shared, and no cookie is read - stale filter cookies
         // from before the change change nothing here.
 
@@ -2678,17 +2700,11 @@ class ContractController extends Controller
             'initial_draft' => $initial_draft_total
         );
 
-        // A malformed shared URL must not break the page: only a JSON array counts.
-        $queryList = function (?string $raw) {
-            $vals = json_decode($raw ?? '');
-            return is_array($vals) ? $vals : [];
-        };
-
         return view('contract::contract.contractList', compact('branchs', 'contractTypes', 'ContractCategories', 'contractStatus'))->with('counts', $stus)
-        ->with('sellocal', $queryList($request->input('locations')))
-        ->with('selcate', $queryList($request->input('concates')))
+        ->with('sellocal', $this->parseIdList($request->input('locations')))
+        ->with('selcate', $this->parseIdList($request->input('concates')))
         ->with('selstatus', $request->input('status') ?? '')
-        ->with('selcontype', $queryList($request->input('contype')));
+        ->with('selcontype', $this->parseIdList($request->input('contype')));
     }
 
     public function storeContract(Request $request)
