@@ -1057,7 +1057,12 @@ $(document).ready(function() {
       if (!params.get('status')) {
         params.set('status', $('#status').val());
       }
-      var search = dt_filter ? dt_filter.search() : '';
+      // The table variable lives in another closure; read the search box
+      // through the DataTables API instead.
+      var search = '';
+      if ($.fn.DataTable && $.fn.DataTable.isDataTable('.dt-column-search')) {
+        search = $('.dt-column-search').DataTable().search();
+      }
       if (search) {
         params.set('search', search);
       } else {

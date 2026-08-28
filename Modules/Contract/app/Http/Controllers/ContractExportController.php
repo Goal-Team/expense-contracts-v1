@@ -362,6 +362,9 @@ class ContractExportController extends Controller
                 continue;
             }
 
+            // $key is reused by the row loop below, so log the type here.
+            \Log::debug('bulkDownload: type sheet', ['type' => $key, 'rows' => count($contracts)]);
+
             // Commencement Type
             $isAllInOneContinuation = false;
             if ($allInOnePage) {
@@ -488,6 +491,12 @@ class ContractExportController extends Controller
 
             foreach ($contracts as $key => $con) {
 
+                // availableContracts() used to reformat the two dates before this
+                // writer ran; the rows are plain database rows now, so the same
+                // format (d-m-Y, '-' when empty) is applied here.
+                $con->fixed_date = ($con->fixed_date == '') ? '-' : date('d-m-Y', strtotime($con->fixed_date));
+                $con->contract_end_date = ($con->contract_end_date == '') ? '-' : date('d-m-Y', strtotime($con->contract_end_date));
+
                 $cell = 'A' . $row;
                 $newSheet->setCellValue($cell, ($row - 2));
 
@@ -519,7 +528,10 @@ class ContractExportController extends Controller
 
 
                 $cell = 'H' . $row;
-                $newSheet->setCellValue($cell, $checkCategory[$con->catgoery_identity] ?? '');
+                // catgoery_identity was a value availableContracts() copied out of
+                // catgoery_id before it overwrote it. The rows are plain now, so the
+                // raw column carries the same id.
+                $newSheet->setCellValue($cell, $checkCategory[$con->catgoery_id] ?? '');
 
 
 
@@ -827,11 +839,14 @@ class ContractExportController extends Controller
 
         //$writer->save('php://output');
         // Stream the file to the browser
+        \Log::debug('bulkDownload: all sheets built, streaming starts');
         $response =  new StreamedResponse(
             function () use ($writer) {
+                $t = microtime(true);
                 $writer->save('php://output');
+                \Log::debug('bulkDownload: stream done', ['save_ms' => round((microtime(true) - $t) * 1000)]);
             }
-        );        
+        );
         
         $timestampFile = strtotime(date('Y-m-d H:i:s'));
         $response->headers->set('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
