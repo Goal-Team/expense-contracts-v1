@@ -154,6 +154,9 @@ protocol, filtering done in PHP, no LIMIT anywhere). View is
   read per draw; the server reads and writes no filter cookie, stale ones are ignored and deleted
   on load. `filterStatus`/`filterSet` stay write-only for the bulk-export page's form prefill.
   Dashboard handoff travels on the navigation URL. No regression: 15 queries, 5,767 bytes.
+- [09 comma-separated query params](issues/09-comma-query-params.md) — the URL and POST carry
+  comma-separated ints now (`?contype=6,7`), no JSON; `parseIdList()` drops junk tokens server-side,
+  the dashboard handoff and dropdown preselects use the same form. 15 queries, 5,767 bytes — no move.
 
 ## Order of work
 
