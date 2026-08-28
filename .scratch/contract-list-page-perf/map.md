@@ -157,6 +157,11 @@ protocol, filtering done in PHP, no LIMIT anywhere). View is
 - [09 comma-separated query params](issues/09-comma-query-params.md) — the URL and POST carry
   comma-separated ints now (`?contype=6,7`), no JSON; `parseIdList()` drops junk tokens server-side,
   the dashboard handoff and dropdown preselects use the same form. 15 queries, 5,767 bytes — no move.
+- [10 export inherits the list filters](issues/10-export-inherits-filters.md) — one shared service
+  (`ContractListFilters`) builds the filtered query for the list AJAX and `bulkDownload`; the green
+  button carries the URL filter state + search, the export page lost its type picker and every
+  cookie, `filterStatus`/`filterSet` are dead. Export rows equal the list on every shape
+  (2,508 / 332 / 69 / 70 / 1 / 31 / 74); list unchanged at 15 queries, 5,767 bytes.
 
 ## Order of work
 
@@ -179,10 +184,10 @@ claimed it (Assignee line).
 
 ## Not yet specified
 
-_Reopened 2026-08-28: the dev reviewed and set two follow-ups, tickets 09 and 10._ Both
-questions from the first close are answered: the DataTables export buttons never rendered
-(duplicate `dom:` key, dead config on main too — dev says leave it, not a perf issue), and the
-bulk-export page is the one real export — it now inherits the list's filters (ticket 10).
+_Reopened 2026-08-28: the dev reviewed and set two follow-ups, tickets 09 and 10. Both are
+closed._ The questions from the first close are answered: the DataTables export buttons never
+rendered (duplicate `dom:` key, dead config on main too — dev says leave it, not a perf issue),
+and the bulk-export page is the one real export — it inherits the list's filters now (ticket 10).
 Search stays out of the URL — dev's call, backend search is enough.
 
 Earlier fog, all resolved:
@@ -194,15 +199,13 @@ the party and location filters were exercised live on the seed (tickets 01 and 0
 
 **No ticket is open. The destination test passes**: the page loads with no error on every
 filter shape, the numbers are in [measurements/report.md](measurements/report.md), and the
-work is committed on this branch. Two questions wait on the dev before the effort is called
-finished:
+work is committed on this branch. Of the two questions that waited on the dev, the second
+(killing `filterSet`/`filterStatus`, export handoff on the URL) is done — ticket 10. One
+remains:
 
-1. The export buttons (CSV/Excel/PDF/print) export the current page only now — with
-   server-side paging the client never holds more than one page. Old behaviour needs a
-   server-side export if wanted (ticket 08, written down).
-2. Killing the last two write-only cookies (`filterSet`, `filterStatus`) means putting the
-   bulk-export handoff on the export link's URL — touches the export page, a shared surface
-   (ticket 07, left for a later effort).
+1. The DataTables toolbar export buttons (CSV/Excel/PDF/print) never rendered (dead config,
+   dev says leave it). The real export is the bulk-export page, and it exports the full
+   filtered set server-side now (ticket 10), so nothing is lost by the one-page client.
 
 ## Out of scope
 
