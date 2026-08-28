@@ -188,7 +188,9 @@ _Reopened 2026-08-28: the dev reviewed and set two follow-ups, tickets 09 and 10
 closed._ The questions from the first close are answered: the DataTables export buttons never
 rendered (duplicate `dom:` key, dead config on main too — dev says leave it, not a perf issue),
 and the bulk-export page is the one real export — it inherits the list's filters now (ticket 10).
-Search stays out of the URL — dev's call, backend search is enough.
+Search stays out of the URL — dev's call, backend search is enough. Written down for a
+possible later effort, not this one: the export itself runs ~2,510 queries on a full export
+(one party query per contract, ticket 10) — it finishes fine and is not the measured page.
 
 Earlier fog, all resolved:
 `availableContracts()` per-row work now runs on one page of rows (ticket 08); the counter fold
