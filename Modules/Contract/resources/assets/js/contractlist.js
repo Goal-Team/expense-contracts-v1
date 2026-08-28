@@ -321,27 +321,36 @@ $(document).on('click', '#btnTermination', function(e){
         //         } );
         //     } );
         },
+      // The server pages, filters, sorts and searches now (Laravel side:
+      // ContractController::listContractData + App\Support\ServerSideDataTable).
+      // Only one page of rows crosses the wire per draw.
+      serverSide: true,
       ajax: {
           'url': APP_URL + '/contracts/data',
-          data: {
-             status:(_getCookie('filterStatus') ?? $('#status').val()),
-             userData:(_getCookie('myFilterStatus') ?? 0),
-             contype:(_getCookie('filterConType') ?? 0),
-           locations:(_getCookie('filterConLoc') ?? 0),
-           party_id: partyIdFilter
+          // A function, not an object, so the URL query string is read again on
+          // every draw. The URL is the filter state (dev rule 2026-08-27) - a link
+          // with the filters in it can be shared, and no cookie carries state.
+          data: function (d) {
+             var params = _listParams();
+             d.status = params.get('status') ?? $('#status').val();
+             d.userData = params.get('my') ? 1 : 0;
+             d.contype = params.get('contype') ?? 0;
+             d.concates = params.get('concates') ?? 0;
+             d.locations = params.get('locations') ?? 0;
+             d.party_id = partyIdFilter;
           },
           'method': 'post',
             headers: {
             'X-CSRF-TOKEN': $('meta[name="csrf-token"]').attr('content')
-            },          
+            },
       },
       "ordering": true,
-      deferLoading: 57,
-      processing: true,      
+      processing: true,
       columns: [
-        { data: 'id',   render : function ( data, type, row, meta) 
+        { data: 'id',   render : function ( data, type, row, meta)
            {
-               var rowIndex = meta.row + 1; // Adding 1 to start index from 1 instead of 0
+               // Row number keeps counting across pages.
+               var rowIndex = meta.settings._iDisplayStart + meta.row + 1;
                return rowIndex;
            }},
         { data: 'contract_name'},
@@ -361,14 +370,7 @@ $(document).on('click', '#btnTermination', function(e){
             orderable: false,
             render : function ( data, type, row ) 
            {
-               
-            //For Settting History Filter behalf status
-            let columnKey = 'status';
-            if(!_getCookie('filterStatus')){
-                _setCookie('filterApplied', true, 1);
-                _setCookie('filterStatus', $('#status').val(), 1);
-            }
-            
+
             var button = '<a href="' + APP_URL +'/contracts/' + data.id+'?tab=details" class="btn btn-sm btn-icon dropdown-toggle hide-arrow text-body" data-bs-toggle="tooltip" title="Preview"><i class="ti ti-eye mx-2 ti-sm"></i></a>';
 
             
@@ -722,37 +724,28 @@ $(document).on('click', '#btnTermination', function(e){
       dom: '<"row"<"col-sm-12 col-md-6"l><"col-sm-12 col-md-6 d-flex justify-content-center justify-content-md-end"f>><"table-responsive"t><"row"<"col-sm-12 col-md-6"i><"col-sm-12 col-md-6"p>>'
     });
     
-    dt_filter.on('search.dt', function() {
-        recount_status_(dt_filter.rows( { filter : 'applied'} ).data(), dt_filter.rows( { filter : 'applied'} ).nodes().length);
-    });
-    
-    
     $(document).on("change", ".filterContractList", function () {
-        //For Settting History Filter behalf column filter
-        $('.filterContractList').each(function (i) {
-            var filterVals = $(this).val();
-            var filterName = $(this).attr('id');
-            if(!_getCookie('filterSet')){
-                let columnKey = filterName;
-                let filtersSetData = {};
-                 filtersSetData[columnKey] = filterVals;
-                _setCookie('filterApplied', true, 1);
-                _setCookie('filterSet', JSON.stringify(filtersSetData), 1);
-            }else{
-                let getFilterSet = _getCookie('filterSet') ?? '[]';
-                let filtersSetData = JSON.parse(getFilterSet);
-                let columnKey = filterName;
-                filtersSetData[columnKey] = filterVals;
-                _setCookie('filterSet', JSON.stringify(filtersSetData), 1);
-            }
-        });
+        // Write the multi-select filters into the URL query string. The status
+        // dropdown reloads the page (the tab strips are server-rendered); the other
+        // three redraw the table in place, same as before - only the address bar
+        // changes, so the current view can be copied and sent to a colleague.
+        var params = _listParams();
+        _setCommaParam(params, 'contype', $('#contracttype').val());
+        _setCommaParam(params, 'concates', $('#contractcates').val());
+        _setCommaParam(params, 'locations', $('#contractlocs').val());
         if($(this).attr('name') != 'contractstats'){
+            history.replaceState(null, '', _listUrl(params));
+            _toggleClearFilters();
             dt_filter.ajax.reload();
         }else{
-          _setCookie('filterStatus', $(this).val());
-          window.location.href=`${APP_URL}/contracts/list`;            
+            if($(this).val()){
+                params.set('status', $(this).val());
+            }else{
+                params.delete('status');
+            }
+            window.location.href = _listUrl(params);
         }
-    });    
+    });
     
     $('#column-filter-table').on('change', function (e) {
         e.preventDefault();
@@ -1025,38 +1018,78 @@ $(document).ready(function() {
     // ================= Onclick Status action ====================//
     
     
+    // Every action below rewrites the URL query string and navigates. The URL is
+    // the filter state (dev rule 2026-08-27) - no cookie carries it any more.
     $(document).on("click", ".loadstatus", function () {
-      let statusName = $(this).data('stat');
-      _setCookie('filterStatus', statusName);
-      window.location.href=`${APP_URL}/contracts/list`;
+      var params = _listParams();
+      params.set('status', $(this).data('stat'));
+      window.location.href = _listUrl(params);
     });
     $(document).on("click", "#clearMyActions", function () {
-      _deleteCookie('myFilterStatus');
-       _setCookie('filterStatus', 'all');
-      window.location.href=`${APP_URL}/contracts/list`;
+      var params = _listParams();
+      params.delete('my');
+      params.set('status', 'all');
+      window.location.href = _listUrl(params);
     });
-    
+
     $(document).on("click", "#clearAllFilters", function () {
-        _setCookie('filterStatus', 'all');
-        _deleteCookie('filterApplied');
-        _deleteCookie('filterSet');
-        _deleteCookie('filterConLoc'); 
-        _deleteCookie('filterConType');
-        window.location.href=`${APP_URL}/contracts/list`;
+      var params = _listParams();
+      params.delete('contype');
+      params.delete('concates');
+      params.delete('locations');
+      params.set('status', 'all');
+      window.location.href = _listUrl(params);
     });
 
     $(document).on("click", "#clearAllActions", function () {
-      let userName = $(this).data('user');
-      _setCookie('myFilterStatus', userName);
-      window.location.href=`${APP_URL}/contracts/list`;
+      var params = _listParams();
+      params.set('my', '1');
+      window.location.href = _listUrl(params);
     });
-    
-     if(_getCookie('filterStatus')){
-        $(`#status_${_getCookie('filterStatus')}`).addClass("act");
-        $("status").val(_getCookie('filterStatus'));
-     }
-    
-    // ================= Onclick Status action ends ====================//      
+
+    // The green Contract Export button carries the list's filter state on its
+    // URL (ticket 10): the current query string, plus the search box value as
+    // the search parameter. Search is not part of the list URL itself (dev
+    // call 2026-08-28), so it is added here, at click time only.
+    $(document).on("click", "#contractExportBtn", function (e) {
+      e.preventDefault();
+      var params = _listParams();
+      if (!params.get('status')) {
+        params.set('status', $('#status').val());
+      }
+      // The table variable lives in another closure; read the search box
+      // through the DataTables API instead.
+      var search = '';
+      if ($.fn.DataTable && $.fn.DataTable.isDataTable('.dt-column-search')) {
+        search = $('.dt-column-search').DataTable().search();
+      }
+      if (search) {
+        params.set('search', search);
+      } else {
+        params.delete('search');
+      }
+      var qs = params.toString().replace(/%2C/g, ',');
+      window.location.href = APP_URL + '/contracts/builk-export' + (qs ? '?' + qs : '');
+    });
+
+    var loadParams = _listParams();
+    if(loadParams.get('status')){
+        $(`#status_${loadParams.get('status')}`).addClass("act");
+    }
+    _toggleClearFilters();
+
+    // One-transition cleanup: nothing reads the filter cookies any more - the
+    // filter state is the URL, and the bulk-export handoff is the export button's
+    // URL too (ticket 10). A stale value must not linger for another page to
+    // trip on, so every old filter cookie is deleted on load.
+    _deleteCookie('myFilterStatus');
+    _deleteCookie('filterConType');
+    _deleteCookie('filterConLoc');
+    _deleteCookie('filterApplied');
+    _deleteCookie('filterStatus');
+    _deleteCookie('filterSet');
+
+    // ================= Onclick Status action ends ====================//
        
 });
     //@date:: 21 May 2024,  @author :: Mangaleswari, @desc:: Representative delete row funtion
@@ -1225,16 +1258,41 @@ $(document).ready(function() {
         }
     }
     
-    function recount_status_(dataFiltered, dataFilteredLength){
-        if(_getCookie('filterConLoc') || _getCookie('filterConType')){
-            $('#clearAllFilters').removeClass('d-none');
-        }
-        
-        if(_getCookie('filterApplied') === 'true' && _getCookie('filterSet')){
-            $('#clearAllFilters').removeClass('d-none');
+    // ============ URL filter state helpers (dev rule 2026-08-27) ============ //
+
+    function _listParams() {
+        return new URLSearchParams(window.location.search);
+    }
+
+    function _listUrl(params) {
+        // URLSearchParams encodes a comma as %2C. A comma is legal unencoded in
+        // a query string (RFC 3986), and the dev wants the URL readable, so put
+        // the literal comma back.
+        var qs = params.toString().replace(/%2C/g, ',');
+        return APP_URL + '/contracts/list' + (qs ? '?' + qs : '');
+    }
+
+    // A multi-select's value goes into the URL as comma-separated ints
+    // (contype=1,2 - dev call 2026-08-28, no JSON in the URL); an empty
+    // selection removes the parameter.
+    function _setCommaParam(params, name, val) {
+        if (Array.isArray(val) && val.length > 0) {
+            params.set(name, val.join(','));
+        } else {
+            params.delete(name);
         }
     }
-    
+
+    // Show the Clear Filters button when the URL carries a filter.
+    function _toggleClearFilters() {
+        var params = _listParams();
+        if (params.get('contype') || params.get('concates') || params.get('locations')) {
+            $('#clearAllFilters').removeClass('d-none');
+        } else {
+            $('#clearAllFilters').addClass('d-none');
+        }
+    }
+
     function _setCookie(name, value, daysToExpire, path = '/', domain = '') {
     const cookie = `${encodeURIComponent(name)}=${encodeURIComponent(value)}`
 

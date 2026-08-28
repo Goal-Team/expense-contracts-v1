@@ -24,16 +24,6 @@
         if ($('.emptyattachemnt').length > 0) {
             $('#uplod').hide();
         };
-        
-        let filterStatus = _getCookie_('filterStatus');
-        if(filterStatus){
-            $('#filterStatus').val(filterStatus);
-        }
-
-        let filterSet = _getCookie_('filterSet');
-        if(filterSet){
-            $('#filterSearch').val(filterSet);
-        }
 
         $('#btnSelectAllColumns').on('click', function() {
             $('#export_columns option').prop('selected', true);
@@ -45,19 +35,6 @@
             $('#export_columns').trigger('change');
         });
     });
-    
-  function _getCookie_(name) {
-    const cookies = document.cookie.split('; ')
-
-    for (let i = 0; i < cookies.length; i++) {
-      const [cookieName, cookieValue] = cookies[i].split('=')
-      if (decodeURIComponent(cookieName) === name) {
-        return decodeURIComponent(cookieValue)
-      }
-    }
-
-    return null
-  }    
 </script>
 {{-- <script type="module" src="https://cdnjs.cloudflare.com/ajax/libs/dropzone/5.4.0/min/dropzone.min.js"></script> --}}
 @endsection
@@ -154,26 +131,14 @@
                             <div class="col">
                                 <h5 class="card-title">Download data:</h5>
                                 <p>Using older versions of Office/Excel? Download the template here.</p>
-                                <form id="createcontract" action="builk-export-download" method="POST"
-                                    enctype="multipart/form-data">
+                                {{-- The list's filter state arrives on this page's query string
+                                     (status, contype, concates, locations, my, search - ticket 10)
+                                     and rides the form action into bulkDownload unchanged. No
+                                     cookie and no type picker: the type filter is contype now. --}}
+                                <form id="createcontract"
+                                    action="builk-export-download{{ request()->getQueryString() ? '?' . request()->getQueryString() : '' }}"
+                                    method="POST" enctype="multipart/form-data">
                                     @csrf
-                                    <input type="hidden" name="status" id="filterStatus" />
-                                    <input type="hidden" name="filterSearch" id="filterSearch" />
-                                    <div class="col-md-6 mb-3">
-                                        <label class="form-label" for="contracttype">Contract Type <span
-                                                class="text-danger">*</span></label>
-                                        <div class="select2-success">
-                                            <select id="contracttype" name="ContractType[]" class="select2 form-select"
-                                                multiple>
-                                                <option value="0">All</option>
-                                                @foreach ($contractTypes as $contractType)
-                                                <option value="{{ $contractType->contract_type_id }}">
-                                                    {{ $contractType->contract_type }}
-                                                </option>
-                                                @endforeach
-                                            </select>
-                                        </div>
-                                    </div>
                                     <div class="col-md-6 mb-3">
                                         <label class="form-label" for="export_columns">Export Columns <span class="text-danger">*</span></label>
                                         <div class="mb-1">

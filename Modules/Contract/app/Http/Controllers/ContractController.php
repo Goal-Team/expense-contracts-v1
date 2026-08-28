@@ -66,6 +66,8 @@ use App\Models\ContractStatusTexts;
 use App\Models\AiResponse;
 use App\Models\LegalAdvisor;
 use App\Helpers\Helpers;
+use App\Support\ServerSideDataTable;
+use Modules\Contract\Services\ContractListFilters;
 use LaravelFileViewer;
 use PhpOffice\PhpWord\IOFactory as PhpWordIOFactory;
 use PhpOffice\PhpWord\PhpWord;
@@ -2155,296 +2157,310 @@ class ContractController extends Controller
 
     public function listContractData(Request $request)
     {
-        
-        $this->getFilterSetData($request);
+
+        // Every filter arrives as a request field. The JS reads them from the URL query
+        // string and sends them per draw (dev rule 2026-08-27: no filter cookies). This
+        // method reads no cookie and writes no cookie, so stale filter cookies from
+        // before the change are ignored.
         $partyIdFilter = (int)($request->input('party_id') ?? 0);
-        
-        $contracts = [];
-        
-        $contracts_query = "";
-        
-        if (isset($_POST['status']) && $_POST['status'] !== 'all') {
-            $contracts_query = Contract::select(
-                'contract_name',
-                'id',
-                'currency',
-                'currency_value',
-                'end_contract_type',
-                'contract_status',
-                'substatus',
-                'fixed_date',
-                'contract_end_date',
-                'onetime_end_date',
-                'contract_type',
-                'catgoery_id'
-            );
-        } else if (isset($_POST['status']) && $_POST['status'] === 'all') {
-            $contracts_query = Contract::select('contract_name', 'id', 'currency', 'currency_value', 'end_contract_type', 'contract_status', 'substatus', 'fixed_date', 'onetime_end_date', 'contract_end_date', 'contract_type', 'catgoery_id');
+
+        // No status field means no list, same as before the server-side-paging rewrite.
+        if (!isset($_POST['status'])) {
+            return response()->json([
+                'draw' => (int) ($request->input('draw') ?? 1),
+                'recordsTotal' => 0,
+                'recordsFiltered' => 0,
+                'data' => [],
+                'counts' => $this->foldListStatusCounters(collect()),
+            ]);
         }
-        
-        if(!empty($contracts_query)){
-            $contracts_query->where('status', 1);
-            $contracts_query->orderBy('id', 'desc');
-            if (isset($_POST['contype']) && $_POST['contype'] != 0 && !empty(json_decode($_POST['contype']))) {
-                $contracts_query->whereIn('contract_type', json_decode($_POST['contype']));
-            }        
-            if (isset($_POST['concates']) && !empty(json_decode($_POST['concates']))) {
-                $contracts_query->whereIn('catgoery_id', json_decode($_POST['concates']));
-            }        
+        $status = $_POST['status'];
 
-            $contracts = $contracts_query->get();
-            
+        // Block timers for the perf log (local only; see App\Perf\PerfRecorder).
+        $perfProbe = function (string $name, float $sinceUs) {
+            if (class_exists(\App\Perf\PerfRecorder::class)) {
+                \App\Perf\PerfRecorder::probe($name, round((microtime(true) - $sinceUs) * 1000, 2));
+            }
+        };
+
+        // One shared filter assembly for the list and the bulk export
+        // (Modules\Contract\Services\ContractListFilters, ticket 10). The export
+        // builds the same query from the same URL values, so the two cannot drift.
+        // "My contracts" arrives as the userData field, from the URL's my parameter.
+        // '0' means off, same as the old missing-cookie case.
+        $filters = new ContractListFilters();
+
+        $perfT = microtime(true);
+        $base = $filters->filtered([
+            'contype' => $_POST['contype'] ?? null,
+            'concates' => $_POST['concates'] ?? null,
+            'locations' => $_POST['locations'] ?? null,
+            'party_id' => $partyIdFilter,
+            'my' => $request->input('userData'),
+        ]);
+        $perfProbe('list_filters_ms', $perfT);
+
+        // Counters for the tabs, before the status tab narrows the query: the tab counts
+        // always show the whole filtered set, whatever page or tab is on screen. One GROUP BY
+        // returns ~15 status/substatus pairs; the fold to counter keys stays in PHP because
+        // contractStatusKey() and the case-sensitive 'Terminated' arm live there. Grouped on
+        // HEX() so the case-insensitive table collation cannot merge 'Terminated' with
+        // 'terminated' before PHP sees them - the dashboard effort's pattern.
+        $perfT = microtime(true);
+        $counterRows = (clone $base)
+            ->selectRaw(
+                'HEX(contract_status) AS contract_status_hex,'
+                . ' HEX(substatus) AS substatus_hex,'
+                . ' COUNT(*) AS total'
+            )
+            ->groupBy(DB::raw('HEX(contract_status)'), DB::raw('HEX(substatus)'))
+            ->get();
+        $counts = $this->foldListStatusCounters($counterRows);
+        $perfProbe('list_counters_ms', $perfT);
+
+        $filters->applyStatus($base, $status);
+
+        // Only the columns the table's row transform reads. The query builder carries no
+        // accessLevelSelect scope, so this select is what actually runs - no select('*')
+        // overwrite, no 119-column rows.
+        $base->select(
+            'contracts.id',
+            'contracts.contract_name',
+            'contracts.currency_value',
+            'contracts.end_contract_type',
+            'contracts.contract_status',
+            'contracts.substatus',
+            'contracts.fixed_date',
+            'contracts.contract_end_date',
+            'contracts.contract_type',
+            'contracts.catgoery_id',
+            'contracts.contract_priority',
+            'contracts.contract_attachment_filename'
+        );
+
+        $perfT = microtime(true);
+        $response = (new ServerSideDataTable($base))
+            // Column 6, End Date, is the one sortable visible column in contractlist.js.
+            ->orderColumns([6 => 'contracts.contract_end_date'])
+            ->defaultOrder('contracts.id', 'desc')
+            ->searchWith(function ($query, string $term) use ($filters) {
+                $filters->applySearch($query, $term);
+            })
+            ->transformPageWith(function ($rows) {
+                return $this->listContractRows($rows);
+            })
+            ->withExtras(['counts' => $counts])
+            ->respond($request);
+        $perfProbe('list_respond_ms', $perfT);
+
+        return $response;
+    }
+
+    /**
+     * One page of database rows to the row arrays contractlist.js renders - and nothing
+     * more. The old response serialised whole models: 119 keys per row, party rows twice.
+     * These are the 14 fields the columns actually read.
+     */
+    private function listContractRows($rows): array
+    {
+        if ($rows->isEmpty()) {
+            return [];
         }
 
-        setcookie('filterStatus', $_POST['status'], time() + (86400 * 30), "/");
+        // Party rows of this page only. The id list is bounded by the page length, it does
+        // not grow with the dataset, and whereIntegerInRaw inlines it with zero bound values.
+        $partyRows = DB::table('contract_party_data')
+            ->select('custom_field_group_id', 'contract_party_type', 'contract_party_location_id')
+            ->whereIntegerInRaw('custom_field_group_id', $rows->pluck('id')->all())
+            ->orderBy('id')
+            ->get()
+            ->groupBy('custom_field_group_id');
 
-        $ContractsFinal = $this->availableContracts($contracts, true);
+        // BranchScope limits these to the branches this user may reach, so the lookup below
+        // is also the branch-access test, same as availableContracts().
+        $branchNames = BranchUser::pluck(decrypt_data('BranchName', 'branch'), 'id')->toArray();
+        $typeNames = ContractType::pluck('contract_type', 'contract_type_id')->toArray();
+        $categoryNames = ContractCategories::pluck('name', 'id')->toArray();
 
-
-        $contract_all_total                = 0;
-        $contract_draft_total              = 0;
-        $contract_review_total             = 0;
-        $contract_finalization_total       = 0;
-        $contract_negotiation_total        = 0;
-        $contract_approval_total           = 0;
-        $contract_approved_total           = 0;
-        $contract_signing_total            = 0;
-        $contract_executable_total         = 0;
-        $contract_executable_active_total  = 0;
-        $contract_executable_expired_total = 0;
-        $contract_executable_pending_total = 0;
-        $contract_executable_renewed_total = 0;
-        $contract_executable_amended_total = 0;
-        $contract_executable_termina_total = 0;
-        $contract_executable_comp_total    = 0;
-        $under_revision_total = 0;
-        $initial_draft_total = 0;
-        
-        $contractIds = [];
-        $checkMyContracts = 0;
-        if (isset($_COOKIE['myFilterStatus'])) {
-            $checkMyContracts = 1;
-            foreach ($ContractsFinal as $contract) {
-                $contractIds[] = $contract->id;
-            }
-
-            $approvalsArr = ApprovalContracts::select('*')
-                ->whereIn('contract_id', $contractIds)
-                ->orderBy('id', 'DESC')
-                ->get()
-                ->map(function ($task) {
-                    $task->username = decryptString($task->username, 'username');
-                    $task->status = decryptString($task->status, 'status');
-                    $task->previous_status = decryptString($task->previous_status, 'previous_status');
-                    $task->next_action_item = decryptString($task->next_action_item, 'next_action_item');
-                    $task->next_action_description = decryptString($task->next_action_description, 'next_action_description');
-                    $task->approval_status = decryptString($task->approval_status, 'approval_status');
-                    return $task;
-                })
-                ->groupBy('unique_id')
-                ->reverse();
-
-
-            $contractIds = [];
-            foreach ($approvalsArr as $appr) {
-                if (count($appr) == 1 && $appr[0]->approval_status == 'pending' && Helpers::accessInfo(json_decode($appr[0]->username)->email ?? '', false)) {
-                    $contractIds[] = $appr[0]->contract_id;
-                } else {
-                    foreach ($appr as $appr_) {
-                        if ($appr_->approval_status == 'pending' && Helpers::accessInfo(json_decode($appr_->username)->email ?? '', false)) {
-                            $contractIds[] = $appr[0]->contract_id;
-                        }
+        $data = [];
+        foreach ($rows as $row) {
+            // Same walk availableContracts() did: the last Internal party sitting in a
+            // reachable branch names the location.
+            $locationBranch = '-';
+            $reached = false;
+            foreach ($partyRows->get($row->id, collect()) as $party) {
+                if ($party->contract_party_location_id && $party->contract_party_type == 'Internal') {
+                    if (array_key_exists($party->contract_party_location_id, $branchNames) || $reached) {
+                        $locationBranch = $branchNames[$party->contract_party_location_id] ?? '-';
+                        $reached = true;
                     }
                 }
             }
+
+            $currencyValue = decryptString($row->currency_value, 'currency_value');
+            $converted = '-';
+            if ($currencyValue > 0) {
+                $converted = currency_formatter(env('default_currency'), $currencyValue);
+            }
+
+            $data[] = [
+                'id' => $row->id,
+                'contract_name' => decryptString($row->contract_name, 'contract_name'),
+                'location_branch' => $locationBranch,
+                'contract_type' => $typeNames[$row->contract_type] ?? '',
+                'catgoery_id' => $categoryNames[$row->catgoery_id] ?? null,
+                'fixed_date' => ($row->fixed_date == '') ? '-' : date('d-m-Y', strtotime($row->fixed_date)),
+                'contract_end_date' => ($row->contract_end_date == '') ? '-' : date('d-m-Y', strtotime($row->contract_end_date)),
+                'contract_priority' => $row->contract_priority,
+                'substatus' => $row->substatus,
+                'contract_status' => $row->contract_status,
+                'end_contract_type' => decryptString($row->end_contract_type, 'end_contract_type'),
+                'currency_value' => $currencyValue,
+                'currency_value_converted' => $converted,
+                'contract_attachment_filename' => $row->contract_attachment_filename,
+            ];
         }
-        
-        $finalFilteredResult = [];
-        foreach ($ContractsFinal as $contract) {
-            if ($partyIdFilter > 0) {
-                $hasPartyMatch = false;
-                foreach ($contract->contractParty as $contractPart) {
-                    if ((int)($contractPart->contract_party_exe_id ?? 0) === $partyIdFilter) {
-                        $hasPartyMatch = true;
-                        break;
-                    }
-                }
 
-                if (!$hasPartyMatch) {
-                    continue;
-                }
-            }
+        return $data;
+    }
 
-            if ($checkMyContracts > 0) {
-                if (!in_array($contract->id, $contractIds)) {
-                    continue;
-                }
-            }
-            $applicable = true;
-            if (isset($_POST['locations']) && $_POST['locations'] != 0) {
-                $applicable = false;
-                $contractParty = $contract->contractParty;
-                foreach ($contractParty as $contractPart) {
-                    
-                    $contractLocation = json_decode($_POST['locations']);
-                    
-                    if(is_array($contractLocation) && !empty($contractLocation)){
-                        //Check Branches Accessible for the User
-                        if ($contractPart->contract_party_location_id == !null && $contractPart->contract_party_type == 'Internal' && in_array($contractPart->contract_party_location_id, $contractLocation)) {
-                            $applicable = true;
-                        }
-                    }else{
-                      $applicable = true;  
-                    }
-                }
-            }
+    /**
+     * Fold the GROUP BY rows into the counter keys the tabs read. Arm for arm the switch the
+     * old row loop ran, including the keys the old response built twice (draft_initial and
+     * draft_under_revision both carried the whole draft total). Not shared with the
+     * dashboard's foldStatusCounters(): this page counts three buckets the dashboard does
+     * not have (executed_amended, under_revision, initial_draft).
+     */
+    private function foldListStatusCounters($rows): array
+    {
+        $c = [
+            'all' => 0,
+            'draft' => 0,
+            'review' => 0,
+            'finalization' => 0,
+            'negotiation' => 0,
+            'approval' => 0,
+            'approved' => 0,
+            'signing' => 0,
+            'executed' => 0,
+            'executed_active' => 0,
+            'executed_expired' => 0,
+            'executed_pending' => 0,
+            'executed_renewed' => 0,
+            'executed_amended' => 0,
+            'executed_terminated' => 0,
+            'executed_completed' => 0,
+            'under_revision' => 0,
+            'initial_draft' => 0,
+        ];
 
-            if ($applicable) {
-                
-                $contract->currency_value_converted = "-";
-                if ($contract->currency_value > 0) {
-                    $contract->currency_value_converted = currency_formatter(env('default_currency'), $contract->currency_value);
-                }
+        foreach ($rows as $row) {
+            $total = (int) $row->total;
 
-                if (isset($_POST['status']) && $_POST['status'] !== 'all') {
-                    
-                    if (str_contains($_POST['status'], 'executed_') && $contract->contract_status == 'executed' && strtolower($contract->substatus) == explode('_', $_POST['status'])[1]) {
-                        $finalFilteredResult[] = $contract;
-                    } else if (str_contains($_POST['status'], 'draft_initial') && $contract->contract_status == 'Draft' && $contract->substatus == 'Initial Draft') {
-                        $finalFilteredResult[] = $contract;
-                    } else if (str_contains($_POST['status'], 'draft_under_revision') && $contract->contract_status == 'Draft' && $contract->substatus == 'Under Revision') {
-                        $finalFilteredResult[] = $contract;
-                    } else if(contractStatusKey($contract->contract_status) == $_POST['status']){
-                        // contractStatusKey() groups the internal 'Pre-Approval' status under
-                        // 'review', so the Review filter also returns pre-approval contracts.
-                        //$contracts_query->where('contract_status', $_POST['status']);
-                        $finalFilteredResult[] = $contract;
-                    }
-                
-                }else{
+            // Back from HEX() to the exact bytes stored in the row.
+            $contractStatus = $row->contract_status_hex === null ? null : hex2bin($row->contract_status_hex);
+            $substatus = $row->substatus_hex === null ? null : hex2bin($row->substatus_hex);
 
-                    $finalFilteredResult[] = $contract;
-                }  
-                    
-
-                //$finalFilteredResult[] = $contract;
-                // Group by the user-facing status key ('Pre-Approval' -> 'review').
-                switch (contractStatusKey($contract->contract_status)) {
+            // Group by the user-facing status key ('Pre-Approval' -> 'review').
+            switch (contractStatusKey($contractStatus)) {
                 case 'executed':
-                    $contract_executable_total++;
-                    $contract_all_total++;
-                    switch ($contract->substatus) {
+                    $c['executed'] += $total;
+                    $c['all'] += $total;
+                    switch ($substatus) {
                         case 'active':
-                            $contract_executable_active_total++;
+                            $c['executed_active'] += $total;
                             break;
                         case 'expired':
-                            $contract_executable_expired_total++;
+                            $c['executed_expired'] += $total;
                             break;
                         case 'pending':
-                            $contract_executable_pending_total++;
+                            $c['executed_pending'] += $total;
                             break;
                         case 'renewed':
-                            $contract_executable_renewed_total++;
+                            $c['executed_renewed'] += $total;
                             break;
                         case 'amended':
-                            $contract_executable_amended_total++;
+                            $c['executed_amended'] += $total;
                             break;
                         case 'Terminated':
-                            $contract_executable_termina_total++;
+                            $c['executed_terminated'] += $total;
                             break;
                         case 'completed':
-                            $contract_executable_comp_total++;
+                            $c['executed_completed'] += $total;
                             break;
                     }
                     break;
                 case 'draft':
-                    $contract_draft_total++;
-                    $contract_all_total++;
-
-                    switch ($contract->substatus) {
+                    $c['draft'] += $total;
+                    $c['all'] += $total;
+                    switch ($substatus) {
                         case 'Under Revision':
-                            $under_revision_total++;
+                            $c['under_revision'] += $total;
                             break;
                         case 'Initial Draft':
-                            $initial_draft_total++;
+                            $c['initial_draft'] += $total;
                             break;
                     }
-
                     break;
-
                 // Also covers the internal 'Pre-Approval' status via contractStatusKey().
                 case 'review':
-                    $contract_review_total++;
-                    $contract_all_total++;
+                    $c['review'] += $total;
+                    $c['all'] += $total;
                     break;
-                // Pre-approval flow stage (grouped flow): previously uncounted, so such
-                // contracts were missing from every tab incl. "All".
                 case 'finalization':
-                    $contract_finalization_total++;
-                    $contract_all_total++;
+                    $c['finalization'] += $total;
+                    $c['all'] += $total;
                     break;
                 case 'negotiation':
-                    $contract_negotiation_total++;
-                    $contract_all_total++;
+                    $c['negotiation'] += $total;
+                    $c['all'] += $total;
                     break;
                 case 'approval':
-                    $contract_approval_total++;
-                    $contract_all_total++;
+                    $c['approval'] += $total;
+                    $c['all'] += $total;
                     break;
                 case 'approved':
-                    $contract_approved_total++;
-                    $contract_all_total++;
+                    $c['approved'] += $total;
+                    $c['all'] += $total;
                     break;
                 case 'signing':
-                    $contract_signing_total++;
-                    $contract_all_total++;
+                    $c['signing'] += $total;
+                    $c['all'] += $total;
                     break;
-            }
             }
         }
 
-        $stus = array(
-            'all' => $contract_all_total,
-            'draft' => $contract_draft_total,
-            'draft_initial' => $contract_draft_total,
-            'draft_under_revision' => $contract_draft_total,
-            'review' => $contract_review_total,
-            'finalization' => $contract_finalization_total,
-            'negotiation' => $contract_negotiation_total,
-            'approval' => $contract_approval_total,
-            'approved' => $contract_approved_total,
-            'signing' => $contract_signing_total,
-            'executed' => $contract_executable_total,
-            'executed_active' => $contract_executable_active_total,
-            'executed_expired' => $contract_executable_expired_total,
-            'executed_pending' => $contract_executable_pending_total,
-            'executed_renewed' => $contract_executable_renewed_total,
-            'executed_amended' => $contract_executable_amended_total,
-            'executed_terminated' => $contract_executable_termina_total,
-            'executed_completed' => $contract_executable_comp_total,
-            'under_revision' => $under_revision_total,
-            'initial_draft' => $initial_draft_total
-        );
-
-        return response()->json([
-            'data' => $finalFilteredResult,
-            'draw' => $request->input('draw') ?? 1,
-            'recordsTotal' => count($finalFilteredResult),
-            'recordsFiltered' => count($finalFilteredResult),
-            'counts'=>$stus
-        ]);
+        return [
+            'all' => $c['all'],
+            'draft' => $c['draft'],
+            'draft_initial' => $c['draft'],
+            'draft_under_revision' => $c['draft'],
+            'review' => $c['review'],
+            'finalization' => $c['finalization'],
+            'negotiation' => $c['negotiation'],
+            'approval' => $c['approval'],
+            'approved' => $c['approved'],
+            'signing' => $c['signing'],
+            'executed' => $c['executed'],
+            'executed_active' => $c['executed_active'],
+            'executed_expired' => $c['executed_expired'],
+            'executed_pending' => $c['executed_pending'],
+            'executed_renewed' => $c['executed_renewed'],
+            'executed_amended' => $c['executed_amended'],
+            'executed_terminated' => $c['executed_terminated'],
+            'executed_completed' => $c['executed_completed'],
+            'under_revision' => $c['under_revision'],
+            'initial_draft' => $c['initial_draft'],
+        ];
     }
 
     public function listContract(Request $request)
     {
-        
-        $this->getFilterSetData($request);
-        
-        $contracts_query = Contract::select('contract_name', 'id', 'currency', 'currency_value', 'end_contract_type', 'contract_status', 'substatus', 'fixed_date', 'onetime_end_date', 'contract_type')->orderBy('id', 'desc')->where('status', 1);
-        if (isset($_COOKIE['filterConType']) && $_COOKIE['filterConType'] != 0) {
-            $contracts_query->whereIn('contract_type', json_decode($_COOKIE['filterConType']));
-        }
-        $contracts = $contracts_query->get();
+
+        // The filter state lives in the URL query string (dev rule 2026-08-27):
+        // ?status=...&contype=1,2&concates=3&locations=2&my=1. A link with the
+        // filters in it can be shared, and no cookie is read - stale filter cookies
+        // from before the change change nothing here.
 
         //$available_branches = BranchUser::pluck('id','BranchName')->toArray();
 
@@ -2490,8 +2506,6 @@ class ContractController extends Controller
         $under_revision_total = 0;
         $initial_draft_total = 0;
 
-        //$ContractsFinal = $this->availableContracts($contracts, true);
-
         $stus = array(
             'all' => $contract_all_total,
             'draft' => $contract_draft_total,
@@ -2514,36 +2528,10 @@ class ContractController extends Controller
         );
 
         return view('contract::contract.contractList', compact('branchs', 'contractTypes', 'ContractCategories', 'contractStatus'))->with('counts', $stus)
-        ->with('sellocal', json_decode($_POST['locations'] ?? '') ?? [])
-        ->with('selcate', json_decode($_POST['concates'] ?? '') ?? [])
-        ->with('selstatus', $_COOKIE['filterStatus'] ?? '')
-        ->with('selcontype', json_decode($_POST['contype'] ?? '') ?? []);
-    }
-    
-    public function getFilterSetData($request){
-        $filterSetArray = [
-            'contractlocs' => ['table'=>'branch', 'column' => 'branchName', 'where' => 'id', 'req' => 'locations', 'encode'=> true],
-            'contracttype' => ['table'=>'contract_type', 'column' => 'contract_type', 'where' => 'contract_type_id', 'req' => 'contype', 'encode'=> true],
-            'contractcates' => ['table'=>'contract_categories', 'column' => 'name', 'where' => 'id', 'req' => 'concates', 'encode'=> true],
-            'contractprior' => ['table'=>[], 'column' => 'contract_priority', 'where' => 'id', 'req' => 'contract_priority', 'encode'=> true],
-            'contractstats' => ['table'=>[], 'column' => 'contract_status', 'where' => 'id', 'req' =>'status', 'encode'=> false]
-        ];
-        
-        
-        if(isset($_COOKIE['filterSet'])){
-            $allFilters = json_decode($_COOKIE['filterSet']);
-            
-            foreach($allFilters as $allFilt => $allFiltVal){
-                //$field = explode('_', $allFilt);
-                $field = $allFilt;
-                $finalField = $filterSetArray[$field] ?? false;
-                if($finalField){
-                    if(empty($_POST[$finalField['req']])){
-                        $_POST[$finalField['req']] = ($finalField['encode'] ? json_encode($allFiltVal) : $allFiltVal);
-                    }
-                }
-            }
-        }        
+        ->with('sellocal', ContractListFilters::parseIdList($request->input('locations')))
+        ->with('selcate', ContractListFilters::parseIdList($request->input('concates')))
+        ->with('selstatus', $request->input('status') ?? '')
+        ->with('selcontype', ContractListFilters::parseIdList($request->input('contype')));
     }
 
     public function storeContract(Request $request)

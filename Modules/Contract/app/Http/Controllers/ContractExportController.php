@@ -6,7 +6,6 @@ use App\Http\Controllers\Controller;
 use Illuminate\Http\Request;
 
 use App\Models\AddUsers;
-use App\Models\Branch;
 use App\Models\Category;
 use App\Models\ContractParties;
 use App\Models\ContractType;
@@ -21,6 +20,8 @@ use App\Models\EntityMain;
 use App\Models\State;
 
 use Illuminate\Support\Facades\DB;
+
+use Modules\Contract\Services\ContractListFilters;
 
 use PhpOffice\PhpSpreadsheet\Spreadsheet;
 use PhpOffice\PhpSpreadsheet\Writer\Xlsx;
@@ -223,10 +224,11 @@ class ContractExportController extends Controller
 
     public function contractBuilkImport(Request $request)
     {
-
-        $contractTypes = ContractType::get();
+        // The filters arrive on the query string, straight from the list page's
+        // Contract Export button (ticket 10). The blade passes them through on the
+        // form action - this page picks nothing itself any more, so no contract
+        // type list and no cookie is read.
         return view('contract::contractimport.contractBuilkExport')
-            ->with('contractTypes', $contractTypes)
             ->with('exportColumns', $this->getExportColumnOptions());
     }
 
@@ -244,15 +246,9 @@ class ContractExportController extends Controller
 
         $sheet = $spreadsheet->getActiveSheet();
 
-        $checkType = ['New', 'Legacy Contracts'];
-
         $checkDepartment = EntityBusiness::pluck('name', 'id')->toArray();
 
         $checkCategory = ContractCategories::pluck('name', 'id')->toArray();
-
-        $checkExclusivity = ['Non Exclusive', 'Mutually Exclusive', 'Exclusive to Contracting Party', 'Exclusivity to Company'];
-
-        $checkPartyType = ['Internal', 'External', 'Intergroup'];
 
         $checkInternalPartyNameTemp = EntityMain::select('id',decrypt_data('Nameoftheentity', 'entity'))->get();
         $checkInternalPartyName = [];
@@ -316,97 +312,32 @@ class ContractExportController extends Controller
             $checkCoordinator[$checkCoordinatorTe->id] = $checkCoordinatorTe->Salutation.' '.$checkCoordinatorTe->FirstName.' '.$checkCoordinatorTe->LastName;
         }
 
-        $categorys = Category::where('category_group', 'contract')->get();
-        $contractTypes = ContractType::get();
-
-        $entities = EntityMain::select('id', decrypt_data('Nameoftheentity', 'entity'))
-            ->get();
-        $contractParties =  ContractParties::select('*')->get();
-
-        $users = AddUsers::select('id',  decrypt_data('FirstName', 'AddUsers'))->get();
-
-        $contractParties =  ContractParties::select('company_name', 'state', 'gst')->get();
-        $contractPartiesData = [];
-        foreach ($contractParties as $contractPartie) {
-            if (decryptString($contractPartie, 'company_name') != null) {
-
-                $cname  = decryptString($contractPartie->company_name, 'company_name');
-                if (isset($contractPartie->state) && $contractPartie->state > 0) {
-
-                    $state = State::select("name", "id")
-
-                        ->where('id', $contractPartie->state)
-
-                        ->pluck('name')->first();
-
-                    $cname .= ':' . $state;
-                }
-
-                if (isset($contractPartie->gst)) {
-
-                    $cname .= ':' . decryptString($contractPartie->gst, 'gst');
-                }
-
-
-
-
-
-                $contractPartiesData[] = $cname;
-            }
+        // The list's filter state rides the form action's query string (ticket 10):
+        // ?status=..&contype=1,2&concates=..&locations=..&my=1&search=.. - the same
+        // values the green Contract Export button copied from the list URL, plus the
+        // search box value. ContractListFilters is the same service the list AJAX
+        // uses, so the exported rows always equal the rows the list shows.
+        $filters = new ContractListFilters();
+        $base = $filters->filtered([
+            'contype' => $request->query('contype'),
+            'concates' => $request->query('concates'),
+            'locations' => $request->query('locations'),
+            'my' => $request->query('my'),
+        ]);
+        // No status parameter means no list filter was on: export everything visible.
+        $filters->applyStatus($base, (string) $request->query('status', 'all'));
+        $search = trim((string) $request->query('search', ''));
+        if ($search !== '') {
+            $filters->applySearch($base, $search);
         }
 
-
-        $contractPartiesDataArr = $contractPartiesData;
-        $contractPartiesDataArrCount = count($contractPartiesDataArr);
-
-
-
-
-
-
-
-        $ent =  '"' . EntityBusiness::pluck('name')->implode(', ') . '"';
-        $entArr =  EntityBusiness::pluck('name');
-
-
-
-
-
-
-        $branchs = '"' . Branch::select(decrypt_data('BranchName', 'branch'))->pluck('BranchName')->implode(', ') . '"';
-        $branchArr = Branch::select(decrypt_data('BranchName', 'branch'))->pluck('BranchName');
-
-
-        $catego =  '"' . ContractCategories::pluck('name')->implode(', ') . '"';
-        $categoArr =   ContractCategories::pluck('name');
-
-        $categoArrCount = count($categoArr);
-
-        $entities = '"' . EntityMain::select(decrypt_data('Nameoftheentity', 'entity'))
-            ->pluck('Nameoftheentity')->implode(', ') . '"';
-
-
-        $entitiesArr = EntityMain::select(decrypt_data('Nameoftheentity', 'entity'))
-            ->pluck('Nameoftheentity');
-
-        $entitiesArrCount = count($entitiesArr);
-
-
-        $users = '"' . AddUsers::select(decrypt_data('FirstName', 'AddUsers'))->pluck('FirstName')->implode(', ') . '"';
-        $usersArr = AddUsers::select(decrypt_data('FirstName', 'AddUsers'))->pluck('FirstName');
-
-        $usersArrCount = count($usersArr);
-        if (isset($request->ContractType)) {
-            $key = array_search(0, $request->ContractType);
-
-            if ($key !== false) {
-                $ContractTypes = ContractType::pluck('short_name', 'contract_type_id')->toArray();
-            } else {
-                $ContractTypes = ContractType::whereNotIn('contract_type_id', [0])
-                    ->whereIn('contract_type_id', $request->ContractType)
-                    ->pluck('short_name', 'contract_type_id')
-                    ->toArray();
-            }
+        // One sheet per contract type: the picked types when contype is set, every
+        // type otherwise. Types with no matching contract are skipped below.
+        $contypes = ContractListFilters::parseIdList($request->query('contype'));
+        if (count($contypes) > 0) {
+            $ContractTypes = ContractType::whereIn('contract_type_id', $contypes)
+                ->pluck('short_name', 'contract_type_id')
+                ->toArray();
         } else {
             $ContractTypes = ContractType::pluck('short_name', 'contract_type_id')->toArray();
         }
@@ -418,86 +349,21 @@ class ContractExportController extends Controller
 
         foreach ($ContractTypes as $key => $ContractType) {
 
-            if (isset($_POST['status']) && $_POST['status'] !== 'all') {
-                $contracts_query = Contract::select('contract_name', 'id', 'currency', 'currency_value', 'end_contract_type', 
-                                    'contract_status','substatus','fixed_date','contract_end_date','onetime_end_date','contract_type','catgoery_id')
-                                    ->where('contract_type', $key);
-                if (str_contains($_POST['status'], 'executed_')) {
-                    $contracts_query->where('contract_status', 'executed');
-                    $contracts_query->where('substatus', explode('_', $_POST['status'])[1]);
-                    
-                    
-                } else if (str_contains($_POST['status'], 'draft_initial')) {
-                    $contracts_query->where('contract_status', 'Draft');
-                    $contracts_query->where('substatus', 'Initial Draft');
-                    
-                } else if (str_contains($_POST['status'], 'draft_under_revision')) {
-                    $contracts_query->where('contract_status', 'Draft');
-                    $contracts_query->where('substatus', 'Under Revision');
-                    
-                }else {
-                    $contracts_query->where('contract_status', $_POST['status']);
-                }
-                $contracts_query->where('status', 1);
-                $contracts_query->orderBy('id', 'desc');
-                $contracts = $contracts_query->get();
-            } else if(isset($_POST['status']) && $_POST['status'] === 'all') {
-                $contracts_query = Contract::select('contract_name', 'id', 'currency', 'currency_value','end_contract_type', 'contract_status','substatus','fixed_date','onetime_end_date', 'contract_end_date','contract_type','catgoery_id')
-                ->orderBy('id', 'desc')
-                ->where('contract_type', $key)
-                ->where('status',1);
-            }else{
-                $contracts = [];
-            }
-            
-            $likeColumnFilter = [
-                '3' => 'contract_type',
-                '4' => 'catgoery_id'
-            ];
-        
-            $likeColumnTable = [
-                '3' => new ContractType,
-                '4' => new ContractCategories
-            ];
+            // One query per type sheet, on the shared filtered query. contracts.*
+            // because the sheet writer below reads far more columns than the list's
+            // slim select - the list keeps its own 12-column select.
+            $contracts = (clone $base)
+                ->where('contracts.contract_type', $key)
+                ->orderBy('contracts.id', 'desc')
+                ->select('contracts.*')
+                ->get();
 
-            $likeColumnName = [
-                '3' => 'contract_type||contract_type_id',
-                '4' => 'name||id'
-            ];
-            
-            $eqColumnFilter = [
-                '8' => 'substatus'
-            ];
-
-            if($contracts_query){
-                if (isset($_POST['filterSearch'])) {
-                    $extraFilters = json_decode($request->filterSearch) ?? [];
-                    //echo "<pre>";
-                    foreach($extraFilters as $extrKy => $extr){
-                        $keys_ = explode('_', $extrKy);
-                        //print_r($keys_);
-                        if(count($keys_) == 2){
-                            //$contracts_query->where($arrayColumnFilter[$keys_[1]], $keys_[0]);
-                            if(array_key_exists($keys_[1], $likeColumnFilter) && $likeColumnFilter[$keys_[1]]){
-                                $columnName = explode('||', $likeColumnName[$keys_[1]]);
-                                $categorys = $likeColumnTable[$keys_[1]]::select($columnName[1])->where($columnName[0], $extr)->get();
-                                if(count($categorys) > 0){
-                                    $contracts_query->where($likeColumnFilter[$keys_[1]], $categorys[0][$columnName[1]]);
-                                }
-                            }
-                            if(array_key_exists($keys_[1], $eqColumnFilter) && $eqColumnFilter[$keys_[1]]){
-                                $contracts_query->where($eqColumnFilter[$keys_[1]], $extr);
-                            }
-                        }
-                    }
-                }
-                $contracts = $contracts_query->get();
-                $contracts = $this->availableContracts($contracts, true);
-            }
-
-            if (empty($contracts) || count($contracts) === 0) {
+            if (count($contracts) === 0) {
                 continue;
             }
+
+            // $key is reused by the row loop below, so log the type here.
+            \Log::debug('bulkDownload: type sheet', ['type' => $key, 'rows' => count($contracts)]);
 
             // Commencement Type
             $isAllInOneContinuation = false;
@@ -625,6 +491,12 @@ class ContractExportController extends Controller
 
             foreach ($contracts as $key => $con) {
 
+                // availableContracts() used to reformat the two dates before this
+                // writer ran; the rows are plain database rows now, so the same
+                // format (d-m-Y, '-' when empty) is applied here.
+                $con->fixed_date = ($con->fixed_date == '') ? '-' : date('d-m-Y', strtotime($con->fixed_date));
+                $con->contract_end_date = ($con->contract_end_date == '') ? '-' : date('d-m-Y', strtotime($con->contract_end_date));
+
                 $cell = 'A' . $row;
                 $newSheet->setCellValue($cell, ($row - 2));
 
@@ -656,7 +528,10 @@ class ContractExportController extends Controller
 
 
                 $cell = 'H' . $row;
-                $newSheet->setCellValue($cell, $checkCategory[$con->catgoery_identity] ?? '');
+                // catgoery_identity was a value availableContracts() copied out of
+                // catgoery_id before it overwrote it. The rows are plain now, so the
+                // raw column carries the same id.
+                $newSheet->setCellValue($cell, $checkCategory[$con->catgoery_id] ?? '');
 
 
 
@@ -964,11 +839,14 @@ class ContractExportController extends Controller
 
         //$writer->save('php://output');
         // Stream the file to the browser
+        \Log::debug('bulkDownload: all sheets built, streaming starts');
         $response =  new StreamedResponse(
             function () use ($writer) {
+                $t = microtime(true);
                 $writer->save('php://output');
+                \Log::debug('bulkDownload: stream done', ['save_ms' => round((microtime(true) - $t) * 1000)]);
             }
-        );        
+        );
         
         $timestampFile = strtotime(date('Y-m-d H:i:s'));
         $response->headers->set('Content-Type','application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

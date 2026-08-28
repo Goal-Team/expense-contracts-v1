@@ -10,27 +10,22 @@ $(function () {
         placeholder: "Choose Location",
         allowClear: true
     });
+    // The list page reads its filters from the URL query string now (dev rule
+    // 2026-08-27), so the handoff travels as query parameters, not cookies.
     $(document).on('click', '.clickableDashItems', function(){
         let attStatus = $(this).data("status");
-        setCookie('filterStatus', attStatus,1);
-        getContTypeLocs();
-        window.location.href = APP_URL + '/contracts/list';
+        window.location.href = APP_URL + '/contracts/list?' + listFilterQuery(attStatus, false);
     });
-    
+
     $(document).on('click', '.clickableDashUser', function(){
         let attStatus = $(this).data("status");
-        let attUser = $(this).data("user");
-        setCookie('filterStatus', attStatus,1);
-        setCookie('myFilterStatus', attUser,1);
-        getContTypeLocs();
-        window.location.href = APP_URL + '/contracts/list';
+        window.location.href = APP_URL + '/contracts/list?' + listFilterQuery(attStatus, true);
     });
-    
+
     $(document).on('click', '.clickableDashTasks', function(){
         let attStatus = $(this).data("status");
         let attUser = $(this).data("user");
         setCookie('myFilterTasks', attUser,1);
-        getContTypeLocs();
         window.location.href = APP_URL + '/tasks?status=' + attStatus;
     });
     
@@ -41,15 +36,26 @@ $(function () {
     
 });
 
-function getContTypeLocs(){
-    let contractType = $('#contracttype').val() ?? "";
-    let contractLocs = $('#contractlocs').val() ?? "";
-    if(contractType != ""){
-        setCookie('filterConType', JSON.stringify(contractType),1);
+// Query string for the contract list: the clicked status, the my=1 flag for the
+// "my actions" tiles, and the dashboard's own type/location selects.
+function listFilterQuery(status, myOnly){
+    let params = new URLSearchParams();
+    params.set('status', status);
+    if(myOnly){
+        params.set('my', '1');
     }
-    if(contractLocs != ""){
-        setCookie('filterConLoc', JSON.stringify(contractLocs),1);
+    let contractType = $('#contracttype').val();
+    let contractLocs = $('#contractlocs').val();
+    // Comma-separated ints (contype=1,2 - dev call 2026-08-28, no JSON in the
+    // URL). URLSearchParams encodes a comma as %2C; a comma is legal unencoded
+    // in a query string (RFC 3986), so put the literal comma back.
+    if(Array.isArray(contractType) && contractType.length > 0){
+        params.set('contype', contractType.join(','));
     }
+    if(Array.isArray(contractLocs) && contractLocs.length > 0){
+        params.set('locations', contractLocs.join(','));
+    }
+    return params.toString().replace(/%2C/g, ',');
 }
 
 function setCookie(name,value,days) {

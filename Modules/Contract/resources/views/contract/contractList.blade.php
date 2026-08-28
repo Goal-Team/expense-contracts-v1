@@ -313,10 +313,11 @@ table.dataTable.table-striped>tbody>tr:nth-of-type(odd)>* {
 <div class="row">
     <div class="col-12">
     <button type="button" id="clearAllFilters" class="btn rounded-pill btn-outline-warning waves-effect float-end mb-2 d-none"> <i class="tf-icons ti ti-square-x ti-xs me-2"></i> Clear Filters </button>
-@if (isset($_COOKIE['myFilterStatus']))
+{{-- Filter state comes from the URL query string, not cookies (dev rule 2026-08-27). --}}
+@if (request()->query('my'))
         <button type="button" id="clearMyActions" class="btn rounded-pill btn-outline-success waves-effect float-end mb-2"> <i class="tf-icons ti ti-wall ti-xs me-2"></i> Show All Contracts </button>
 @endif
-@if (!isset($_COOKIE['myFilterStatus']) && isset($_COOKIE['filterStatus']))
+@if (!request()->query('my') && $selstatus !== '')
         <button type="button" id="clearAllActions" class="btn rounded-pill btn-outline-youtube waves-effect float-end mb-2" data-user="{{Helper::userInfo()->email ?? ''}}"> <i class="tf-icons ti ti-user ti-xs me-2"></i> Show My Contracts </button>
 @endif
     </div> 
@@ -449,57 +450,52 @@ table.dataTable.table-striped>tbody>tr:nth-of-type(odd)>* {
         </div>
       </div>
     <div class="">
-    @if (isset($_COOKIE['filterStatus']) && ($_COOKIE['filterStatus'] == 'executed' || str_contains($_COOKIE['filterStatus'], 'executed_')))
+    @if ($selstatus == 'executed' || str_contains($selstatus, 'executed_'))
     <div class="d-flex justify-content-evenly mb-2 bg-white p-3 rounded shadow-lg">
-      <a href="javascript:;" id="status_executed_renewed" data-stat="executed_renewed" role="button" class="loadstatus btn btn-{{ $_COOKIE['filterStatus'] == 'executed_renewed' ? '' : 'outline-' }}primary text-nowrap d-inline-flex position-relative me-4">
+      <a href="javascript:;" id="status_executed_renewed" data-stat="executed_renewed" role="button" class="loadstatus btn btn-{{ $selstatus == 'executed_renewed' ? '' : 'outline-' }}primary text-nowrap d-inline-flex position-relative me-4">
         Renewed
-        <span class="ms-2 badge badge-center count-disp rounded-pill bg-{{ $_COOKIE['filterStatus'] == 'executed_renewed' ? 'light text-dark' : 'primary text-white' }}">{{ $counts['executed_renewed'] }}</span>
+        <span class="ms-2 badge badge-center count-disp rounded-pill bg-{{ $selstatus == 'executed_renewed' ? 'light text-dark' : 'primary text-white' }}">{{ $counts['executed_renewed'] }}</span>
       </a>
-      <a href="javascript:;" id="status_executed_amended" data-stat="executed_amended" role="button" class="loadstatus btn btn-{{ $_COOKIE['filterStatus'] == 'executed_amended' ? '' : 'outline-' }}primary text-nowrap d-inline-flex position-relative me-4">
+      <a href="javascript:;" id="status_executed_amended" data-stat="executed_amended" role="button" class="loadstatus btn btn-{{ $selstatus == 'executed_amended' ? '' : 'outline-' }}primary text-nowrap d-inline-flex position-relative me-4">
         Amended
-        <span class="ms-2 badge badge-center count-disp rounded-pill bg-{{ $_COOKIE['filterStatus'] == 'executed_amended' ? 'light text-dark' : 'primary text-white' }}">{{ $counts['executed_amended'] }}</span>
+        <span class="ms-2 badge badge-center count-disp rounded-pill bg-{{ $selstatus == 'executed_amended' ? 'light text-dark' : 'primary text-white' }}">{{ $counts['executed_amended'] }}</span>
       </a>
-      <a href="javascript:;" id="status_executed_expired" data-stat="executed_expired" role="button" class="loadstatus btn btn-{{ $_COOKIE['filterStatus'] == 'executed_expired' ? '' : 'outline-' }}danger text-nowrap d-inline-flex position-relative me-4">
+      <a href="javascript:;" id="status_executed_expired" data-stat="executed_expired" role="button" class="loadstatus btn btn-{{ $selstatus == 'executed_expired' ? '' : 'outline-' }}danger text-nowrap d-inline-flex position-relative me-4">
         Expired
-        <span class="ms-2 badge badge-center count-disp rounded-pill bg-{{ $_COOKIE['filterStatus'] == 'executed_expired' ? 'light text-dark' : 'danger text-white' }}">{{ $counts['executed_expired'] }}</span>
+        <span class="ms-2 badge badge-center count-disp rounded-pill bg-{{ $selstatus == 'executed_expired' ? 'light text-dark' : 'danger text-white' }}">{{ $counts['executed_expired'] }}</span>
       </a>
-      <a href="javascript:;" id="status_executed_Terminated" data-stat="executed_Terminated" role="button" class="loadstatus btn btn-{{ $_COOKIE['filterStatus'] == 'executed_Terminated' ? '' : 'outline-' }}info text-nowrap d-inline-flex position-relative me-4">
+      <a href="javascript:;" id="status_executed_Terminated" data-stat="executed_Terminated" role="button" class="loadstatus btn btn-{{ $selstatus == 'executed_Terminated' ? '' : 'outline-' }}info text-nowrap d-inline-flex position-relative me-4">
         Terminated
-        <span class="ms-2 badge badge-center count-disp rounded-pill bg-{{ $_COOKIE['filterStatus'] == 'executed_Terminated' ? 'light text-dark' : 'info text-white' }}">{{ $counts['executed_terminated'] }}</span>
+        <span class="ms-2 badge badge-center count-disp rounded-pill bg-{{ $selstatus == 'executed_Terminated' ? 'light text-dark' : 'info text-white' }}">{{ $counts['executed_terminated'] }}</span>
       </a>
-      <a href="javascript:;" id="status_executed_pending" data-stat="executed_pending" role="button" class="loadstatus btn btn-{{ $_COOKIE['filterStatus'] == 'executed_pending' ? '' : 'outline-' }}warning d-inline-flex position-relative me-4">
+      <a href="javascript:;" id="status_executed_pending" data-stat="executed_pending" role="button" class="loadstatus btn btn-{{ $selstatus == 'executed_pending' ? '' : 'outline-' }}warning d-inline-flex position-relative me-4">
         Pending Activation
-        <span class="ms-2 badge badge-center count-disp rounded-pill bg-{{ $_COOKIE['filterStatus'] == 'executed_pending' ? 'light text-dark' : 'warning text-white' }}">{{ $counts['executed_pending'] }}</span>
+        <span class="ms-2 badge badge-center count-disp rounded-pill bg-{{ $selstatus == 'executed_pending' ? 'light text-dark' : 'warning text-white' }}">{{ $counts['executed_pending'] }}</span>
       </a>
-      <a href="javascript:;" id="status_executed_active" data-stat="executed_active" role="button" class="loadstatus btn btn-{{ $_COOKIE['filterStatus'] == 'executed_active' ? '' : 'outline-' }}success text-nowrap d-inline-flex position-relative me-4">
+      <a href="javascript:;" id="status_executed_active" data-stat="executed_active" role="button" class="loadstatus btn btn-{{ $selstatus == 'executed_active' ? '' : 'outline-' }}success text-nowrap d-inline-flex position-relative me-4">
         Active
-        <span class="ms-2 badge badge-center count-disp rounded-pill bg-{{ $_COOKIE['filterStatus'] == 'executed_active' ? 'light text-dark' : 'success text-white' }}">{{ $counts['executed_active'] }}</span>
+        <span class="ms-2 badge badge-center count-disp rounded-pill bg-{{ $selstatus == 'executed_active' ? 'light text-dark' : 'success text-white' }}">{{ $counts['executed_active'] }}</span>
       </a>
-      <a href="javascript:;" id="status_executed_completed" data-stat="executed_completed" role="button" class="loadstatus btn btn-{{ $_COOKIE['filterStatus'] == 'executed_completed' ? '' : 'outline-' }}secondary text-nowrap d-inline-flex position-relative me-4">
+      <a href="javascript:;" id="status_executed_completed" data-stat="executed_completed" role="button" class="loadstatus btn btn-{{ $selstatus == 'executed_completed' ? '' : 'outline-' }}secondary text-nowrap d-inline-flex position-relative me-4">
         Completed
-        <span class="ms-2 badge badge-center count-disp rounded-pill bg-{{ $_COOKIE['filterStatus'] == 'executed_completed' ? 'light text-dark' : 'secondary text-white' }}">{{ $counts['executed_completed'] }}</span>
+        <span class="ms-2 badge badge-center count-disp rounded-pill bg-{{ $selstatus == 'executed_completed' ? 'light text-dark' : 'secondary text-white' }}">{{ $counts['executed_completed'] }}</span>
       </a>
     </div>
     @endif
-  </div>     
-      @if (isset($_COOKIE['filterStatus']))
-     <input type="hidden" id="status" value="{{ $_COOKIE['filterStatus'] }}">
-     @endif
-     @if (!isset($_COOKIE['filterStatus']))
-     <input type="hidden" id="status" value="draft">
-     @endif
-     
-       <div class=""> 
-     @if (isset($_COOKIE['filterStatus']) && ($_COOKIE['filterStatus'] == 'draft' || str_contains($_COOKIE['filterStatus'], 'draft_'))) 
+  </div>
+     <input type="hidden" id="status" value="{{ $selstatus !== '' ? $selstatus : 'draft' }}">
+
+       <div class="">
+     @if ($selstatus == 'draft' || str_contains($selstatus, 'draft_'))
     <div class="mb-2 bg-white p-3 rounded shadow-lg">
-      <a href="javascript:;" id="status_initial_draft" data-stat="draft_initial" role="button" class="loadstatus btn btn-{{ $_COOKIE['filterStatus'] == 'draft_initial' ? '' : 'outline-' }}secondary text-nowrap d-inline-flex position-relative me-4">
+      <a href="javascript:;" id="status_initial_draft" data-stat="draft_initial" role="button" class="loadstatus btn btn-{{ $selstatus == 'draft_initial' ? '' : 'outline-' }}secondary text-nowrap d-inline-flex position-relative me-4">
         Initial Draft
-        <span class="ms-2 count-disp badge badge-center rounded-pill bg-{{ $_COOKIE['filterStatus'] == 'draft_initial' ? 'light text-secondary' : 'secondary text-white' }}">{{ $counts['initial_draft'] }}</span>
+        <span class="ms-2 count-disp badge badge-center rounded-pill bg-{{ $selstatus == 'draft_initial' ? 'light text-secondary' : 'secondary text-white' }}">{{ $counts['initial_draft'] }}</span>
       </a>
-      <a href="javascript:;" id="status_under_revision" data-stat="draft_under_revision" role="button" class="loadstatus btn btn-{{ $_COOKIE['filterStatus'] == 'draft_under_revision' ? '' : 'outline-' }}primary text-nowrap d-inline-flex position-relative me-4">
+      <a href="javascript:;" id="status_under_revision" data-stat="draft_under_revision" role="button" class="loadstatus btn btn-{{ $selstatus == 'draft_under_revision' ? '' : 'outline-' }}primary text-nowrap d-inline-flex position-relative me-4">
         Under Revision
-        <span class="ms-2 count-disp badge badge-center rounded-pill bg-{{ $_COOKIE['filterStatus'] == 'draft_under_revision' ? 'light text-dark' : 'primary text-white' }}">{{ $counts['under_revision'] }}</span>
-      </a> 
+        <span class="ms-2 count-disp badge badge-center rounded-pill bg-{{ $selstatus == 'draft_under_revision' ? 'light text-dark' : 'primary text-white' }}">{{ $counts['under_revision'] }}</span>
+      </a>
     </div>
     @endif
     </div>
@@ -544,7 +540,9 @@ table.dataTable.table-striped>tbody>tr:nth-of-type(odd)>* {
               <a href="{{url('/')}}/contracts/builk-import" class="me-2 btn btn-sm btn-warning float-end">
              <i class="ti ti-table-down me-1"></i> Contract Import </a>
 
-             <a href="{{url('/')}}/contracts/builk-export" class="me-2 btn btn-sm btn-success float-end">
+             {{-- The click handler in contractlist.js rewrites this href with the list's
+                  current filter query string plus the search box value (ticket 10). --}}
+             <a href="{{url('/')}}/contracts/builk-export" id="contractExportBtn" class="me-2 btn btn-sm btn-success float-end">
             <i class="ti ti-table-import me-1"></i> Contract Export </a>
             
             

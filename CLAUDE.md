@@ -15,6 +15,20 @@ nor functional here.
 branch off `main`. Commit as soon as a change works, in small commits — not one big commit at the end.
 Pages are done one at a time, never in parallel.
 
+## Request and state rules
+
+**Remove unnecessary cookies. Prefer query parameters.** Set by the dev 2026-08-27. Not a
+performance rule — it is for testing, security, state, and sharing. A filter that lives in the
+URL can be sent to a colleague; a cookie cannot. A cookie earns its place only when state must
+cross pages.
+
+**Prefer server-side pagination for heavy AJAX calls.** Set by the dev 2026-08-27. Use a
+standard, well-known Laravel pattern, and one reusable abstraction for paginated queries with
+filters and search — not the same code pasted per endpoint. Qualifier from the dev, same day:
+**only convert the calls where it makes sense.** The test is business growth — a table that
+gains rows organically gets paginated; a small stable list (the dropdown AJAX calls of the
+earlier efforts) keeps the whole-list pattern.
+
 ## Database rules
 
 **Only touch the `apollo_contracts_expense` database.** It is the contracts database and the
