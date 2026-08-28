@@ -171,10 +171,18 @@ claimed it (Assignee line).
 | [06 fix the executed_* filter case bug](issues/06-executed-substatus-filter-case.md) | 02 | All six executed tabs show an empty list; row counts change, so baseline first. |
 | [08 server-side pagination, reusable pattern](issues/08-server-side-pagination.md) | 02, 03 | Dev rule 2026-08-27. The 34.2 MB list call is the candidate; numbers and inventory decide the shape. |
 | [07 move filters off cookies](issues/07-filters-off-cookies.md) | 03, 08 | Dev rule 2026-08-27. Lands in the same AJAX-contract rewrite as 08, not twice. |
+| [09 comma-separated query params](issues/09-comma-query-params.md) | 07 | Dev call 2026-08-28: no JSON in the URL. `contype=1,2`, split server-side. |
+| [10 export inherits the list filters](issues/10-export-inherits-filters.md) | 09 | Dev's idea 2026-08-28: the green button carries the query string, the export-page type dropdown and the last two cookies die, one shared filter method for list + export. |
 
 ## Not yet specified
 
-_Empty — the fog is cleared. 2026-08-28._ Every patch graduated and resolved:
+_Reopened 2026-08-28: the dev reviewed and set two follow-ups, tickets 09 and 10._ Both
+questions from the first close are answered: the DataTables export buttons never rendered
+(duplicate `dom:` key, dead config on main too — dev says leave it, not a perf issue), and the
+bulk-export page is the one real export — it now inherits the list's filters (ticket 10).
+Search stays out of the URL — dev's call, backend search is enough.
+
+Earlier fog, all resolved:
 `availableContracts()` per-row work now runs on one page of rows (ticket 08); the counter fold
 is one SQL GROUP BY (ticket 08 — the dashboard helpers did not fit, this page's fold counts
 keys the dashboard does not); the `myFilterStatus` path binds no ids and decrypts one column
