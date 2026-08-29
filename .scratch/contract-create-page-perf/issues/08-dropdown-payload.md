@@ -2,8 +2,8 @@
 
 Type: `wayfinder:task` (HITL)
 Blocked by: 03, 04, 06
-Assignee: unclaimed
-Status: OPEN
+Assignee: claude (session 2026-08-29)
+Status: CLOSED 2026-08-29
 
 ## Question
 
@@ -32,3 +32,76 @@ approval.
 
 Both pages, and every dropdown verified filling in the browser. Report row per change, small
 commits.
+
+## Resolution
+
+Fixed in commit `3ee4ed4`. The dev's call, 2026-08-29: **fetch the one address on pick.**
+
+### The measurement changed the ticket
+
+The dev named the dropdowns as the main problem. The page anatomy says otherwise. On
+`contracts/create-v3`:
+
+| part | bytes | share |
+|---|---|---|
+| hidden party address list — 10,032 `<li>` across two lists | **7,569,294** | **85%** |
+| inline `<script>` blocks | 880,408 | 10% |
+| all 49 `<select>` and their 1,142 options | 252,728 | 3% |
+| everything else | ~199,000 | 2% |
+
+**The dropdowns are 253 KB.** They were never the cost. Beside them the page pre-rendered the
+full address of **every** party — building number, area, landmark, city, state, pincode, country
+— as a hidden `<li>`, twice over. [contract.js:1963](../../../Modules/Contract/resources/assets/js/contract.js:1963)
+hid them all and showed the one whose `id` matched the picked party. 7.6 MB shipped so one address
+could be shown.
+
+So shape 2 of this ticket was taken, and only for the address list. Shape 1 (trim the dropdown
+columns) and the lookup-call rewrite of the party `<select>` were not needed — at 253 KB they buy
+nothing worth the risk.
+
+### The change
+
+- New partial `partyAddressItem.blade.php` holds the `<li>` markup once.
+- New route `GET contracts/create/party-address?party=<id>` → `contractPartyAddress()`, which
+  renders that partial for one party. Unknown or missing id returns 204.
+- `partyDetailsCreate.blade.php` and `partyDetailsCreateV3.blade.php` render **only the selected
+  party**, so a validation bounce still shows the right address with no JavaScript.
+- `contract.js` keeps the show/hide path exactly as it was and only fetches when the picked party
+  has no `<li>` in the page yet.
+
+That last point is why the shared file was safe to change. `partyDetails`, `partyDetailsEdit` and
+`partyDetailsView` still pre-render the whole list, so their `<li>` is always found and the fetch
+never runs. `contractflow.js` has its own copy of the handler and was not touched.
+
+### Numbers
+
+| page | document bytes | transfer | queries | TTFB |
+|---|---|---|---|---|
+| `create-v3` | **8,899,081 → 1,260,069** | 343,925 → 154,884 | 29 (unchanged) | 883 ms |
+| `create` | **8,011,289 → 372,277** | 226,203 → **34,550** | 29 → **27** | 617 ms |
+
+View render on `create` fell from about 1,020 ms to **57–141 ms**.
+
+### Proof
+
+Driven in the browser on both pages. Picking a party fires exactly one
+`GET /contracts/create/party-address?party=…` and inserts one `<li>`:
+
+```
+Building no : 7   Area name: Sector 7   Landmark : Near Landmark 7
+City: Delhi   State: Gujarat   Pincode: 600007   Country: India
+```
+
+The inserted `<li>` computes to `display: list-item`. Its only hidden ancestor is
+`div.clearfix.External`, the External-party block that the page hides until the user picks that
+party type — pre-existing behaviour, not this change.
+
+The endpoint alone returns **200 and 508 bytes** for a real id.
+
+`contracts/1` and `contracts/2` — pages whose party blades still pre-render — return 200 with no
+new console errors.
+
+### Written down, not fixed
+
+The inline `<script>` blocks are 880,408 bytes, now **70% of the remaining `create-v3` document**.
+Not looked at in this ticket. It is the next byte win if the dev wants one.

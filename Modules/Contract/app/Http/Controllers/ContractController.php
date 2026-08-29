@@ -6618,7 +6618,18 @@ class ContractController extends Controller
         ]);
     }
 
-    public function contractCreate(Request $req, $aiparam='')
+    /**
+     * Everything both create pages hand to their view.
+     *
+     * contractCreateV3() was a near-exact copy of contractCreate() - the same nineteen queries
+     * written out twice. The dev's rule 2026-08-28 is that contracts/create and
+     * contracts/create-v3 must show the same thing; one loader makes that true by construction
+     * instead of by care, and it leaves one place to make faster.
+     *
+     * Returns null when the session user is not a valid contract owner. Each caller decides
+     * where to redirect, because that is the one thing the two pages did differently.
+     */
+    private function contractCreateViewData(): ?array
     {
 
         $customFields = CustomFields::where('status', 1)->orderBy('order_id')->get();
@@ -6700,36 +6711,46 @@ class ContractController extends Controller
             ->where(decrypt_datas('UserName', 'AddUsers'), $owner_initiator)
             ->first();
         if (!$initiatior_exists) {
-            // Was array_merge($fileError, ...) with $fileError never set - a fatal on the one
-            // path this branch exists to handle. It also redirected back to contracts/create,
-            // which is this method, so a real miss would have looped. contractCreateV3() already
-            // redirects to the list; match it.
-            return redirect('contracts/list')->withErrors(['Owner Not Available Please Contact Administrator'])->withInput();
+            // The caller redirects. contractCreate() used to merge an undefined $fileError here
+            // and redirect to itself, which would have looped; both pages go to the list now.
+            return null;
         }
 
         $owner_initiator_id = $initiatior_exists->id ?? 0;
 
         $priority = 'medium';
-        
+
+        $uniqueTempId = $this->generateUniqueContractTempId();
+        $encTempContId = encryptString($uniqueTempId, 'unique_temp_contract_id');
+
+        return compact('catego', 'ent', 'geo_graph', 'country', 'contractParties', 'entities', 'branchs', 'branchsUser', 'customFields', 'categorys', 'contractTypes', 'users', 'parties_label', 'defVals', 'usersSel', 'owner_initiator_id', 'priority', 'encTempContId', 'legalAdvisors');
+    }
+
+    public function contractCreate(Request $req, $aiparam='')
+    {
+        $viewData = $this->contractCreateViewData();
+
+        if ($viewData === null) {
+            return redirect('contracts/list')->withErrors(['Owner Not Available Please Contact Administrator'])->withInput();
+        }
+
         $viewBlade = "contractCreate";
-        
+
         //if($aiparam != ''){
            if(admin_setting('enable_ai_feature')){
                 $viewBlade = 'contractCreateAi';
            }
-           
+
            if($aiparam == 'marketing'){
                if(admin_setting('custom_contracts_type_id')){
                     $viewBlade = 'contractCreateRep';
                }else{
-                    return redirect('/contracts/list/contract-custom')->with('message', 'Admin Configuration Missing Please Add Contract Type')->with('alert-class', 'alert-danger'); 
+                    return redirect('/contracts/list/contract-custom')->with('message', 'Admin Configuration Missing Please Add Contract Type')->with('alert-class', 'alert-danger');
                }
            }
         //}
-        
-        $uniqueTempId = $this->generateUniqueContractTempId();
-        $encTempContId = encryptString($uniqueTempId, 'unique_temp_contract_id');
-        return view("contract::contract.$viewBlade", compact('catego', 'ent', 'geo_graph', 'country', 'contractParties', 'entities', 'branchs', 'branchsUser', 'customFields', 'categorys', 'contractTypes', 'users', 'parties_label', 'defVals', 'usersSel', 'owner_initiator_id', 'priority', 'encTempContId', 'legalAdvisors'));
+
+        return view("contract::contract.$viewBlade", $viewData);
     }
 
     /**
@@ -6740,98 +6761,15 @@ class ContractController extends Controller
      */
     public function contractCreateV3(Request $req)
     {
-        $customFields = CustomFields::where('status', 1)->orderBy('order_id')->get();
+        $viewData = $this->contractCreateViewData();
 
-        $categorys = Category::where('category_group', 'contract')->get();
-        $contractTypes = ContractType::get();
-
-        $geo_graph = $this->getGeoGraphDropdowns();
-
-        $branchs = Branch::select(
-            'id',
-            decrypt_data('BranchName', 'branch'),
-            decrypt_data('branchstatus', 'branch'),
-            decrypt_data('Doorno', 'branch'),
-            decrypt_data('StreetName', 'branch'),
-            decrypt_data('AreaName', 'branch'),
-            decrypt_data('Landmark', 'branch'),
-            decrypt_data('PinCode', 'branch'),
-            decrypt_data('ContactNumber', 'branch'),
-            decrypt_data('branchheadname', 'branch'),
-            decrypt_data('departments', 'branch'),
-            decrypt_data('LegalName', 'branch')
-        )->get();
-
-        $branchsUser = BranchUser::select(
-            'id',
-            decrypt_data('BranchName', 'branch'),
-            decrypt_data('branchstatus', 'branch'),
-            decrypt_data('Doorno', 'branch'),
-            decrypt_data('StreetName', 'branch'),
-            decrypt_data('AreaName', 'branch'),
-            decrypt_data('Landmark', 'branch'),
-            decrypt_data('PinCode', 'branch'),
-            decrypt_data('ContactNumber', 'branch'),
-            decrypt_data('branchheadname', 'branch'),
-            decrypt_data('departments', 'branch'),
-            decrypt_data('LegalName', 'branch')
-        )->get();
-
-        $entities = EntityMain::select('id', decrypt_data('Nameoftheentity', 'entity'), decrypt_data('EntityStatus', 'entity'))
-            ->get();
-
-        $users = AddUsers::select('id',  decrypt_data('Salutation', 'AddUsers'), decrypt_data('FirstName', 'AddUsers'), decrypt_data('LastName', 'AddUsers'), decrypt_data('AccessScope', 'AddUsers'), decrypt_data('Email', 'AddUsers'))->get();
-        $usersSel = AddUsersSel::select('id',  decrypt_data('Salutation', 'AddUsers'), decrypt_data('FirstName', 'AddUsers'), decrypt_data('LastName', 'AddUsers'), decrypt_data('AccessScope', 'AddUsers'), decrypt_data('Email', 'AddUsers'))->get();
-        $legalAdvisors = LegalAdvisor::where('status', 1)->orderBy('name')->get();
-
-        $contractParties =  ContractParties::select('*')->get();
-
-        $parties_label = array();
-        $label = ContractPartiesLabel::selectRaw("contract_parties_label.id,contract_parties_label.name,contract_parties_label.label_name,if(is_required = 1,'required','unrequired') as is_required,error_text,is_regex,regex_id,regex.name as regex_name,regex.pattern")
-            ->leftJoin('regex', 'regex.id', '=', 'contract_parties_label.regex_id')
-            ->where('contract_parties_label.status', 1)->get();
-
-        foreach ($label as $label_data) {
-            $parties_label[$label_data->name] = [
-                'name' => $label_data->name,
-                'label_name' => $label_data->label_name,
-                'is_required' => $label_data->is_required,
-                'error_text' => $label_data->error_text,
-                'is_regex' => $label_data->is_regex,
-                'regex_id' => $label_data->regex_id,
-                'regex_name' => $label_data->regex_name,
-                'regex_pattern' => $label_data->pattern
-            ];
-        }
-
-        $country = Country::select('id', 'name')->get();
-
-        $catego =  ContractCategories::select('*')->get();
-
-        $ent = EntityBusiness::select('*')->get();
-
-        $defVals = ['contractMode' => admin_setting('enable_new_contracts') ? 'new' : 'old', 'Exclusivity' => 'Non Exclusive', 'commencementDate' => 'FixedDate', 'end_contract_type_def' => 'fixedTerm'];
-
-        //Owner/Initiator Validation
-        $owner_initiator = session()->get('contractSessionUser');
-
-        $initiatior_exists = AddUsers::select('id',  decrypt_data('AccessScope', 'AddUsers'))
-            ->where(decrypt_datas('UserName', 'AddUsers'), $owner_initiator)
-            ->first();
-        if (!$initiatior_exists) {
+        if ($viewData === null) {
             return redirect('contracts/list')->withErrors(['Owner Not Available Please Contact Administrator'])->withInput();
         }
 
-        $owner_initiator_id = $initiatior_exists->id ?? 0;
+        $viewData['annexures'] = AnnexureMaster::where('status', 1)->orderBy('annexure_name')->get();
 
-        $priority = 'medium';
-
-        $annexures = AnnexureMaster::where('status', 1)->orderBy('annexure_name')->get();
-
-        $uniqueTempId = $this->generateUniqueContractTempId();
-        $encTempContId = encryptString($uniqueTempId, 'unique_temp_contract_id');
-
-        return view("contract::contract.contractCreateV3", compact('catego', 'ent', 'geo_graph', 'country', 'contractParties', 'entities', 'branchs', 'branchsUser', 'customFields', 'categorys', 'contractTypes', 'users', 'parties_label', 'defVals', 'usersSel', 'owner_initiator_id', 'priority', 'encTempContId', 'legalAdvisors', 'annexures'));
+        return view("contract::contract.contractCreateV3", $viewData);
     }
 
     /**
