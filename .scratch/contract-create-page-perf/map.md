@@ -142,6 +142,20 @@ established facts before charting anything new:
   rollback cannot reach a real row. Found while seeding: the party list renders **four times**
   in `partyDetailsCreate.blade.php`, and its address list calls `get_state()` once per party —
   **5,000 queries on one GET** (new ticket 10).
+- [02 walk both pages, find and fix breaks](issues/02-walk-pages-find-breaks.md) — every shape
+  renders 200: `create-v3`, `create` with the AI flag off and on, and `contracts/ai/marketing`
+  (which correctly redirects). Two breaks fixed: `contractCreate()` merged an undefined
+  `$fileError` and redirected to itself; all three create blades loaded a **403 Forbidden**
+  jSignature CDN script that nothing calls. The `chrome-devtools` MCP wedged, so the walk was
+  finished by driving the same browser over CDP directly.
+- [03 baseline and attribution](issues/03-baseline-attribution.md) — row 0 written.
+  `create-v3` **15,094 queries / 35.5 s / 8.9 MB**; `create` **10,094 / 13.6 s / 8.0 MB**;
+  `create` with the AI blade **93 / 1.4 s**. One query shape — `select * from state where id = ?`
+  — is 99.4% of the count. The cost is view render, not the controller, and not the browser.
+- [10 kill the per-party `get_state()` N+1](issues/10-get-state-n1.md) — `get_state()` calls
+  `State::nameFor()`, which loads the 32-row table once per request. **create-v3 15,094 → 95
+  queries, 35.5 s → 1.9 s; create 10,094 → 95, 13.6 s → 1.3 s.** Document byte-identical, 10,000
+  real state names still rendered, all seven calling blades checked.
 
 ## Order of work
 
