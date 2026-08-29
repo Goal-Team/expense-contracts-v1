@@ -111,10 +111,16 @@ established facts before charting anything new:
   categories, contract types, geo hierarchy, branches (twice), entities, users (twice), legal
   advisors, contract parties, party labels + regex, branch names again, countries, contract
   categories, entity businesses. `$contractParties` and `$catego` and `$ent` use `select('*')`.
-- **Local master-data row counts, 2026-08-28**: `branch` 99, `ContractUsers` 1,605,
+- **Master-data row counts.** Before ticket 01: `branch` 99, `ContractUsers` 1,605,
   `entitybusiness` 214, `contract_type` 73, `category` 31, `entity` 6, `contract_parties_label` 5,
-  `contract_categories` 3, **`country` 1**, **`contract_parties` 1**, **`legal_advisors` 0**.
-  The last three are the dev's point: the page cannot be measured on them. Ticket 01.
+  `contract_categories` 3, `country` 1, `contract_parties` 1, `legal_advisors` 0. **After ticket
+  01**: `contract_parties` **5,001**, `country` **71**, `legal_advisors` **50**; the rest
+  unchanged. Seeded with `CreatePageMasterDataSeeder`, which needs `HTTP_HOST` set.
+- **The party list renders four times.** `partyDetailsCreate.blade.php` loops `$contractParties`
+  at :114, :128 and :244, decrypting `company_name` in PHP on every option. The :244 loop also
+  prints one hidden `<li>` per party and calls `get_state()` inside it —
+  [`get_state()`](../../app/helpers.php:483) runs one `State` query per call, so **5,000 queries
+  on one GET** at the seeded size. Ticket 10.
 - **`contractCreate()` has an undefined variable on its error path.**
   [:6670](../../Modules/Contract/app/Http/Controllers/ContractController.php:6670) merges
   `$fileError`, which the method never sets. It throws when the owner lookup fails. The V3 copy
@@ -130,7 +136,12 @@ established facts before charting anything new:
 
 <!-- one line per closed ticket, newest last -->
 
-_None yet._
+- [01 seed the create page master data](issues/01-seed-master-data.md) — `contract_parties`
+  1 → 5,001, `country` 1 → 71, `legal_advisors` 0 → 50, via
+  `CreatePageMasterDataSeeder` + its rollback. Re-runnable, reversible, marked twice so a
+  rollback cannot reach a real row. Found while seeding: the party list renders **four times**
+  in `partyDetailsCreate.blade.php`, and its address list calls `get_state()` once per party —
+  **5,000 queries on one GET** (new ticket 10).
 
 ## Order of work
 
@@ -149,6 +160,7 @@ claimed it (Assignee line).
 | [07 flatten the geo hierarchy N+1](issues/07-geo-hierarchy-n1.md) | 03, 04 | One query per node at every level, on every GET. Shared helper — measure and prove safe for every caller. |
 | [08 cut the dropdown payload](issues/08-dropdown-payload.md) | 03, 04, 06 | The dev's named main problem. Twelve master lists printed into the HTML. Decide per list: trim the columns, or move it to a lookup call. |
 | [09 trim contract.js on the create page](issues/09-contract-js-cost.md) | 03 | 109 KB, no page guard, most of it belongs to other pages. Browser time counts. Ten pages must stay working. |
+| [10 kill the per-party `get_state()` N+1](issues/10-get-state-n1.md) | 03, 04 | Found in ticket 01. One `State` query per party in the address list — 5,000 on the seeded set. The `state` table has 32 rows. |
 
 ## Not yet specified
 

@@ -2,7 +2,7 @@
 
 Type: `wayfinder:task` (AFK)
 Blocked by: nothing
-Assignee: unclaimed
+Assignee: claude (session 2026-08-29)
 Status: OPEN
 
 ## Question
