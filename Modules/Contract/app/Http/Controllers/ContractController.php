@@ -6668,8 +6668,11 @@ class ContractController extends Controller
             ->where(decrypt_datas('UserName', 'AddUsers'), $owner_initiator)
             ->first();
         if (!$initiatior_exists) {
-            $invalid_owner_error = array('Owner Not Available Please Contact Administrator');
-            return redirect('contracts/create')->withErrors(array_merge($fileError, $invalid_owner_error))->withInput();
+            // Was array_merge($fileError, ...) with $fileError never set - a fatal on the one
+            // path this branch exists to handle. It also redirected back to contracts/create,
+            // which is this method, so a real miss would have looped. contractCreateV3() already
+            // redirects to the list; match it.
+            return redirect('contracts/list')->withErrors(['Owner Not Available Please Contact Administrator'])->withInput();
         }
 
         $owner_initiator_id = $initiatior_exists->id ?? 0;
