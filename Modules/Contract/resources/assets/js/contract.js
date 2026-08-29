@@ -1961,16 +1961,41 @@ $(document).ready(function () {
         addMorePartis();
     });
 
+    // The create pages render only the selected party's address; every other party is fetched
+    // here on pick. Rendering all of them cost 7.6 MB of an 8.9 MB page on 5,001 parties.
+    //
+    // The show/hide path below is unchanged, so the pages that still pre-render the whole list
+    // - partyDetails, partyDetailsEdit, partyDetailsView - behave exactly as before. The fetch
+    // only runs when the picked party has no <li> in the page yet.
     $(document).on('change','.partyExternal', function () {
-        if ($(this).val() != null && $(this).val() != "") {
-            $(this).closest('.col-sm-6').find('.external-address-list li')
-                .hide();
-            $(this).closest('.col-sm-6').find('.external-address-list li#' +
-                $(this).val()).show();
-        }else{
-            $(this).closest('.col-sm-6').find('.external-address-list li')
-                .hide();            
+        var $list = $(this).closest('.col-sm-6').find('.external-address-list');
+        var partyId = $(this).val();
+
+        $list.find('li').hide();
+
+        if (partyId == null || partyId === "") {
+            return;
         }
+
+        var $item = $list.find('li#' + partyId);
+
+        if ($item.length) {
+            $item.show();
+            return;
+        }
+
+        $.get(APP_URL + '/contracts/create/party-address', { party: partyId })
+            .done(function (html) {
+                if (!html) {
+                    return;
+                }
+                // The pick may have moved on while the request was in flight.
+                if ($list.closest('.col-sm-6').find('.partyExternal').val() != partyId) {
+                    return;
+                }
+                $list.find('li').hide();
+                $list.append(html);
+            });
     });
 
     $(document).on('change keyup keydown','.mandateField', function () {

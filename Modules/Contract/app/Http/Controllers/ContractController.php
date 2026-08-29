@@ -6585,6 +6585,39 @@ class ContractController extends Controller
         return response()->json(['results' => $contractParties], 200);
     }
 
+    /**
+     * One party's address, as the <li> the create page's external-address-list holds.
+     *
+     * The create pages used to render this for every party and hide all but one. On the seeded
+     * 5,001-party set that was 10,032 hidden <li> and 7.6 MB of an 8.9 MB document. They now
+     * render only the selected party and ask for the rest here when a party is picked.
+     *
+     * The markup comes from the same partial the blade uses, so the two cannot drift apart.
+     * Returns 204 for an unknown or missing id - contract.js then leaves the list empty, which
+     * is what it showed before for a party with no match.
+     */
+    public function contractPartyAddress(Request $req)
+    {
+        $partyId = (int) $req->query('party');
+
+        if ($partyId <= 0) {
+            return response()->noContent();
+        }
+
+        $contractPartie = ContractParties::find($partyId);
+
+        if (! $contractPartie) {
+            Log::debug('contractPartyAddress: no party row', ['party_id' => $partyId]);
+
+            return response()->noContent();
+        }
+
+        return response()->view('contract::contract.partyAddressItem', [
+            'contractPartie' => $contractPartie,
+            'show'           => true,
+        ]);
+    }
+
     public function contractCreate(Request $req, $aiparam='')
     {
 
