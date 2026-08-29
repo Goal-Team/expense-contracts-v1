@@ -157,6 +157,20 @@ established facts before charting anything new:
   queries, 35.5 s → 1.9 s; create 10,094 → 95, 13.6 s → 1.3 s.** Document byte-identical, 10,000
   real state names still rendered, all seven calling blades checked.
 
+- [04 query inventory](issues/04-query-inventory.md) — every query named with its caller. 19 in the
+  controller plus session/middleware work. `ContractParties::select('*')` over 5,001 rows is the
+  slowest single query at 99.5 ms; the four `createCustomField` includes and the party blades fire
+  none of their own. One AJAX call on load, `getSignatory`, 6 queries / 1,395 bytes — not worth
+  changing.
+- [06 kill the duplicate model queries](issues/06-duplicate-model-queries.md) — **the premise was
+  wrong.** `Branch`/`BranchUser` and `AddUsers`/`AddUsersSel` share a table but carry different
+  global scopes, so they return different rows and must stay. The third `branch` query was dead and
+  is deleted: 95 → 94 queries, document byte-identical.
+- [07 flatten the geo hierarchy N+1](issues/07-geo-hierarchy-n1.md) — one query and one grouped
+  lookup replace 67. **94 → 29 queries.** The walk is unchanged line for line; output proven
+  identical for all six entity ids and a null session entity, same md5. The four other calling
+  pages render.
+
 ## Order of work
 
 This tracker is markdown, so there is no query to find the frontier. The order is written down
