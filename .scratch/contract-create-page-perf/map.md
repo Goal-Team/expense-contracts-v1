@@ -171,6 +171,19 @@ established facts before charting anything new:
   identical for all six entity ids and a null session entity, same md5. The four other calling
   pages render.
 
+- [08 cut the dropdown payload](issues/08-dropdown-payload.md) — **the dropdowns were never the
+  cost.** They are 253 KB. The hidden party address list was **7,569,294 bytes, 85% of the page** —
+  10,032 `<li>` for 5,001 parties. The pages render only the selected party now and fetch the rest
+  from `contracts/create/party-address` on pick. **create-v3 8.9 MB → 1.26 MB; create 8.0 MB →
+  372 KB**, transfer 226 KB → 34.5 KB. Verified in the browser: picking a party inserts the right
+  address.
+- [05 one data loader for create and create-v3](issues/05-one-data-loader.md) — `contractCreateViewData()`
+  holds everything both pages hand to their view; each entry method keeps its own view, extra data
+  and redirect. Not a speed change: every number identical before and after. The two pages cannot
+  drift apart now.
+- [09 trim contract.js](issues/09-contract-js-cost.md) — **ruled out of scope by the dev
+  2026-08-29**, after ticket 03 priced it at under a second against a sub-second page.
+
 ## Order of work
 
 This tracker is markdown, so there is no query to find the frontier. The order is written down
@@ -192,22 +205,54 @@ claimed it (Assignee line).
 
 ## Not yet specified
 
-- **The POST side.** `storeContract()` and the V3 wrapper are the other half of the page, and the
-  dev has not named them. The GET is the measured page today. Once the GET is fast, ask whether the
-  save is in scope.
-- **The create page's own AJAX calls.** `contracts/create/partylist` and
-  `contracts/create/parties` fire from `contract.js`. Ticket 04 names them; whether any of them
-  needs the server-side pagination pattern waits on their measured size.
-- **The AI blade.** `contractCreateAi.blade.php` is 908 lines against `contractCreate.blade.php`'s
-  697. Whether its extra 211 lines cost anything waits on ticket 02 walking it with the flag on.
-- **Custom fields.** `createCustomField` is included four times with four category ids. Whether
-  that is four passes over one collection or four queries waits on ticket 04.
+**No ticket is open. The destination test passes**: both pages load with no error on every shape,
+the numbers are in [measurements/report.md](measurements/report.md), and the work is committed on
+this branch.
+
+Where the two pages ended up, against row 0:
+
+| page | queries | TTFB | document |
+|---|---|---|---|
+| `create-v3` | 15,094 → **29** | 35.5 s → **0.9 s** | 8.9 MB → **1.26 MB** |
+| `create` | 10,094 → **27** | 13.6 s → **0.6 s** | 8.0 MB → **372 KB** |
+
+Left for a later effort, written down rather than done:
+
+- **The inline `<script>` blocks are 880,408 bytes** — now about 70% of what is left of the
+  `create-v3` document. Nobody has looked at them. This is the next byte win.
+- **`contract.js`** — ruled out of scope above, not finished. 109 KB, no page guard, ten pages.
+- **The POST side.** `storeContract()` and the V3 wrapper were never in scope and were not
+  measured.
+- **`BranchScope` passes a plucked id list to `whereIn`**
+  ([app/Models/Scopes/BranchScope.php](../../app/Models/Scopes/BranchScope.php)). Harmless at 99
+  branches; at 1,000 or more this stack returns zero rows with no error and every branch dropdown
+  in the app goes empty. Ticket 06 recorded it.
+- **`$responseGeo` is never initialised** in `getGeoGraphDropdowns()`. An entity with no head
+  office would throw. Cannot happen on this database. Ticket 07 recorded it.
+- **Six other blades still load the dead jSignature CDN script** that answers 403:
+  `viewDetailContract`, `viewExDetailContract`, `contractCreateSimple`, `contractCreateCopy`,
+  `contractCreateAiV2`, `admin_settings/index`. Ticket 02 recorded it; they are other pages.
+- **The AI bridge** — merging create, create-v3 and the AI upload into one page. The dev's call
+  2026-08-28: a second effort, its own map, its own branch.
+
+### Earlier fog, all resolved
+
+- **The create page's AJAX calls** — traced in ticket 04. One runs on load, `getSignatory`:
+  6 queries, 13 ms, 1,395 bytes. Too small to change. `contracts/create/partylist` fires only when
+  the user opens the party picker.
+- **The AI blade** — walked in ticket 02 with the flag on and off. It renders 200 and it was the
+  measurement that pointed at the address list: same data, 93 queries, 2.3 MB, because it never
+  rendered that list.
+- **Custom fields** — ticket 04: the four `createCustomField` includes fire **no queries**. They
+  filter the already-loaded collection.
 
 ## Out of scope
 
 - **Merging create and create-v3 into one page, and the AI upload bridge.** The dev's call
   2026-08-28: a second effort, its own map, its own branch. This effort does not change behaviour.
 - **`contracts/create-v2`.** A dead route — nothing links to it. It stays as it is.
+- **`contract.js`.** The dev's call 2026-08-29 — priced at under a second against a sub-second
+  page, and ticket 05 was chosen over it. See [ticket 09](issues/09-contract-js-cost.md).
 - **Every other page.** One page per effort, one branch per page — the dev's standing call.
 - The legacy Angular app at the IIS document root, and `/login/`.
 - **Changing** `goalapp_apollo` or any other database than `apollo_contracts_expense`.

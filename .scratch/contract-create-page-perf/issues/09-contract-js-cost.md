@@ -3,7 +3,7 @@
 Type: `wayfinder:task` (AFK)
 Blocked by: 03
 Assignee: unclaimed
-Status: OPEN
+Status: CLOSED 2026-08-29 — out of scope
 
 ## Question
 
@@ -31,3 +31,18 @@ run time first. Then take the wins in this order, stopping when the numbers stop
 
 Every one of the ten pages must still work. Say in the resolution how each was checked. Report row
 per change, small commits.
+
+## Resolution
+
+**Ruled out of scope by the dev, 2026-08-29.** Not resolved on the route — closed as scope.
+
+The ticket 03 attribution priced it: `contract.js` costs **0.85–0.99 s of script time** against a
+page whose server time is now about 0.6–0.9 s. It is real, and it is the smallest thing left.
+The dev chose ticket 05 over it and said to stop there.
+
+One change did land in this file, from ticket 08: the `.partyExternal` change handler fetches the
+picked party's address instead of relying on 7.6 MB of pre-rendered markup. The show/hide path
+was left exactly as it was so the nine other pages that load the file behave as before.
+
+If this is picked up later, the order in the question above still holds, and the numbers to beat
+are in [measurements/report.md](../measurements/report.md).
