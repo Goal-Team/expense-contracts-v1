@@ -6651,7 +6651,6 @@ class ContractController extends Controller
                 'regex_pattern' => $label_data->pattern
             ];
         }
-        $branch = Branch::select('id', decrypt_data('BranchName', 'branch'))->get();
 
         $country = Country::select('id', 'name')->get();
 
@@ -6697,7 +6696,7 @@ class ContractController extends Controller
         
         $uniqueTempId = $this->generateUniqueContractTempId();
         $encTempContId = encryptString($uniqueTempId, 'unique_temp_contract_id');
-        return view("contract::contract.$viewBlade", compact('catego', 'ent', 'branch', 'geo_graph', 'country', 'contractParties', 'entities', 'branchs', 'branchsUser', 'customFields', 'categorys', 'contractTypes', 'users', 'parties_label', 'defVals', 'usersSel', 'owner_initiator_id', 'priority', 'encTempContId', 'legalAdvisors'));
+        return view("contract::contract.$viewBlade", compact('catego', 'ent', 'geo_graph', 'country', 'contractParties', 'entities', 'branchs', 'branchsUser', 'customFields', 'categorys', 'contractTypes', 'users', 'parties_label', 'defVals', 'usersSel', 'owner_initiator_id', 'priority', 'encTempContId', 'legalAdvisors'));
     }
 
     /**
@@ -6771,7 +6770,6 @@ class ContractController extends Controller
                 'regex_pattern' => $label_data->pattern
             ];
         }
-        $branch = Branch::select('id', decrypt_data('BranchName', 'branch'))->get();
 
         $country = Country::select('id', 'name')->get();
 
@@ -6800,7 +6798,7 @@ class ContractController extends Controller
         $uniqueTempId = $this->generateUniqueContractTempId();
         $encTempContId = encryptString($uniqueTempId, 'unique_temp_contract_id');
 
-        return view("contract::contract.contractCreateV3", compact('catego', 'ent', 'branch', 'geo_graph', 'country', 'contractParties', 'entities', 'branchs', 'branchsUser', 'customFields', 'categorys', 'contractTypes', 'users', 'parties_label', 'defVals', 'usersSel', 'owner_initiator_id', 'priority', 'encTempContId', 'legalAdvisors', 'annexures'));
+        return view("contract::contract.contractCreateV3", compact('catego', 'ent', 'geo_graph', 'country', 'contractParties', 'entities', 'branchs', 'branchsUser', 'customFields', 'categorys', 'contractTypes', 'users', 'parties_label', 'defVals', 'usersSel', 'owner_initiator_id', 'priority', 'encTempContId', 'legalAdvisors', 'annexures'));
     }
 
     /**
