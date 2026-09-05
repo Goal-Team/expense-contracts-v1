@@ -194,6 +194,10 @@ Route::post('contracts/create/parties', [ContractController::class, 'contractCre
 
 Route::post('contracts/create/partylist', [ContractController::class, 'contractCreatePartyList'])->name('contractCreatePartyList');
 
+// One party's address block, fetched when a party is picked on the create pages. They used to
+// render every party's address hidden in the page - 7.6 MB of an 8.9 MB document.
+Route::get('contracts/create/party-address', [ContractController::class, 'contractPartyAddress'])->name('contractPartyAddress');
+
 // Cached party lookup used by the V2 create page.
 Route::post('contracts/create/partylist-v2', [ContractController::class, 'contractCreatePartyListV2'])->name('contractCreatePartyListV2');
 

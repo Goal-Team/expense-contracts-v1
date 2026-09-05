@@ -480,13 +480,17 @@ if (!function_exists('get_country')) {
 
 
 if (!function_exists('get_state')) {
+    /**
+     * The state name for an id, or 0 when the id is missing or unknown.
+     *
+     * Every one of the eleven call sites is inside a loop over the party list, and this used to
+     * run one query per call - 15,000 of the create page's 15,094 queries. State::nameFor()
+     * loads the 32-row table once per request and answers from memory. Same name, same
+     * signature, same return values.
+     */
     function get_state($id)
     {
-        if ($id > 0) {
-            $state = State::where('id', $id)->first();
-            return $state ? $state->name : 0;
-        }
-        return 0;
+        return State::nameFor($id);
     }
 }
 

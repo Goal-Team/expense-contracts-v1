@@ -1,0 +1,259 @@
+# Map: Contract Create Page Performance
+
+Branch: **`claude/contract-create-page-perf`**. One branch for this page, per
+[CLAUDE.md](../../CLAUDE.md). Small commits as soon as a change works.
+
+## Destination
+
+The contract create page — **`contracts/create-v3`** first, and **`contracts/create`** with it —
+**loads with no error and is fast**, and the work is **done, committed and measured on this
+branch**, not only specified.
+
+Scope set by the dev 2026-08-28:
+
+- **`contracts/create-v3` is the page.** It is the newest. It wins on any design conflict.
+- **`contracts/create` matters too**, above all when the AI create feature is on. The two pages
+  must show the same thing. They already share the same twelve dropdown queries, so most server
+  wins land on both.
+- **Merging the two into one page is not this effort.** The dev's call: a second effort does the
+  AI bridge, with its own map and its own grilling. This effort does not change what the pages do.
+
+**Fast has no fixed number** — same as the three earlier efforts. Take every safe win and report
+what it came to. The **query count** is the number that must not regress.
+
+The dev named the main problem 2026-08-28: **the dropdown fields**. The page loads twelve master
+lists on the GET and prints them into the HTML. The local database has almost no rows in the two
+lists that grow in production, so the seed comes first (ticket 01) — a dropdown with one row
+cannot be measured.
+
+The effort is finished when both pages are correct, the numbers are in
+[measurements/report.md](measurements/report.md), and no ticket is open.
+
+## Notes
+
+**Domain.** Same stack as the three earlier efforts: **Laravel 10.48.29** + nwidart/laravel-modules
++ Vuexy template, `/contracts` is the IIS base path, MariaDB 10.4.24. Read the earlier maps for
+established facts before charting anything new:
+[../contracts-dashboard-perf/map.md](../contracts-dashboard-perf/map.md),
+[../contract-detail-page-perf/map.md](../contract-detail-page-perf/map.md) and
+[../contract-list-page-perf/map.md](../contract-list-page-perf/map.md).
+
+**The pages.**
+
+- [`contracts/create`](../../Modules/Contract/routes/web.php:133) → `contractCreate()`
+  ([ContractController.php:6588–6705](../../Modules/Contract/app/Http/Controllers/ContractController.php:6588)).
+  Also serves `contracts/ai/{aiparam}` (:145). Picks its view at runtime:
+  `contractCreate.blade.php` (697 lines) normally, `contractCreateAi.blade.php` (908 lines) when
+  `admin_setting('enable_ai_feature')` is on, `contractCreateRep.blade.php` (651 lines) for
+  `aiparam=marketing`.
+- [`contracts/create-v3`](../../Modules/Contract/routes/web.php:141) → `contractCreateV3()`
+  ([:6706–6801](../../Modules/Contract/app/Http/Controllers/ContractController.php:6706)).
+  Renders `contractCreateV3.blade.php`. Its body is a **near-exact copy** of `contractCreate()`
+  plus one extra query (`AnnexureMaster`). Ticket 05.
+- Both load [`contract.js`](../../Modules/Contract/resources/assets/js/contract.js) — 109 KB,
+  2,931 lines, 48 top-level functions, two `$(document).ready` blocks and **no page guard**.
+  Nine other pages load the same file. The dev's call 2026-08-28: **change it in place, prove each
+  change safe for every caller.**
+- `contracts/create-v2` ([:137](../../Modules/Contract/routes/web.php:137)) is a dead route —
+  nothing links to it. Out of scope, and it stays.
+
+**Skills to consult each session:** `diagnosing-bugs` (performance attribution), `grilling` +
+`domain-modeling` (any decision ticket), `research` (AFK fact-finding).
+
+**Standing rules for this effort** — carried whole from the list-page map, plus the dev's calls of
+2026-08-28:
+
+- **This effort does the work, not only the plan.** Every decision is followed by the change
+  landing on this branch, in a small commit, with a report row.
+- **Do not change what the pages do.** No field moves, no merge of create and create-v3, no AI
+  bridge. Speed only. The dev's reason: a behaviour change hides a speed win.
+- **Change functions in place. No `x` copies.** Many callers + bad name is the one side-by-side
+  case. See [CLAUDE.md](../../CLAUDE.md).
+- **The report has no old-number column.** Row 0 is the baseline; each row records the new
+  numbers only.
+- **Use fresh-context subagents wherever a ticket allows it.** The controller is 15,462 lines.
+- **No id-list `whereIn`. Pass the query, not the values.** Repo rule; see CLAUDE.md and the
+  [1000-binding bug](../wherein-1000-bug/spec.md).
+- **`contract.js` is this page's code now**, and every change to it must be checked on all ten
+  pages that load it. Dev's call 2026-08-28.
+- **Dead code inside this page's scope can be deleted without asking**, once `grep` across the
+  repo including blades proves nothing reads it.
+- **Migrations and seeders: apply on the local dev database, then report.** Working `down()`
+  always. Production stays the dev's to run.
+- **Correctness bugs: fix what throws or costs time; write the rest down** in the ticket, per the
+  dev's two-test rule.
+- **No fixed millisecond target.** Query count must not regress.
+- **Report only when the dev is needed.**
+- **Measure with the debug bar OFF** (`DEBUGBAR_ENABLED=false`), warm, three runs, same seeded
+  data set. Bytes measured too: document bytes, AJAX bytes, total transfer, request count, first
+  and last render.
+- **Only the `apollo_contracts_expense` database.**
+- **Verify in the browser** — the CDP debug profile; ask the dev to log in once if the session is
+  gone. Both pages, and the AI flag both on and off.
+- **Plain words to the dev, caveman English for questions, no summary unless asked.**
+- **Prefer query parameters over cookies**, and **server-side pagination only where it makes
+  sense** — data that grows organically. Dev rules 2026-08-27.
+
+**Facts established while charting, 2026-08-28:**
+
+- **`Branch` and `BranchUser` are the same table.** `BranchUser`
+  ([app/Models/BranchUser.php:13](../../app/Models/BranchUser.php:13)) sets
+  `protected $table = 'branch'`, the same as `Branch`. `$branchs` and `$branchsUser` run the
+  identical query twice, each decrypting **11 columns over 99 rows** in SQL. Ticket 06.
+- **`AddUsers` and `AddUsersSel` are the same table.** Both set
+  `protected $table = 'ContractUsers'`. `$users` and `$usersSel` run the identical query twice,
+  each decrypting **5 columns over 1,605 rows**. Ticket 06.
+- **`getGeoGraphDropdowns()` is a nested N+1 loop.**
+  [Controller.php:35](../../app/Http/Controllers/Controller.php:35) walks the geographical
+  hierarchy level by level and fires one `GeographicalHierarchy` query **per node at every
+  level**. Ticket 07.
+- **Twelve master lists load on every GET** and are printed into the HTML: custom fields,
+  categories, contract types, geo hierarchy, branches (twice), entities, users (twice), legal
+  advisors, contract parties, party labels + regex, branch names again, countries, contract
+  categories, entity businesses. `$contractParties` and `$catego` and `$ent` use `select('*')`.
+- **Master-data row counts.** Before ticket 01: `branch` 99, `ContractUsers` 1,605,
+  `entitybusiness` 214, `contract_type` 73, `category` 31, `entity` 6, `contract_parties_label` 5,
+  `contract_categories` 3, `country` 1, `contract_parties` 1, `legal_advisors` 0. **After ticket
+  01**: `contract_parties` **5,001**, `country` **71**, `legal_advisors` **50**; the rest
+  unchanged. Seeded with `CreatePageMasterDataSeeder`, which needs `HTTP_HOST` set.
+- **The party list renders four times.** `partyDetailsCreate.blade.php` loops `$contractParties`
+  at :114, :128 and :244, decrypting `company_name` in PHP on every option. The :244 loop also
+  prints one hidden `<li>` per party and calls `get_state()` inside it —
+  [`get_state()`](../../app/helpers.php:483) runs one `State` query per call, so **5,000 queries
+  on one GET** at the seeded size. Ticket 10.
+- **`contractCreate()` has an undefined variable on its error path.**
+  [:6670](../../Modules/Contract/app/Http/Controllers/ContractController.php:6670) merges
+  `$fileError`, which the method never sets. It throws when the owner lookup fails. The V3 copy
+  does not have the bug. Ticket 02.
+- **`enable_ai_feature` is `false` on the local database**, so `contracts/create` renders
+  `contractCreate.blade.php` today. The dev wants the AI path tested too — turn the flag on and
+  walk it (ticket 02), then put it back.
+- **`contract.js` runs whole on every page that loads it.** No page guard. The create page runs
+  approval flow, OTP send and check, obligations add and delete, send-for-review and contract
+  link code it never uses. Ticket 09.
+
+## Decisions so far
+
+<!-- one line per closed ticket, newest last -->
+
+- [01 seed the create page master data](issues/01-seed-master-data.md) — `contract_parties`
+  1 → 5,001, `country` 1 → 71, `legal_advisors` 0 → 50, via
+  `CreatePageMasterDataSeeder` + its rollback. Re-runnable, reversible, marked twice so a
+  rollback cannot reach a real row. Found while seeding: the party list renders **four times**
+  in `partyDetailsCreate.blade.php`, and its address list calls `get_state()` once per party —
+  **5,000 queries on one GET** (new ticket 10).
+- [02 walk both pages, find and fix breaks](issues/02-walk-pages-find-breaks.md) — every shape
+  renders 200: `create-v3`, `create` with the AI flag off and on, and `contracts/ai/marketing`
+  (which correctly redirects). Two breaks fixed: `contractCreate()` merged an undefined
+  `$fileError` and redirected to itself; all three create blades loaded a **403 Forbidden**
+  jSignature CDN script that nothing calls. The `chrome-devtools` MCP wedged, so the walk was
+  finished by driving the same browser over CDP directly.
+- [03 baseline and attribution](issues/03-baseline-attribution.md) — row 0 written.
+  `create-v3` **15,094 queries / 35.5 s / 8.9 MB**; `create` **10,094 / 13.6 s / 8.0 MB**;
+  `create` with the AI blade **93 / 1.4 s**. One query shape — `select * from state where id = ?`
+  — is 99.4% of the count. The cost is view render, not the controller, and not the browser.
+- [10 kill the per-party `get_state()` N+1](issues/10-get-state-n1.md) — `get_state()` calls
+  `State::nameFor()`, which loads the 32-row table once per request. **create-v3 15,094 → 95
+  queries, 35.5 s → 1.9 s; create 10,094 → 95, 13.6 s → 1.3 s.** Document byte-identical, 10,000
+  real state names still rendered, all seven calling blades checked.
+
+- [04 query inventory](issues/04-query-inventory.md) — every query named with its caller. 19 in the
+  controller plus session/middleware work. `ContractParties::select('*')` over 5,001 rows is the
+  slowest single query at 99.5 ms; the four `createCustomField` includes and the party blades fire
+  none of their own. One AJAX call on load, `getSignatory`, 6 queries / 1,395 bytes — not worth
+  changing.
+- [06 kill the duplicate model queries](issues/06-duplicate-model-queries.md) — **the premise was
+  wrong.** `Branch`/`BranchUser` and `AddUsers`/`AddUsersSel` share a table but carry different
+  global scopes, so they return different rows and must stay. The third `branch` query was dead and
+  is deleted: 95 → 94 queries, document byte-identical.
+- [07 flatten the geo hierarchy N+1](issues/07-geo-hierarchy-n1.md) — one query and one grouped
+  lookup replace 67. **94 → 29 queries.** The walk is unchanged line for line; output proven
+  identical for all six entity ids and a null session entity, same md5. The four other calling
+  pages render.
+
+- [08 cut the dropdown payload](issues/08-dropdown-payload.md) — **the dropdowns were never the
+  cost.** They are 253 KB. The hidden party address list was **7,569,294 bytes, 85% of the page** —
+  10,032 `<li>` for 5,001 parties. The pages render only the selected party now and fetch the rest
+  from `contracts/create/party-address` on pick. **create-v3 8.9 MB → 1.26 MB; create 8.0 MB →
+  372 KB**, transfer 226 KB → 34.5 KB. Verified in the browser: picking a party inserts the right
+  address.
+- [05 one data loader for create and create-v3](issues/05-one-data-loader.md) — `contractCreateViewData()`
+  holds everything both pages hand to their view; each entry method keeps its own view, extra data
+  and redirect. Not a speed change: every number identical before and after. The two pages cannot
+  drift apart now.
+- [09 trim contract.js](issues/09-contract-js-cost.md) — **ruled out of scope by the dev
+  2026-08-29**, after ticket 03 priced it at under a second against a sub-second page.
+
+## Order of work
+
+This tracker is markdown, so there is no query to find the frontier. The order is written down
+instead. A ticket is takeable when every ticket in its "Blocked by" line is closed and no one has
+claimed it (Assignee line).
+
+| Ticket | Blocked by | Why this order |
+|---|---|---|
+| [01 seed the create page master data](issues/01-seed-master-data.md) | nothing | `country` has 1 row, `contract_parties` 1, `legal_advisors` 0. The dev's call: without a real seed there is no dropdown cost to see. |
+| [02 walk both pages, find and fix breaks](issues/02-walk-pages-find-breaks.md) | nothing | A page that does not render cannot be measured. create, create-v3, AI flag on and off. |
+| [03 baseline and attribution](issues/03-baseline-attribution.md) | 01, 02 | Row 0 of the report. Both pages, server and browser both. Needs the seed in place. |
+| [04 query inventory](issues/04-query-inventory.md) | 02 | Name every query site in both methods and their blades before rewriting any. |
+| [05 one data loader for create and create-v3](issues/05-one-data-loader.md) | 03, 04 | The two methods are near-identical copies. One loader means one place to make fast, and it keeps the two pages showing the same thing. |
+| [06 kill the duplicate model queries](issues/06-duplicate-model-queries.md) | 03, 04 | `Branch`/`BranchUser` and `AddUsers`/`AddUsersSel` are the same tables. Four queries and four decrypt passes where two do the work. |
+| [07 flatten the geo hierarchy N+1](issues/07-geo-hierarchy-n1.md) | 03, 04 | One query per node at every level, on every GET. Shared helper — measure and prove safe for every caller. |
+| [08 cut the dropdown payload](issues/08-dropdown-payload.md) | 03, 04, 06 | The dev's named main problem. Twelve master lists printed into the HTML. Decide per list: trim the columns, or move it to a lookup call. |
+| [09 trim contract.js on the create page](issues/09-contract-js-cost.md) | 03 | 109 KB, no page guard, most of it belongs to other pages. Browser time counts. Ten pages must stay working. |
+| [10 kill the per-party `get_state()` N+1](issues/10-get-state-n1.md) | 03, 04 | Found in ticket 01. One `State` query per party in the address list — 5,000 on the seeded set. The `state` table has 32 rows. |
+
+## Not yet specified
+
+**No ticket is open. The destination test passes**: both pages load with no error on every shape,
+the numbers are in [measurements/report.md](measurements/report.md), and the work is committed on
+this branch.
+
+Where the two pages ended up, against row 0:
+
+| page | queries | TTFB | document |
+|---|---|---|---|
+| `create-v3` | 15,094 → **29** | 35.5 s → **0.9 s** | 8.9 MB → **1.26 MB** |
+| `create` | 10,094 → **27** | 13.6 s → **0.6 s** | 8.0 MB → **372 KB** |
+
+Left for a later effort, written down rather than done:
+
+- **The inline `<script>` blocks are 880,408 bytes** — now about 70% of what is left of the
+  `create-v3` document. Nobody has looked at them. This is the next byte win.
+- **`contract.js`** — ruled out of scope above, not finished. 109 KB, no page guard, ten pages.
+- **The POST side.** `storeContract()` and the V3 wrapper were never in scope and were not
+  measured.
+- **`BranchScope` passes a plucked id list to `whereIn`**
+  ([app/Models/Scopes/BranchScope.php](../../app/Models/Scopes/BranchScope.php)). Harmless at 99
+  branches; at 1,000 or more this stack returns zero rows with no error and every branch dropdown
+  in the app goes empty. Ticket 06 recorded it.
+- **`$responseGeo` is never initialised** in `getGeoGraphDropdowns()`. An entity with no head
+  office would throw. Cannot happen on this database. Ticket 07 recorded it.
+- **Six other blades still load the dead jSignature CDN script** that answers 403:
+  `viewDetailContract`, `viewExDetailContract`, `contractCreateSimple`, `contractCreateCopy`,
+  `contractCreateAiV2`, `admin_settings/index`. Ticket 02 recorded it; they are other pages.
+- **The AI bridge** — merging create, create-v3 and the AI upload into one page. The dev's call
+  2026-08-28: a second effort, its own map, its own branch.
+
+### Earlier fog, all resolved
+
+- **The create page's AJAX calls** — traced in ticket 04. One runs on load, `getSignatory`:
+  6 queries, 13 ms, 1,395 bytes. Too small to change. `contracts/create/partylist` fires only when
+  the user opens the party picker.
+- **The AI blade** — walked in ticket 02 with the flag on and off. It renders 200 and it was the
+  measurement that pointed at the address list: same data, 93 queries, 2.3 MB, because it never
+  rendered that list.
+- **Custom fields** — ticket 04: the four `createCustomField` includes fire **no queries**. They
+  filter the already-loaded collection.
+
+## Out of scope
+
+- **Merging create and create-v3 into one page, and the AI upload bridge.** The dev's call
+  2026-08-28: a second effort, its own map, its own branch. This effort does not change behaviour.
+- **`contracts/create-v2`.** A dead route — nothing links to it. It stays as it is.
+- **`contract.js`.** The dev's call 2026-08-29 — priced at under a second against a sub-second
+  page, and ticket 05 was chosen over it. See [ticket 09](issues/09-contract-js-cost.md).
+- **Every other page.** One page per effort, one branch per page — the dev's standing call.
+- The legacy Angular app at the IIS document root, and `/login/`.
+- **Changing** `goalapp_apollo` or any other database than `apollo_contracts_expense`.
+- **Bad logic that neither breaks the page nor costs time** — the dev's two-test rule.

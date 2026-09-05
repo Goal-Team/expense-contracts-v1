@@ -124,22 +124,16 @@ $horizontalForm = $horizontalForm ?? false;
                 </div>
             </div>
              <div class="address-external mt-3">
+                 {{-- Only the selected party is rendered. contract.js fetches the rest from
+                      contracts/create/party-address when a party is picked. Rendering all of
+                      them cost most of an 8 MB page. --}}
                  <ul class="external-address-list" style="list-style-type: none;">
-                     @foreach ($contractParties as $contractPartie)
-                     <li id="{{ $contractPartie->id }}" style="display:{{ ($contractParty['external_name'] ?? '') == $contractPartie->id ? '' : 'none'}};">
-                        <div class="row">
-                            <div class="col-md-4">Building no : {{ $contractPartie->building_no}} </br></div>
-                            <div class="col-md-4">Area name: {{ $contractPartie->area_name}}</br></div>
-                            <div class="col-md-4">Landmark : {{ $contractPartie->landmark}}</br></div>
-                            <div class="col-md-4">City: {{ $contractPartie->city}}</br></div>
-                            <div class="col-md-4">State: {{ get_state($contractPartie->state)}}</br></div>
-                            <div class="col-md-4">Pincode: {{ $contractPartie->pincode}}</br></div>
-                            <div class="col-md-4">Country: {{ get_country($contractPartie->country)}}</br></div>
-
-                        </div>
-                         
-                     </li>
-                     @endforeach
+                     @php $selectedPartyId = $contractParty['external_name'] ?? ''; @endphp
+                     @if ($selectedPartyId !== '')
+                        @foreach ($contractParties->where('id', (int) $selectedPartyId) as $contractPartie)
+                            @include('contract::contract.partyAddressItem', ['contractPartie' => $contractPartie, 'show' => true])
+                        @endforeach
+                     @endif
                  </ul>
              </div>            
         </div>
